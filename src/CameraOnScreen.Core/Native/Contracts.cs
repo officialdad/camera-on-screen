@@ -2,6 +2,9 @@ namespace CameraOnScreen.Core.Native;
 
 public readonly record struct CameraInfo(string Id, string Name);
 
+/// <summary>Result of probing the native shim for effect availability.</summary>
+public sealed record ShimCapabilities(bool GreenScreenAvailable, string Detail);
+
 public enum GazeState { Unknown, OnCamera, Redirected, RealEyes }
 
 public readonly record struct ShimStatus(
@@ -30,4 +33,6 @@ public interface INativeShim : IDisposable
     ShimStatus GetStatus();
     // Copies the latest BGRA frame into buffer; returns true when a new frame was written.
     bool TryGetFrame(byte[] buffer, out int width, out int height);
+    /// <summary>Probes whether AI Green Screen can run (SDK present + model loads).</summary>
+    ShimCapabilities QueryCapabilities();
 }

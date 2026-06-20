@@ -25,14 +25,23 @@ public sealed class PInvokeShim : INativeShim
         public double eye_contact_look_away_range;
     }
 
-    [DllImport(Dll)] private static extern int cos_init(IntPtr device);
-    [DllImport(Dll)] private static extern int cos_enumerate_cameras(byte[] ids, byte[] names, int max);
-    [DllImport(Dll)] private static extern void cos_set_params(ref CosParams p);
-    [DllImport(Dll)] private static extern void cos_start();
-    [DllImport(Dll)] private static extern void cos_stop();
-    [DllImport(Dll)] private static extern void cos_get_status(out CosStatus s);
-    [DllImport(Dll)] private static extern int cos_get_frame(byte[] dst, out int w, out int h, int cap);
-    [DllImport(Dll)] private static extern void cos_shutdown();
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CosCaps
+    {
+        public int GreenScreenAvailable;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+        public byte[] Detail;
+    }
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_init(IntPtr device);
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_enumerate_cameras(byte[] ids, byte[] names, int max);
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern void cos_set_params(ref CosParams p);
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern void cos_start();
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern void cos_stop();
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern void cos_get_status(out CosStatus s);
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_get_frame(byte[] dst, out int w, out int h, int cap);
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern void cos_shutdown();
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_query_capabilities(ref CosCaps caps);
 
     public bool Init(IntPtr d3dDevice) => cos_init(d3dDevice) != 0;
 
@@ -86,6 +95,14 @@ public sealed class PInvokeShim : INativeShim
 
     public bool TryGetFrame(byte[] buffer, out int width, out int height)
         => cos_get_frame(buffer, out width, out height, buffer.Length) != 0;
+
+    public ShimCapabilities QueryCapabilities()
+    {
+        var caps = new CosCaps { Detail = new byte[256] };
+        int ok = cos_query_capabilities(ref caps);
+        string detail = ReadUtf8(caps.Detail, 0, 256);
+        return new ShimCapabilities(ok != 0, detail);
+    }
 
     public void Dispose() => cos_shutdown();
 
