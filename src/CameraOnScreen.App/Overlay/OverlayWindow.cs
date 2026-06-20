@@ -40,10 +40,24 @@ public sealed class OverlayWindow : IDisposable
     // Size of the resize grip hot-zone / drawn handle, in window client pixels.
     private const int GripSize = 16;
 
+    // Visibility state for ToggleVisible (Task 14). Starts true: the window is shown at startup.
+    private bool _visible = true;
+
     /// <summary>Window position changed (WM_MOVE). Carries new top-left in screen coords.</summary>
     public event Action<int, int>? Moved;
     /// <summary>Client size changed (WM_SIZE). Carries new client width/height.</summary>
     public event Action<int, int>? Resized;
+    /// <summary>
+    /// User finished a drag/resize (WM_EXITSIZEMOVE). Fires ONCE per interaction — the cue to
+    /// persist geometry, unlike Moved/Resized which fire continuously during the gesture.
+    /// </summary>
+    public event Action? InteractionEnded;
+    /// <summary>
+    /// A registered global hotkey fired (WM_HOTKEY). Carries the registration id (wParam). The
+    /// host routes this into <c>GlobalHotkeyService.OnHotkeyMessage</c> to decouple the service
+    /// from the window proc.
+    /// </summary>
+    public event Action<int>? HotkeyPressed;
 
     public IntPtr Hwnd => _hwnd;
     public IntPtr D3DDevicePtr => _device.NativePointer;
@@ -109,6 +123,16 @@ public sealed class OverlayWindow : IDisposable
 
     public void Show() => ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
 
+    /// <summary>
+    /// Toggle overlay visibility (Task 14, ToggleOverlayVisible hotkey). Hides via SW_HIDE, shows
+    /// via SW_SHOWNOACTIVATE so showing never steals focus from the foreground app.
+    /// </summary>
+    public void ToggleVisible()
+    {
+        _visible = !_visible;
+        ShowWindow(_hwnd, _visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+    }
+
     // ---- Task 13 public API ---------------------------------------------------------------
 
     /// <summary>Lock disables drag/resize (WM_NCHITTEST → HTCLIENT) and hides chrome.</summary>
@@ -168,6 +192,15 @@ public sealed class OverlayWindow : IDisposable
                     break;
                 case WM_MOVE:
                     self.Moved?.Invoke(LoWord(lParam), HiWord(lParam));
+                    break;
+                case WM_EXITSIZEMOVE:
+                    // Drag/resize finished — single, debounced cue for the host to persist geometry.
+                    self.InteractionEnded?.Invoke();
+                    break;
+                case WM_HOTKEY:
+                    // RegisterHotKey targets this HWND, so global hotkeys land here. wParam is the
+                    // registration id; the host forwards it to GlobalHotkeyService.OnHotkeyMessage.
+                    self.HotkeyPressed?.Invoke((int)wParam);
                     break;
             }
         }

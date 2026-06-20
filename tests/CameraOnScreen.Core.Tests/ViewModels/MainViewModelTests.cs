@@ -60,6 +60,18 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void ToAppConfig_captures_geometry_and_effects()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        vm.GreenScreenEnabled = true; vm.Locked = true;
+        var cfg = vm.ToAppConfig(10, 20, 300, 400);
+        Assert.Equal(10, cfg.Overlay.X);
+        Assert.Equal(400, cfg.Overlay.Height);
+        Assert.True(cfg.Overlay.Locked);
+        Assert.True(cfg.Effects.GreenScreenEnabled);
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_from_status()
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };

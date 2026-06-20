@@ -27,6 +27,12 @@ internal static class Interop
     public const uint WM_NCHITTEST = 0x0084;
     public const uint WM_MOUSEMOVE = 0x0200;
     public const uint WM_MOUSELEAVE = 0x02A3;
+    // WM_EXITSIZEMOVE fires ONCE when the user finishes a drag/resize (Task 14): the cue to
+    // persist geometry without thrashing the disk on every live WM_MOVE/WM_SIZE pixel update.
+    public const uint WM_EXITSIZEMOVE = 0x0232;
+    // WM_HOTKEY (Task 14): RegisterHotKey targets the overlay HWND, so the hotkey message arrives
+    // at this proc; wParam carries the registration id.
+    public const uint WM_HOTKEY = 0x0312;
 
     // WM_NCHITTEST return codes: HTCLIENT (no drag), HTCAPTION (drag-anywhere),
     // HTBOTTOMRIGHT (bottom-right resize grip).
@@ -72,6 +78,7 @@ internal static class Interop
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
         int x, int y, int cx, int cy, uint flags);
     public const int GWL_EXSTYLE = -20;
+    public const int SW_HIDE = 0;
     public const int SW_SHOWNOACTIVATE = 4;
     // SetWindowPos flags: keep current position/Z-order/activation, only change size.
     public const uint SWP_NOMOVE = 0x0002;

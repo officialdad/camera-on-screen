@@ -57,6 +57,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
     }
 
+    // Capture current VM + overlay state into a persistable AppConfig. Geometry is passed in by the
+    // caller (read from the live overlay window). Locked/ClickThrough are the existing observable
+    // props (Task 13) — used here, not redeclared.
+    public AppConfig ToAppConfig(double x, double y, double w, double h) => new()
+    {
+        CameraId = SelectedCamera?.Id,
+        Overlay = new OverlaySettings
+        {
+            X = x, Y = y, Width = w, Height = h,
+            Locked = Locked, ClickThrough = ClickThrough
+        },
+        Effects = new EffectSettings
+        {
+            GreenScreenEnabled = GreenScreenEnabled, GreenScreenStrength = GreenScreenStrength,
+            EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
+            EyeContactLookAwayRange = EyeContactLookAwayRange
+        }
+    };
+
     public ShimParams BuildParams() => new(
         CameraId: SelectedCamera?.Id,
         GreenScreenEnabled: GreenScreenEnabled,
