@@ -1,8 +1,32 @@
 using CameraOnScreen.Core.Config;
 using Xunit;
+using Xunit.Abstractions;
 
 public class ModelsTests
 {
+    private readonly ITestOutputHelper _output;
+    public ModelsTests(ITestOutputHelper output) => _output = output;
+
+    [Fact]
+    public void Flags_modifiers_round_trip_as_names()
+    {
+        var config = new AppConfig(); // defaults include Control|Alt on all 4 hotkeys
+        var json = ConfigSerializer.Serialize(config);
+        _output.WriteLine("Serialized JSON snippet (Modifiers):");
+        _output.WriteLine(json);
+
+        // Must NOT contain a bare numeric modifier (e.g. "Modifiers": 3)
+        Assert.DoesNotContain("\"Modifiers\": 3", json);
+        Assert.DoesNotContain("\"Modifiers\":3", json);
+
+        // Must contain name-based representation — "Alt" appears in "Alt, Control" or "Control, Alt"
+        Assert.Contains("Alt", json);
+
+        // Round-trip: deserialized modifier must equal the composite flags value
+        var back = ConfigSerializer.Deserialize(json);
+        Assert.Equal(HotkeyModifiers.Control | HotkeyModifiers.Alt, back.Hotkeys[0].Modifiers);
+    }
+
     [Fact]
     public void AppConfig_defaults_are_sane()
     {
