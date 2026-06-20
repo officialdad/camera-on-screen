@@ -7,14 +7,16 @@ namespace CameraOnScreen.App.Composition;
 
 public static class Services
 {
-    // Task 9 replaces FakeShim with PInvokeShim and GpuTier with GpuTierDetector.Detect().
     public static MainViewModel BuildViewModel()
     {
         var store = new JsonSettingsStore(JsonSettingsStore.DefaultPath());
         var config = store.Load();
-        INativeShim shim = new FakeShim();
-        var orchestrator = new Orchestrator(shim, GpuTier.NonRtx);
+        INativeShim shim = new CameraOnScreen.App.Native.PInvokeShim();
+        shim.Init(IntPtr.Zero); // real D3D device passed in Task 11
+        var tier = CameraOnScreen.App.Native.GpuTierDetector.Detect();
+        var orchestrator = new Orchestrator(shim, tier);
         var vm = new MainViewModel(orchestrator);
+        foreach (var cam in shim.EnumerateCameras()) vm.Cameras.Add(cam);
         vm.LoadFrom(config);
         return vm;
     }

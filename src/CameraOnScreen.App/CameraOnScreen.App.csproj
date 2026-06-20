@@ -20,7 +20,16 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
     <ProjectReference Include="..\CameraOnScreen.Core\CameraOnScreen.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native shim DLL built separately by native/shim/shim.vcxproj (Build Tools MSBuild). -->
+    <None Include="..\..\native\shim\x64\$(Configuration)\CameraOnScreen.Shim.dll">
+      <Link>CameraOnScreen.Shim.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
