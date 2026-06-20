@@ -42,8 +42,12 @@ language. Maxine interop is a small, well-trodden P/Invoke layer.
 
 - **Maxine VFX SDK is C++-only** and requires an RTX GPU with Tensor Cores. Confirmed
   target machine: RTX 3090 (Ampere) — supported.
-- Maxine VFX SDK provides both **AI Green Screen** (background segmentation/matting) and
-  **Eye Contact** (gaze redirection), so one native pipeline covers both.
+- Maxine VFX SDK provides **AI Green Screen** (background segmentation/matting).
+  > **Correction (2026-06-21, M3 design):** Eye Contact is **not** in the VFX SDK — it lives
+  > in the separate **Maxine AR SDK** (a distinct download/dependency). The original
+  > assumption that "one native pipeline covers both via the VFX SDK" is wrong. AI Green
+  > Screen (M3) uses the VFX SDK; Eye Contact (M4) will require adding the AR SDK. See
+  > `2026-06-21-camera-on-screen-m3-aigs-design.md`.
 - Maxine output is an `NvCVImage` (typically CUDA/GPU memory).
 - Maxine SDK redistribution/licensing must be reviewed before any public distribution
   (see Risks).
