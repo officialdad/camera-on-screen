@@ -75,9 +75,6 @@ public sealed class OverlayWindow : IDisposable
         if (_hwnd == IntPtr.Zero)
             throw new InvalidOperationException($"CreateWindowEx failed with Win32 error {Marshal.GetLastWin32Error()}.");
 
-        // Route the static proc to this instance (single-overlay design).
-        _instance = this;
-
         D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
             null!, out _device!, out _context!).CheckError();
         // ClearView (sub-region RTV fill, used for the resize grip) is on ID3D11DeviceContext1.
@@ -103,6 +100,11 @@ public sealed class OverlayWindow : IDisposable
         _visual.SetContent(_swapChain);
         _target.SetRoot(_visual);
         _dcomp.Commit();
+
+        // Route the static proc to this instance LAST, after all DComp fields are initialised,
+        // so any early WM_SIZE/WM_MOUSEMOVE that arrives before construction is complete cannot
+        // route into WndProcImpl before _visual/_dcomp exist (single-overlay design).
+        _instance = this;
     }
 
     public void Show() => ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
@@ -118,6 +120,14 @@ public sealed class OverlayWindow : IDisposable
         int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
         ex = on ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
         SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
+        // When click-through is enabled the window stops receiving WM_MOUSEMOVE/WM_MOUSELEAVE,
+        // so _hovered can latch true and keep the resize grip visible in recordings. Clear both
+        // flags now so no chrome is drawn while the overlay is click-through.
+        if (on)
+        {
+            _hovered = false;
+            _trackingMouse = false;
+        }
     }
 
     /// <summary>
