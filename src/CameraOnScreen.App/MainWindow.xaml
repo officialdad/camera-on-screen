@@ -1,0 +1,37 @@
+<Window
+    x:Class="CameraOnScreen.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <ComboBox Grid.Row="0" Header="Camera"
+                  ItemsSource="{x:Bind Vm.Cameras}"
+                  SelectedItem="{x:Bind Vm.SelectedCamera, Mode=TwoWay}"
+                  DisplayMemberPath="Name" Width="280"/>
+
+        <StackPanel Grid.Row="1" Spacing="8">
+            <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable}"
+                          IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
+            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EffectsAvailable}"
+                          IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
+            <TextBlock Text="Effects require an RTX GPU."
+                       Visibility="{x:Bind NotAvailableVisibility}"
+                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+            <Button Content="Start" Command="{x:Bind Vm.StartCommand}"/>
+            <Button Content="Stop" Command="{x:Bind Vm.StopCommand}"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="3"
+                   Text="{x:Bind StatusLine, Mode=OneWay}"/>
+    </Grid>
+</Window>
