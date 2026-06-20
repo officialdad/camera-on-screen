@@ -15,7 +15,14 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     {
         Vm = Services.BuildViewModel();
         Vm.PropertyChanged += OnVmPropertyChanged;
+        this.Closed += OnWindowClosed;
         InitializeComponent();
+    }
+
+    private void OnWindowClosed(object sender, WindowEventArgs args)
+    {
+        Vm.PropertyChanged -= OnVmPropertyChanged;
+        Vm.Dispose();
     }
 
     public Visibility NotAvailableVisibility =>
