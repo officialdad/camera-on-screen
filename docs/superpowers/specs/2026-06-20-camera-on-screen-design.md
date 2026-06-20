@@ -3,24 +3,35 @@
 **Date:** 2026-06-20
 **Status:** Approved (design); pending implementation plan
 **Platform:** Windows 10/11, NVIDIA RTX GPU (Turing/Ampere/Ada + Tensor Cores)
+**Stack:** C# / .NET 8 + WinUI 3 (single process) + native C++ Maxine shim (P/Invoke)
 
 ## 1. Goal
 
 A Windows desktop app that shows a live webcam feed as a transparent, always-on-top,
 draggable overlay anywhere on the desktop. The feed is processed in real time by NVIDIA
 Maxine VFX (AI Green Screen for background removal + Eye Contact for gaze redirection).
-The overlay is rendered natively and is captured live by any desktop screen recorder
-(OBS, Xbox Game Bar, Camtasia, etc.), so a recording session needs no separate
-post-edit compositing step.
+The overlay is rendered with hardware compositing and is captured live by any desktop
+screen recorder (OBS, Xbox Game Bar, Camtasia, etc.), so a recording session needs no
+separate post-edit compositing step.
 
 Inspired by [chromabro](https://github.com/ryanbeales/chromabro) (Electron + TensorFlow
-BodyPix), rebuilt on Tauri v2 with NVIDIA Maxine for substantially better matte quality
-plus an eye-contact feature chromabro does not have.
+BodyPix), rebuilt as a native Windows app with NVIDIA Maxine for substantially better
+matte quality plus an eye-contact feature chromabro does not have.
+
+### Stack decision (why not Tauri/Electron)
+The performance-critical path (capture → Maxine → composite) is native regardless of UI
+framework — the video never flows through the UI layer, so framework choice does not
+affect overlay performance. Maxine (esp. Eye Contact) is **Windows + RTX only**, so
+cross-platform portability (Tauri/Electron's main draw) cannot benefit the headline
+feature; Linux would require a different ML backend entirely, not a recompile. Given that,
+a single-process native app removes a UI process, an IPC boundary, and a glue language
+(Rust) for no perf or portability loss. C# + WinUI 3 keeps a modern, polished UI while
+matching the Windows/native target; Maxine interop is a small, well-trodden P/Invoke layer.
 
 ### Non-goals (v1)
 - Virtual camera device driver (apps capture the overlay via screen/window/display
   capture instead). May be revisited later.
-- macOS / Linux support (Windows + WebView2 only for v1).
+- macOS / Linux support (Windows + RTX only).
 - Non-RTX GPU fallback path (eye contact requires RTX; see Error Handling).
 
 ## 2. Hardware / SDK constraints
@@ -29,43 +40,48 @@ plus an eye-contact feature chromabro does not have.
   target machine: RTX 3090 (Ampere) — supported.
 - Maxine VFX SDK provides both **AI Green Screen** (background segmentation/matting) and
   **Eye Contact** (gaze redirection), so one native pipeline covers both. No JS/WASM ML
-  (MediaPipe/TensorFlow.js) is needed.
+  is needed.
 - Maxine SDK redistribution/licensing must be reviewed before any public distribution
   (see Risks).
 
-## 3. Architecture — two processes
+## 3. Architecture — single process
 
-### 3.1 Maxine sidecar (C++)
-- Owns webcam capture via **Media Foundation**.
+One .NET 8 process. Heavy native work lives in a thin C++ shim DLL; C# owns windowing,
+compositing orchestration, and UI.
+
+### 3.1 Native Maxine shim (C++, C-ABI DLL)
+- Owns webcam capture via **Media Foundation** (kept next to Maxine to avoid per-frame
+  managed↔native frame copies on the capture side).
 - Runs the Maxine effect chain: **AI Green Screen → Eye Contact** (→ optional Denoise).
-- Renders the overlay **itself** with **Direct3D 11** into a layered, topmost,
-  per-pixel-alpha window. Frames never cross the IPC boundary (avoids 60 fps RGBA
-  bandwidth problems).
-- Controlled by line-delimited JSON commands over stdin; emits line-delimited JSON
-  status events over stdout.
+- Exposes a flat **C ABI** (so it is P/Invoke-able; Maxine's own API is C++): `Init`,
+  `SetParams`, `Start`, `Stop`, `Shutdown`, plus frame delivery (see 3.3).
+- Output: a processed RGBA frame as a **shared D3D11 texture handle** (preferred, keeps
+  the frame on the GPU) or a CPU buffer (simpler fallback for v1).
 
-Rationale for C++ (not Rust FFI): Maxine has no official Rust bindings; the SDK samples
-are C++. A `bindgen`-based Rust FFI is possible but is more upfront work and is deferred.
-The Tauri Rust core only supervises the sidecar.
+### 3.2 C# app (.NET 8 + WinUI 3)
+- **Control-panel window** — WinUI 3 / XAML (MVVM). Camera selection, effect toggles,
+  overlay settings, status, hotkeys, persistence.
+- **Overlay window** — a dedicated raw **Win32 HWND** (not a WinUI window; see Risks)
+  with `WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP`, hardware-composited
+  via **DirectComposition** + a **DXGI composition swap chain**, using
+  [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) (or Silk.NET) for
+  D3D11/DXGI/DComp bindings. Presents the shim's output texture with per-pixel alpha.
+- **Orchestrator** — starts/stops the shim, marshals params, pumps frames from shim to
+  the overlay swap chain, raises status events to the view-model.
 
-### 3.2 Tauri app (Rust core + Svelte 5 frontend)
-- A single **control-panel** window (not the overlay).
-- Spawns and supervises the sidecar binary via `tauri-plugin-shell` (sidecar).
-- Sends commands to the sidecar: camera selection, effect toggles/strength, overlay
-  shape/size/position/opacity, click-through, hotkeys.
-- Receives status from the sidecar: FPS, gaze state, errors, available cameras.
-- Persists user settings (Tauri store / JSON config) and restores them on launch.
-
-### 3.3 IPC
-- **Command/status channel:** JSON lines over the sidecar's stdio, marshalled by the
-  Rust core. Small, low-frequency messages only.
-- **Video:** none across IPC — the sidecar renders the overlay natively.
+### 3.3 Interop boundary
+- **Control/params:** in-process P/Invoke calls into the shim (`SetParams`, etc.).
+- **Frames:** shim hands the orchestrator a shared D3D11 texture handle per frame (open
+  via `OpenSharedResource`), or a CPU buffer uploaded to a dynamic texture (v1 fallback).
+  No cross-process IPC anywhere.
+- **Status:** shim → orchestrator via a registered callback or polled status struct;
+  orchestrator → view-model via .NET events.
 
 ## 4. Overlay window behavior
 
-- Borderless; `WS_EX_LAYERED | WS_EX_TOPMOST`; optional `WS_EX_TRANSPARENT` for
-  click-through (toggle).
-- Per-pixel alpha so the green-screened subject shows with a transparent background.
+- Raw Win32 layered/topmost window, DirectComposition-composited for per-pixel alpha so
+  the green-screened subject shows with a transparent background.
+- Optional click-through via `WS_EX_TRANSPARENT` (toggle).
 - **Drag** anywhere on the overlay to move it (no title bar).
 - **Resize** via corner handles and/or scroll-to-scale.
 - **Snap** to screen corners/edges.
@@ -73,9 +89,9 @@ The Tauri Rust core only supervises the sidecar.
 - Multi-monitor aware.
 - Remembers last position and size across sessions.
 
-## 5. Control panel (Svelte 5 + shadcn-svelte + Tailwind)
+## 5. Control panel (WinUI 3 / XAML, MVVM)
 
-- Camera device selector (enumerated by the sidecar).
+- Camera device selector (enumerated by the shim).
 - AI Green Screen: on/off + strength.
 - Eye Contact: on/off + sensitivity + look-away range (how far off-axis before it
   transitions back to real eyes).
@@ -84,23 +100,25 @@ The Tauri Rust core only supervises the sidecar.
 - Overlay controls: shape, size, opacity, click-through, lock position, mirror.
 - Hotkey configuration.
 - Start/stop, FPS readout, GPU status.
-- Settings persisted via Tauri store.
+- Settings persisted to a JSON config in `%LOCALAPPDATA%`.
 
-UI built with Svelte 5 runes; components from shadcn-svelte; styling via Tailwind.
+UI follows WinUI 3 design guidance for an intuitive, modern control surface.
 
 ## 6. Data flow
 
 ```
-Webcam ──(Media Foundation)──> Sidecar
-                                  │
-                       Maxine: AI Green Screen ──> Eye Contact ──> (Denoise?)
-                                  │
-                          D3D11 render ──> layered topmost overlay window
-                                                      │
-                                          captured by any screen recorder
+Webcam ──(Media Foundation)──> Shim
+                                 │
+                      Maxine: AI Green Screen ──> Eye Contact ──> (Denoise?)
+                                 │
+                    shared D3D11 texture ──> C# orchestrator
+                                 │
+                  DirectComposition swap chain ──> layered topmost overlay HWND
+                                                          │
+                                              captured by any screen recorder
 
-Control:  Svelte ──> Tauri Rust core ──(JSON/stdin)──> Sidecar
-Status:   Sidecar ──(JSON/stdout)──> Tauri Rust core ──> Svelte
+Control:  WinUI VM ──> orchestrator ──(P/Invoke)──> Shim
+Status:   Shim ──(callback)──> orchestrator ──(.NET event)──> WinUI VM
 ```
 
 ## 7. Error handling
@@ -109,46 +127,56 @@ Status:   Sidecar ──(JSON/stdout)──> Tauri Rust core ──> Svelte
   to start the Maxine chain rather than crash.
 - **Camera in use / none found:** surfaced in the control panel; retry/refresh.
 - **Maxine model load failure:** report the failing effect; allow disabling it.
-- **Sidecar crash:** the Rust supervisor restarts it (bounded retries) and reports status.
+- **Shim init/native crash:** orchestrator surfaces the error and offers restart; guard
+  the P/Invoke boundary so native faults don't silently kill the UI.
 - **Recorder cannot capture topmost/layered window:** documented; recommend display
   capture as the fallback in such recorders.
 
 ## 8. Milestones
 
-- **M1** — Tauri shell + Svelte control-panel skeleton + sidecar spawn/supervise + JSON
-  command/status channel (no video yet).
-- **M2** — C++ sidecar: Media Foundation capture + D3D11 transparent topmost draggable
-  overlay with raw passthrough (no Maxine yet).
-- **M3** — Integrate Maxine AI Green Screen.
+- **M1** — WinUI 3 app skeleton + control-panel shell (MVVM, settings persistence) and a
+  no-op shim stub wired over P/Invoke.
+- **M2** — Native shim: Media Foundation capture + raw Win32 DirectComposition layered
+  topmost **draggable** overlay rendering raw passthrough frames (no Maxine yet).
+- **M3** — Integrate Maxine AI Green Screen in the shim; per-pixel-alpha output.
 - **M4** — Integrate Maxine Eye Contact + gaze status indicator.
 - **M5** — Overlay UX (shape, resize, snap, hotkeys, persistence) + error states + polish.
 
 ## 9. Risks
 
-- **Maxine SDK redistribution license** — confirm distribution terms and bundled-model
-  redistribution before any public release.
+- **WinUI 3 cannot easily do a per-pixel-alpha layered click-through window** — mitigated
+  by rendering the overlay in a dedicated raw Win32 + DirectComposition HWND (WinUI used
+  only for the control panel).
+- **Maxine C-ABI shim** — Maxine's API is C++; a small C-ABI wrapper DLL is required for
+  P/Invoke. Scope it minimally.
+- **CUDA↔D3D11 interop** — keeping Maxine output on the GPU needs CUDA/D3D interop; v1 may
+  fall back to a CPU copy (fine on RTX 3090), GPU interop as an optimization.
+- **Maxine SDK redistribution license** — confirm distribution + bundled-model terms
+  before any public release.
 - **Model/bundle size** — Maxine models add significant installer weight.
 - **Recorder capture of topmost layered windows** — verify against target recorders early
   (M2); fall back to display capture where unsupported.
-- **Windows build toolchain** — MSVC + Maxine SDK dependencies; CI build of the C++
-  sidecar must be set up.
-- **Frame sync / perf** — expected fine on RTX 3090, but validate end-to-end latency.
+- **Native deployment** — ship self-contained .NET 8 + native shim + Maxine runtime;
+  validate on a clean machine.
 
 ## 10. Testing
 
-- **Rust core:** unit tests for config (de)serialization, sidecar supervisor/restart
-  logic, command/status serde.
-- **Sidecar:** smoke test that loads Maxine and processes a synthetic frame; capture +
-  render passthrough check.
-- **Svelte:** component tests (vitest) for control-panel state and command emission.
+- **C# core:** unit tests (xUnit) for config (de)serialization, orchestrator state /
+  start-stop logic, param marshalling, status-event plumbing (shim mocked behind an
+  interface).
+- **Shim:** native smoke test that loads Maxine and processes a synthetic frame; a
+  capture + passthrough render check.
+- **UI:** view-model tests for control-panel state and command dispatch.
 - **Manual / integration:** overlay captured by OBS; drag + resize + snap; multi-monitor;
-  eye-contact transition at look-away boundary.
+  eye-contact transition at the look-away boundary.
 
 ## 11. Component boundaries
 
-- **Sidecar** — input: JSON commands + webcam; output: rendered overlay + JSON status.
-  Replaceable without touching the frontend.
-- **Rust core** — input: Svelte invokes + sidecar status; output: sidecar commands +
-  events to Svelte. Pure supervision + marshalling; no video.
-- **Svelte frontend** — input: user actions + status events; output: invoke calls. Pure
-  UI; no direct SDK or window-management knowledge.
+- **Shim (C++)** — input: P/Invoke params + webcam; output: processed frames + status.
+  Behind a flat C ABI; replaceable without touching the UI.
+- **Orchestrator (C#)** — input: VM commands + shim status/frames; output: P/Invoke calls
+  + overlay presentation + .NET events. No SDK knowledge leaks to the VM.
+- **WinUI control panel (C#)** — input: user actions + status events; output: commands to
+  the orchestrator. Pure UI; no native or window-management knowledge.
+- **Overlay window (C#)** — input: frames + geometry commands; output: composited layered
+  window. Pure presentation; no SDK knowledge.
