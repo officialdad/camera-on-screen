@@ -29,6 +29,12 @@ public:
 
     static std::vector<CameraDesc> Enumerate();
 
+    // Toggles AIGS for subsequent frames. Thread-safe; the worker owns the Aigs object.
+    void SetGreenScreen(bool enabled);
+    // Snapshot for status polling. Thread-safe.
+    bool GreenScreenActive() const;       // true only while AIGS is transforming frames
+    std::string GreenScreenError() const; // empty when none
+
 private:
     void WorkerLoop();
 };

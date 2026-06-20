@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "aigs.h"
 
 #include <atomic>
 #include <mutex>
@@ -31,6 +32,11 @@ struct CaptureState {
     std::thread           worker;
 
     std::string           symbolicLink;
+
+    std::atomic<bool>     greenScreenEnabled{false}; // set by UI thread, read by worker
+    std::atomic<bool>     greenScreenActive{false};  // set by worker
+    std::mutex            gsErrMtx;
+    std::string           gsError;                   // guarded by gsErrMtx
 };
 
 // Module-level singleton state. Capture is used as a single global instance by the
@@ -238,6 +244,10 @@ void Capture::WorkerLoop() {
     // MF + COM must be initialized per-thread for the reader to behave.
     HRESULT coHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
+    // Aigs must live entirely on the worker thread: CUDA stream/effect have thread
+    // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
+    Aigs aigs;
+
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
     LONG stride = 0;
@@ -277,6 +287,27 @@ void Capture::WorkerLoop() {
 
         if (sample) {
             if (CopyFrame(sample, width, height, stride, scratch)) {
+                // Lazily start/stop AIGS to match the enabled flag.
+                const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
+                if (want && !aigs.IsReady()) {
+                    if (!aigs.Start()) {
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        g_state.gsError = aigs.LastError();
+                    }
+                } else if (!want && aigs.IsReady()) {
+                    aigs.Stop();
+                }
+
+                bool applied = false;
+                if (want && aigs.IsReady()) {
+                    applied = aigs.ProcessFrame(scratch.data(), width, height);
+                    if (!applied) {
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        g_state.gsError = aigs.LastError();
+                    }
+                }
+                g_state.greenScreenActive.store(applied, std::memory_order_release);
+
                 std::lock_guard<std::mutex> lock(g_state.mtx);
                 g_state.frame.swap(scratch);
                 g_state.width = width;
@@ -291,6 +322,8 @@ void Capture::WorkerLoop() {
         }
     }
 
+    // Tear down AIGS before releasing the reader (thread-affinity requirement).
+    aigs.Stop();
     SafeRelease(reader);
     if (SUCCEEDED(coHr)) CoUninitialize();
 }
@@ -318,6 +351,9 @@ bool Capture::Start(const std::string& symbolicLink) {
 void Capture::Stop() {
     std::lock_guard<std::mutex> life(g_lifecycleMtx);
     StopLocked();
+    // Reset the active flag after the worker has joined: the worker may have set it
+    // true just before stopping, so clear it here to avoid a stale status read.
+    g_state.greenScreenActive.store(false, std::memory_order_release);
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
@@ -328,6 +364,19 @@ bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
     h = g_state.height;
     g_state.hasNewFrame = false; // consumed; next call returns false until a new frame.
     return true;
+}
+
+void Capture::SetGreenScreen(bool enabled) {
+    g_state.greenScreenEnabled.store(enabled, std::memory_order_release);
+}
+
+bool Capture::GreenScreenActive() const {
+    return g_state.greenScreenActive.load(std::memory_order_acquire);
+}
+
+std::string Capture::GreenScreenError() const {
+    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+    return g_state.gsError;
 }
 
 Capture::~Capture() {
