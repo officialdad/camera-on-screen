@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "niToenNfrkQ=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\opari\\OneDrive\\Desktop\\claude-code\\camera-on-screen\\src\\CameraOnScreen.Core\\CameraOnScreen.Core.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\opari\\.nuget\\packages\\communitytoolkit.mvvm\\8.4.2\\communitytoolkit.mvvm.8.4.2.nupkg.sha512"
+  ],
+  "logs": []
+}
