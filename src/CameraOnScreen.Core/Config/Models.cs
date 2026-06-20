@@ -36,7 +36,7 @@ public sealed record HotkeyBinding
     public uint VirtualKey { get; init; }
 }
 
-public sealed record AppConfig : IEquatable<AppConfig>
+public sealed record AppConfig
 {
     public string? CameraId { get; init; }
     public OverlaySettings Overlay { get; init; } = new();
@@ -58,5 +58,9 @@ public sealed record AppConfig : IEquatable<AppConfig>
         && Effects == other.Effects
         && Hotkeys.SequenceEqual(other.Hotkeys);
 
-    public override int GetHashCode() => HashCode.Combine(CameraId, Overlay, Effects, Hotkeys.Count);
+    public override int GetHashCode()
+    {
+        var hk = Hotkeys.Aggregate(0, (h, b) => HashCode.Combine(h, b));
+        return HashCode.Combine(CameraId, Overlay, Effects, hk);
+    }
 }
