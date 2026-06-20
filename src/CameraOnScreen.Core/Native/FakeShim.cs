@@ -1,0 +1,24 @@
+namespace CameraOnScreen.Core.Native;
+
+public sealed class FakeShim : INativeShim
+{
+    public List<CameraInfo> Cameras { get; } = new();
+    public ShimParams? LastParams { get; private set; }
+    private bool _running;
+
+    public bool Init(IntPtr d3dDevice) => true;
+    public IReadOnlyList<CameraInfo> EnumerateCameras() => Cameras;
+    public void SetParams(ShimParams p) => LastParams = p;
+    public void Start() => _running = true;
+    public void Stop() => _running = false;
+
+    public ShimStatus GetStatus() => new(
+        Running: _running,
+        Fps: _running ? 30 : 0,
+        Gaze: GazeState.Unknown,
+        GreenScreenActive: _running && (LastParams?.GreenScreenEnabled ?? false),
+        EyeContactActive: _running && (LastParams?.EyeContactEnabled ?? false),
+        Error: null);
+
+    public void Dispose() { }
+}
