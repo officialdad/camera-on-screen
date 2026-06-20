@@ -13,30 +13,6 @@
       "skillPath": "skills/dotnet-best-practices/SKILL.md",
       "computedHash": "9ef94db7f06c167d544369817e5a4415eeb7886dcff0d47026837a1aada260e3"
     },
-    "rust-best-practices": {
-      "source": "apollographql/skills",
-      "sourceType": "github",
-      "skillPath": "skills/rust-best-practices/SKILL.md",
-      "computedHash": "3f89cd417842ca60bffefea01ee88fc28116b75a8e69329c4d6db446fbfcad02"
-    },
-    "shadcn-svelte": {
-      "source": "vercel-labs/json-render",
-      "sourceType": "github",
-      "skillPath": "skills/shadcn-svelte/SKILL.md",
-      "computedHash": "fcb9b65f29baf8a2e03960d37bceff6a71203aeb962105cf6f78c697c71efc3c"
-    },
-    "svelte5-best-practices": {
-      "source": "ejirocodes/agent-skills",
-      "sourceType": "github",
-      "skillPath": "svelte/skills/svelte5-best-practices/SKILL.md",
-      "computedHash": "ce40e28405a4c17006580d6766edf2deddfad8893c7887b73c68cb71644ceadb"
-    },
-    "tauri-v2": {
-      "source": "nodnarbnitram/claude-code-extensions",
-      "sourceType": "github",
-      "skillPath": ".claude/skills/tauri-v2/SKILL.md",
-      "computedHash": "7108944eec3bef17686df9ebae9c9bdbee7809744930c8734c979e3c4573eaab"
-    },
     "winui-app": {
       "source": "openai/skills",
       "sourceType": "github",
