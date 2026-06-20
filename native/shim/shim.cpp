@@ -1,6 +1,7 @@
 #define COS_EXPORTS
 #include "shim.h"
 #include "capture.h"
+#include "aigs.h"
 
 #include <atomic>
 #include <cstring>
@@ -81,6 +82,19 @@ COS_API int cos_get_frame(uint8_t* dst, int* width, int* height, int dst_capacit
     if (width)  *width  = w;
     if (height) *height = h;
     return 1;
+}
+
+COS_API int cos_query_capabilities(CosCaps* out) {
+    if (!out) return 0;
+    std::memset(out, 0, sizeof(*out));
+    std::string detail;
+    bool ok = Aigs::Probe(detail);
+    out->green_screen_available = ok ? 1 : 0;
+    // Copy detail into the fixed slot (truncate to 255 + NUL).
+    size_t n = detail.size() < 255 ? detail.size() : 255;
+    std::memcpy(out->detail, detail.data(), n);
+    out->detail[n] = '\0';
+    return ok ? 1 : 0;
 }
 
 COS_API void cos_shutdown(void) {
