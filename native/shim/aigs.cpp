@@ -46,7 +46,12 @@ struct AigsImpl {
     NvVFX_Handle effect = nullptr;
     CUstream     stream = nullptr;
     std::string  modelDir;
-    // GPU/CPU images are added in Task 3.
+    NvCVImage srcGpu{};   // BGR  u8 chunky, GPU  (AIGS input)
+    NvCVImage matteGpu{}; // A    u8 chunky, GPU  (AIGS output)
+    NvCVImage matteCpu{}; // A    u8 chunky, CPU  (downloaded)
+    NvCVImage stage{};    // BGRA u8 chunky, GPU  (transfer staging; matches the CPU src)
+    int  w = 0, h = 0;
+    bool loaded = false;
 };
 
 Aigs::Aigs() = default;
@@ -112,6 +117,10 @@ bool Aigs::Start() {
 void Aigs::Stop() {
     auto* impl = static_cast<AigsImpl*>(impl_);
     if (!impl) { ready_ = false; return; }
+    NvCVImage_Dealloc(&impl->srcGpu);
+    NvCVImage_Dealloc(&impl->matteGpu);
+    NvCVImage_Dealloc(&impl->matteCpu);
+    NvCVImage_Dealloc(&impl->stage);
     if (impl->effect) NvVFX_DestroyEffect(impl->effect);
     if (impl->stream) NvVFX_CudaStreamDestroy(impl->stream);
     delete impl;
@@ -119,7 +128,79 @@ void Aigs::Stop() {
     ready_ = false;
 }
 
-bool Aigs::ProcessFrame(uint8_t*, int, int) { return false; } // implemented in Task 3
+namespace {
+// (Re)allocates the GPU/CPU images for a w*h frame and loads the model. Returns
+// NVCV_SUCCESS on success. Called when size changes or on first frame.
+NvCV_Status EnsureImages(AigsImpl* impl, int w, int h) {
+    if (impl->loaded && impl->w == w && impl->h == h) return NVCV_SUCCESS;
+
+    NvCVImage_Dealloc(&impl->srcGpu);
+    NvCVImage_Dealloc(&impl->matteGpu);
+    NvCVImage_Dealloc(&impl->matteCpu);
+    NvCVImage_Dealloc(&impl->stage);
+
+    NvCV_Status s;
+    s = NvCVImage_Alloc(&impl->srcGpu,   w, h, NVCV_BGR,  NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1); if (s != NVCV_SUCCESS) return s;
+    s = NvCVImage_Alloc(&impl->matteGpu, w, h, NVCV_A,    NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1); if (s != NVCV_SUCCESS) return s;
+    s = NvCVImage_Alloc(&impl->matteCpu, w, h, NVCV_A,    NVCV_U8, NVCV_CHUNKY, NVCV_CPU, 1); if (s != NVCV_SUCCESS) return s;
+    s = NvCVImage_Alloc(&impl->stage,    w, h, NVCV_BGRA, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1); if (s != NVCV_SUCCESS) return s;
+
+    NvVFX_SetImage(impl->effect, NVVFX_INPUT_IMAGE,  &impl->srcGpu);
+    NvVFX_SetImage(impl->effect, NVVFX_OUTPUT_IMAGE, &impl->matteGpu);
+    // Set max input dimensions before Load (required by some SDK versions).
+    NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_WIDTH,  static_cast<unsigned>(w));
+    NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_HEIGHT, static_cast<unsigned>(h));
+    s = NvVFX_Load(impl->effect); // builds/loads the engine for this input size
+    if (s != NVCV_SUCCESS) return s;
+
+    impl->w = w; impl->h = h; impl->loaded = true;
+    return NVCV_SUCCESS;
+}
+
+// SEAM 1 (upload): CPU BGRA -> GPU BGR, via a GPU staging buffer that matches the CPU src.
+NvCV_Status Upload(AigsImpl* impl, uint8_t* bgra, int w, int h) {
+    NvCVImage src{};
+    NvCVImage_Init(&src, w, h, w * 4, bgra, NVCV_BGRA, NVCV_U8, NVCV_CHUNKY, NVCV_CPU);
+    return NvCVImage_Transfer(&src, &impl->srcGpu, 1.0f, impl->stream, &impl->stage);
+}
+
+// SEAM 2 (download): GPU matte -> CPU matte (same format; tmp not needed).
+NvCV_Status Download(AigsImpl* impl) {
+    return NvCVImage_Transfer(&impl->matteGpu, &impl->matteCpu, 1.0f, impl->stream, nullptr);
+}
+
+// SEAM 3 (composite): apply matte to the BGRA buffer in place, premultiplied.
+void Composite(AigsImpl* impl, uint8_t* bgra, int w, int h) {
+    const uint8_t* m = static_cast<const uint8_t*>(impl->matteCpu.pixels);
+    const int mpitch = impl->matteCpu.pitch; // bytes per matte row (>= w)
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* mrow = m + static_cast<size_t>(mpitch) * y;
+        uint8_t* prow = bgra + static_cast<size_t>(w) * 4 * y;
+        for (int x = 0; x < w; ++x) {
+            const unsigned a = mrow[x];
+            uint8_t* px = prow + x * 4;
+            px[0] = static_cast<uint8_t>((px[0] * a) / 255); // B
+            px[1] = static_cast<uint8_t>((px[1] * a) / 255); // G
+            px[2] = static_cast<uint8_t>((px[2] * a) / 255); // R
+            px[3] = static_cast<uint8_t>(a);                 // A = matte
+        }
+    }
+}
+} // namespace
+
+bool Aigs::ProcessFrame(uint8_t* bgra, int w, int h) {
+    auto* impl = static_cast<AigsImpl*>(impl_);
+    if (!impl || !impl->effect || !bgra || w <= 0 || h <= 0) return false;
+
+    if (EnsureImages(impl, w, h) != NVCV_SUCCESS) { lastError_ = "EnsureImages/Load failed"; ready_ = false; return false; }
+    if (Upload(impl, bgra, w, h) != NVCV_SUCCESS) { lastError_ = "Upload (Transfer) failed"; return false; }
+    if (NvVFX_Run(impl->effect, 0) != NVCV_SUCCESS) { lastError_ = "NvVFX_Run failed"; return false; }
+    if (Download(impl) != NVCV_SUCCESS) { lastError_ = "Download (Transfer) failed"; return false; }
+    if (NvVFX_CudaStreamSynchronize(impl->stream) != NVCV_SUCCESS) { lastError_ = "stream sync failed"; return false; }
+
+    Composite(impl, bgra, w, h);
+    return true;
+}
 
 #else
 // ---- Passthrough stub: built when no SDK is configured. ----
