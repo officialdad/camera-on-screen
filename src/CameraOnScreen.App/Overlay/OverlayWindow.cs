@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SharpGen.Runtime;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -25,17 +26,27 @@ public sealed class OverlayWindow : IDisposable
         _proc = (h, m, w, l) => DefWindowProc(h, m, w, l);
         var wc = new WNDCLASSEX
         {
-            cbSize = System.Runtime.InteropServices.Marshal.SizeOf<WNDCLASSEX>(),
-            lpfnWndProc = System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(_proc),
+            cbSize = Marshal.SizeOf<WNDCLASSEX>(),
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc),
             hInstance = GetModuleHandle(null),
             lpszClassName = "CosOverlay"
         };
-        RegisterClassEx(ref wc);
+        // Single shared class name "CosOverlay" — idempotent: 1410 (ERROR_CLASS_ALREADY_EXISTS)
+        // is not an error; it means a prior instance already registered the class, which is fine.
+        ushort atom = RegisterClassEx(ref wc);
+        if (atom == 0)
+        {
+            int err = Marshal.GetLastWin32Error();
+            if (err != 1410) // ERROR_CLASS_ALREADY_EXISTS
+                throw new InvalidOperationException($"RegisterClassEx failed with Win32 error {err}.");
+        }
 
         _hwnd = CreateWindowEx(
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP,
             "CosOverlay", "CameraOnScreen Overlay", WS_POPUP,
             x, y, width, height, IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
+        if (_hwnd == IntPtr.Zero)
+            throw new InvalidOperationException($"CreateWindowEx failed with Win32 error {Marshal.GetLastWin32Error()}.");
 
         D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
             null!, out _device!, out _context!).CheckError();
@@ -49,6 +60,8 @@ public sealed class OverlayWindow : IDisposable
             SwapEffect = SwapEffect.FlipSequential, AlphaMode = AlphaMode.Premultiplied,
             SampleDescription = new SampleDescription(1, 0)
         };
+        // Vortice 3.8.3: IDXGIFactory2.CreateSwapChainForComposition returns IDXGISwapChain1
+        // directly and throws a SharpGenException on HRESULT failure — no CheckError() needed.
         _swapChain = factory.CreateSwapChainForComposition(_device, desc);
 
         DComp.DCompositionCreateDevice(dxgi, out _dcomp!).CheckError();
@@ -73,5 +86,6 @@ public sealed class OverlayWindow : IDisposable
     {
         _visual.Dispose(); _target.Dispose(); _dcomp.Dispose(); _swapChain.Dispose();
         _context.Dispose(); _device.Dispose();
+        GC.SuppressFinalize(this); // CA1816: suppress finalizer even though none exists (sealed)
     }
 }
