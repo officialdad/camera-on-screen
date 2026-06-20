@@ -28,4 +28,6 @@ public interface INativeShim : IDisposable
     void Start();
     void Stop();
     ShimStatus GetStatus();
+    // Copies the latest BGRA frame into buffer; returns true when a new frame was written.
+    bool TryGetFrame(byte[] buffer, out int width, out int height);
 }

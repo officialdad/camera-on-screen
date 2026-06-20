@@ -12,13 +12,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly Orchestrator _orchestrator;
     private readonly EventHandler<ShimStatus> _statusHandler;
 
-    public MainViewModel(Orchestrator orchestrator)
+    // Retained across LoadFrom → ToAppConfig so Save never discards loaded/custom hotkeys. The VM
+    // has no UI for editing hotkeys, so it must round-trip them verbatim. Initialised to the
+    // defaults so ToAppConfig is valid even if LoadFrom is never called.
+    private IReadOnlyList<HotkeyBinding> _hotkeys = AppConfig.DefaultHotkeys();
+
+    // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
+    // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
+    public INativeShim ShimRef { get; }
+
+    public MainViewModel(Orchestrator orchestrator, INativeShim shim)
     {
         _orchestrator = orchestrator;
+        ShimRef = shim;
         EffectsAvailable = orchestrator.EffectsAvailable;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
+
+    // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
+    public void PollStatusTick() => _orchestrator.PollStatus();
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
 
@@ -30,6 +43,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private bool isRunning;
+    [ObservableProperty] private bool locked;
+    [ObservableProperty] private bool clickThrough;
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
@@ -41,9 +56,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
+        Locked = config.Overlay.Locked;
+        ClickThrough = config.Overlay.ClickThrough;
+        _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
     }
+
+    // Capture current VM + overlay state into a persistable AppConfig. Geometry is passed in by the
+    // caller (read from the live overlay window). Locked/ClickThrough are the existing observable
+    // props (Task 13) — used here, not redeclared.
+    public AppConfig ToAppConfig(double x, double y, double w, double h) => new()
+    {
+        CameraId = SelectedCamera?.Id,
+        Overlay = new OverlaySettings
+        {
+            X = x, Y = y, Width = w, Height = h,
+            Locked = Locked, ClickThrough = ClickThrough
+        },
+        Effects = new EffectSettings
+        {
+            GreenScreenEnabled = GreenScreenEnabled, GreenScreenStrength = GreenScreenStrength,
+            EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
+            EyeContactLookAwayRange = EyeContactLookAwayRange
+        },
+        Hotkeys = _hotkeys
+    };
 
     public ShimParams BuildParams() => new(
         CameraId: SelectedCamera?.Id,

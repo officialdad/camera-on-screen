@@ -71,6 +71,7 @@ public class OrchestratorTests
         public void Start() { }
         public void Stop() { }
         public ShimStatus GetStatus() => new(true, 0, GazeState.Unknown, false, false, "boom");
+        public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
         public void Dispose() { }
     }
 
@@ -83,6 +84,7 @@ public class OrchestratorTests
         public void Start() { }
         public void Stop() { }
         public ShimStatus GetStatus() => new(true, 30, GazeState.Unknown, false, false, HasError ? "transient error" : null);
+        public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
         public void Dispose() { }
     }
 }

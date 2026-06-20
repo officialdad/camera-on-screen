@@ -11,7 +11,8 @@ public class MainViewModelTests
     private static MainViewModel Build(GpuTier tier, out FakeShim shim)
     {
         shim = new FakeShim { Cameras = { new CameraInfo("cam", "Cam") } };
-        return new MainViewModel(new Orchestrator(shim, tier));
+        // Same shim instance drives the orchestrator AND is exposed via VM.ShimRef.
+        return new MainViewModel(new Orchestrator(shim, tier), shim);
     }
 
     [Fact]
@@ -46,11 +47,58 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void LoadFrom_propagates_locked_and_clickthrough()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        var config = new AppConfig
+        {
+            Overlay = new OverlaySettings { Locked = true, ClickThrough = true }
+        };
+        vm.LoadFrom(config);
+        Assert.True(vm.Locked);
+        Assert.True(vm.ClickThrough);
+    }
+
+    [Fact]
+    public void ToAppConfig_captures_geometry_and_effects()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        vm.GreenScreenEnabled = true; vm.Locked = true;
+        var cfg = vm.ToAppConfig(10, 20, 300, 400);
+        Assert.Equal(10, cfg.Overlay.X);
+        Assert.Equal(20, cfg.Overlay.Y);
+        Assert.Equal(300, cfg.Overlay.Width);
+        Assert.Equal(400, cfg.Overlay.Height);
+        Assert.True(cfg.Overlay.Locked);
+        Assert.False(cfg.Overlay.ClickThrough);
+        Assert.True(cfg.Effects.GreenScreenEnabled);
+        Assert.Null(cfg.CameraId);
+    }
+
+    [Fact]
+    public void ToAppConfig_preserves_loaded_hotkeys()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        // Start from the defaults but change one binding's VirtualKey so the loaded list is
+        // provably different from DefaultHotkeys() — guards against ToAppConfig silently
+        // reverting hotkeys to the defaults on Save.
+        var custom = AppConfig.DefaultHotkeys()
+            .Select((b, i) => i == 0 ? b with { VirtualKey = 0x42 } : b)
+            .ToArray();
+        vm.LoadFrom(new AppConfig { Hotkeys = custom });
+
+        var cfg = vm.ToAppConfig(10, 20, 300, 400);
+
+        Assert.True(cfg.Hotkeys.SequenceEqual(custom));
+        Assert.False(cfg.Hotkeys.SequenceEqual(AppConfig.DefaultHotkeys()));
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_from_status()
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
-        var vm = new MainViewModel(orch);
+        var vm = new MainViewModel(orch, shim);
 
         // Start then poll to confirm subscription is live
         orch.Start(new ShimParams("cam", false, 1.0, false, 0.5, 0.5));
@@ -74,6 +122,7 @@ public class MainViewModelTests
         public void Start() => _running = true;
         public void Stop() => _running = false;
         public ShimStatus GetStatus() => new(_running, FpsValue, GazeState.Unknown, false, false, null);
+        public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
         public void Dispose() { }
     }
 }

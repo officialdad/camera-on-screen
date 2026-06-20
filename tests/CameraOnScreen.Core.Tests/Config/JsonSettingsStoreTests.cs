@@ -36,4 +36,48 @@ public class JsonSettingsStoreTests
         var store = new JsonSettingsStore(path);
         Assert.Equal(new AppConfig(), store.Load());
     }
+
+    [Fact]
+    public void Save_then_Load_round_trips_geometry_and_flags()
+    {
+        var path = TempFile();
+        try
+        {
+            var store = new JsonSettingsStore(path);
+            var cfg = new AppConfig
+            {
+                Overlay = new OverlaySettings
+                {
+                    X = 12, Y = 34, Width = 567, Height = 890,
+                    Locked = true, ClickThrough = true
+                },
+                Effects = new EffectSettings
+                {
+                    GreenScreenEnabled = false, GreenScreenStrength = 0.25,
+                    EyeContactEnabled = true, EyeContactSensitivity = 0.75,
+                    EyeContactLookAwayRange = 0.9
+                }
+            };
+            store.Save(cfg);
+
+            var loaded = store.Load();
+
+            Assert.Equal(12, loaded.Overlay.X);
+            Assert.Equal(34, loaded.Overlay.Y);
+            Assert.Equal(567, loaded.Overlay.Width);
+            Assert.Equal(890, loaded.Overlay.Height);
+            Assert.True(loaded.Overlay.Locked);
+            Assert.True(loaded.Overlay.ClickThrough);
+            Assert.False(loaded.Effects.GreenScreenEnabled);
+            Assert.Equal(0.25, loaded.Effects.GreenScreenStrength);
+            Assert.True(loaded.Effects.EyeContactEnabled);
+            Assert.Equal(0.75, loaded.Effects.EyeContactSensitivity);
+            Assert.Equal(0.9, loaded.Effects.EyeContactLookAwayRange);
+        }
+        finally
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
 }
