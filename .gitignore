@@ -1,0 +1,11 @@
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+*.suo
+TestResults/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+.superpowers/
