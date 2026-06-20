@@ -10,7 +10,11 @@ internal static class Interop
     public const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
     public const int WS_EX_TRANSPARENT = 0x00000020;
 
-    [StructLayout(LayoutKind.Sequential)]
+    // CharSet.Unicode is REQUIRED here: RegisterClassEx/CreateWindowEx are declared CharSet.Unicode
+    // (-> the W exports), but DllImport's CharSet does NOT control how a by-ref struct's string
+    // fields marshal. Without this, lpszClassName defaults to ANSI marshalling, so RegisterClassExW
+    // reads a mismatched name and CreateWindowExW then fails with Win32 1407 (CANNOT_FIND_WND_CLASS).
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct WNDCLASSEX
     {
         public int cbSize; public int style; public IntPtr lpfnWndProc;
