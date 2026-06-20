@@ -52,7 +52,9 @@ public sealed class PInvokeShim : INativeShim
 
     public void SetParams(ShimParams p)
     {
-        var idPtr = p.CameraId is null ? IntPtr.Zero : Marshal.StringToHGlobalAnsi(p.CameraId);
+        // Native side decodes camera_id as UTF-8 (MultiByteToWideChar with CP_UTF8),
+        // so marshal UTF-8 here (paired with FreeCoTaskMem below), not ANSI.
+        var idPtr = p.CameraId is null ? IntPtr.Zero : Marshal.StringToCoTaskMemUTF8(p.CameraId);
         try
         {
             var native = new CosParams
@@ -66,7 +68,7 @@ public sealed class PInvokeShim : INativeShim
             };
             cos_set_params(ref native);
         }
-        finally { if (idPtr != IntPtr.Zero) Marshal.FreeHGlobal(idPtr); }
+        finally { if (idPtr != IntPtr.Zero) Marshal.FreeCoTaskMem(idPtr); }
     }
 
     public void Start() => cos_start();

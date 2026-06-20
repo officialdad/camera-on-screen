@@ -38,6 +38,21 @@ struct CaptureState {
 // trivially copyable-free and avoids leaking MF types into capture.h.
 CaptureState g_state;
 
+// Serializes Start()/Stop() so the worker handle and stopRequested are never mutated
+// concurrently (Task 12 drives capture from a render/timer thread). DISTINCT from
+// g_state.mtx: holding this during join() must not block LatestFrame().
+std::mutex g_lifecycleMtx;
+
+// Tears down the worker thread. MUST be called with g_lifecycleMtx held. Does not
+// take the lifecycle lock itself so Start() and Stop() can both reuse it without
+// recursive locking / self-deadlock.
+void StopLocked() {
+    g_state.stopRequested.store(true, std::memory_order_release);
+    if (g_state.worker.joinable()) {
+        g_state.worker.join();
+    }
+}
+
 // Reads a frame's pixels out of an IMFMediaBuffer (RGB32 / BGRX) into a tightly
 // packed BGRA destination, honoring the source stride and forcing alpha = 0xFF.
 // defaultStride is the contiguous stride (width*4); the actual stride is queried
@@ -76,6 +91,13 @@ bool CopyFrame(IMFSample* sample, int width, int height,
     } else {
         // Fall back to the 1D buffer. Use the media-type stride; if it is negative
         // the image is bottom-up and the buffer points at the last row.
+        // defaultStride == 0 means orientation could not be determined -> fail rather
+        // than silently assuming top-down (which would render a bottom-up source
+        // upside-down).
+        if (defaultStride == 0) {
+            SafeRelease(buffer);
+            return false;
+        }
         BYTE* data = nullptr;
         DWORD maxLen = 0, curLen = 0;
         if (SUCCEEDED(buffer->Lock(&data, &maxLen, &curLen))) {
@@ -100,15 +122,31 @@ bool CopyFrame(IMFSample* sample, int width, int height,
     return ok;
 }
 
-// Computes the default (positive) stride for an RGB32 media type, falling back to
-// width*4 when the attribute is absent.
+// Computes the SIGNED stride for an RGB32 media type. The sign encodes orientation:
+// positive = top-down, negative = bottom-up. Prefers MF_MT_DEFAULT_STRIDE (already
+// signed); when absent, derives it from the subtype via
+// MFGetStrideForBitmapInfoHeader (which also returns a signed value). Returns 0 when
+// the stride/orientation cannot be determined so callers can fail rather than
+// silently assuming top-down.
 LONG GetDefaultStride(IMFMediaType* type, UINT32 width) {
     LONG stride = 0;
     if (SUCCEEDED(type->GetUINT32(MF_MT_DEFAULT_STRIDE,
                                   reinterpret_cast<UINT32*>(&stride))) && stride != 0) {
         return stride;
     }
-    return static_cast<LONG>(width) * 4;
+
+    // Attribute absent: derive a signed stride from the format's FOURCC. This honors
+    // a genuinely bottom-up source (negative result) instead of assuming width*4.
+    GUID subtype = GUID_NULL;
+    if (FAILED(type->GetGUID(MF_MT_SUBTYPE, &subtype))) {
+        return 0;
+    }
+    LONG signedStride = 0;
+    if (SUCCEEDED(MFGetStrideForBitmapInfoHeader(subtype.Data1, width, &signedStride))
+        && signedStride != 0) {
+        return signedStride;
+    }
+    return 0; // orientation undeterminable
 }
 
 // Builds an IMFSourceReader for the given symbolic link (or first device when
@@ -246,8 +284,11 @@ void Capture::WorkerLoop() {
                 g_state.hasNewFrame = true;
             }
             SafeRelease(sample);
+        } else {
+            // No sample but no error (e.g. stream tick / format change with no data).
+            // Yield so a transient burst of empty reads can't busy-spin the CPU.
+            std::this_thread::yield();
         }
-        // No sample but no error (e.g. format change with no data) -> loop again.
     }
 
     SafeRelease(reader);
@@ -255,7 +296,11 @@ void Capture::WorkerLoop() {
 }
 
 bool Capture::Start(const std::string& symbolicLink) {
-    Stop(); // idempotent: tear down any previous session first.
+    // Hold the lifecycle lock for the whole start sequence so a concurrent Start/Stop
+    // cannot race on the worker handle or stopRequested.
+    std::lock_guard<std::mutex> life(g_lifecycleMtx);
+
+    StopLocked(); // idempotent: tear down any previous session first (already locked).
 
     {
         std::lock_guard<std::mutex> lock(g_state.mtx);
@@ -271,10 +316,8 @@ bool Capture::Start(const std::string& symbolicLink) {
 }
 
 void Capture::Stop() {
-    g_state.stopRequested.store(true, std::memory_order_release);
-    if (g_state.worker.joinable()) {
-        g_state.worker.join();
-    }
+    std::lock_guard<std::mutex> life(g_lifecycleMtx);
+    StopLocked();
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
