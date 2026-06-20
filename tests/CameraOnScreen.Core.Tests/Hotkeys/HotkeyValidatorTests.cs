@@ -2,6 +2,8 @@ using CameraOnScreen.Core.Config;
 using CameraOnScreen.Core.Hotkeys;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests.Hotkeys;
+
 public class HotkeyValidatorTests
 {
     [Fact]

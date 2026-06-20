@@ -1,6 +1,8 @@
 using CameraOnScreen.Core;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests;
+
 public class SmokeTest
 {
     [Fact]

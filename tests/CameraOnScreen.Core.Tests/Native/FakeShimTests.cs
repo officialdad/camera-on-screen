@@ -2,6 +2,8 @@ using System;
 using CameraOnScreen.Core.Native;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests.Native;
+
 public class FakeShimTests
 {
     [Fact]

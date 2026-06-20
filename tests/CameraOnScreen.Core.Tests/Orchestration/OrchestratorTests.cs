@@ -2,6 +2,8 @@ using CameraOnScreen.Core.Native;
 using CameraOnScreen.Core.Orchestration;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests.Orchestration;
+
 public class OrchestratorTests
 {
     private static ShimParams Requested() =>
@@ -43,6 +45,24 @@ public class OrchestratorTests
         Assert.Equal(OrchestratorState.Faulted, orch.State);
     }
 
+    [Fact]
+    public void Fault_clears_when_status_recovers()
+    {
+        var shim = new RecoverableShim();
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.Start(Requested());
+
+        // First poll: error → Faulted
+        shim.HasError = true;
+        orch.PollStatus();
+        Assert.Equal(OrchestratorState.Faulted, orch.State);
+
+        // Second poll: no error → back to Running
+        shim.HasError = false;
+        orch.PollStatus();
+        Assert.Equal(OrchestratorState.Running, orch.State);
+    }
+
     private sealed class ErroringShim : INativeShim
     {
         public bool Init(System.IntPtr d) => true;
@@ -51,6 +71,18 @@ public class OrchestratorTests
         public void Start() { }
         public void Stop() { }
         public ShimStatus GetStatus() => new(true, 0, GazeState.Unknown, false, false, "boom");
+        public void Dispose() { }
+    }
+
+    private sealed class RecoverableShim : INativeShim
+    {
+        public bool HasError { get; set; }
+        public bool Init(System.IntPtr d) => true;
+        public System.Collections.Generic.IReadOnlyList<CameraInfo> EnumerateCameras() => System.Array.Empty<CameraInfo>();
+        public void SetParams(ShimParams p) { }
+        public void Start() { }
+        public void Stop() { }
+        public ShimStatus GetStatus() => new(true, 30, GazeState.Unknown, false, false, HasError ? "transient error" : null);
         public void Dispose() { }
     }
 }

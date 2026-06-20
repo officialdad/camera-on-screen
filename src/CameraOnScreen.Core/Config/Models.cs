@@ -44,13 +44,13 @@ public sealed record AppConfig
     public IReadOnlyList<HotkeyBinding> Hotkeys { get; init; } = DefaultHotkeys();
 
     // VK codes: F8=0x77, F9=0x78, F10=0x79, F11=0x7A
-    public static IReadOnlyList<HotkeyBinding> DefaultHotkeys() => new[]
+    public static IReadOnlyList<HotkeyBinding> DefaultHotkeys() => Array.AsReadOnly(new[]
     {
         new HotkeyBinding { Action = HotkeyAction.ToggleLock,          Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKey = 0x77 },
         new HotkeyBinding { Action = HotkeyAction.ToggleClickThrough,  Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKey = 0x78 },
         new HotkeyBinding { Action = HotkeyAction.ToggleOverlayVisible,Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKey = 0x79 },
         new HotkeyBinding { Action = HotkeyAction.ToggleRunning,       Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKey = 0x7A },
-    };
+    });
 
     public bool Equals(AppConfig? other) => other != null
         && CameraId == other.CameraId

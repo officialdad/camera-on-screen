@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CameraOnScreen.Core.Config;
 
 namespace CameraOnScreen.Core.Hotkeys;

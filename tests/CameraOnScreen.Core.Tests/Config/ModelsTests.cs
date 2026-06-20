@@ -2,6 +2,8 @@ using CameraOnScreen.Core.Config;
 using Xunit;
 using Xunit.Abstractions;
 
+namespace CameraOnScreen.Core.Tests.Config;
+
 public class ModelsTests
 {
     private readonly ITestOutputHelper _output;

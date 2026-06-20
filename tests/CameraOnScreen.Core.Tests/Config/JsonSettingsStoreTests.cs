@@ -2,6 +2,8 @@ using System.IO;
 using CameraOnScreen.Core.Config;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests.Config;
+
 public class JsonSettingsStoreTests
 {
     private static string TempFile() =>

@@ -1,5 +1,3 @@
-bin/
-obj/
 [Bb]in/
 [Oo]bj/
 *.user
@@ -10,3 +8,4 @@ TestResults/
 [Rr]elease/
 x64/
 x86/
+.superpowers/

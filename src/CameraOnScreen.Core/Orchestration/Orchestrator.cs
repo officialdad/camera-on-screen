@@ -39,7 +39,8 @@ public sealed class Orchestrator
     public void PollStatus()
     {
         var status = _shim.GetStatus();
-        if (status.Error is not null) State = OrchestratorState.Faulted;
+        if (State is OrchestratorState.Running or OrchestratorState.Faulted)
+            State = status.Error is not null ? OrchestratorState.Faulted : OrchestratorState.Running;
         StatusChanged?.Invoke(this, status);
     }
 }

@@ -7,15 +7,17 @@ using CameraOnScreen.Core.Orchestration;
 
 namespace CameraOnScreen.Core.ViewModels;
 
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly Orchestrator _orchestrator;
+    private readonly EventHandler<ShimStatus> _statusHandler;
 
     public MainViewModel(Orchestrator orchestrator)
     {
         _orchestrator = orchestrator;
         EffectsAvailable = orchestrator.EffectsAvailable;
-        _orchestrator.StatusChanged += (_, s) => OnStatus(s);
+        _statusHandler = (_, s) => OnStatus(s);
+        _orchestrator.StatusChanged += _statusHandler;
     }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
@@ -58,6 +60,8 @@ public sealed partial class MainViewModel : ObservableObject
         Gaze = s.Gaze;
         StatusError = s.Error;
     }
+
+    public void Dispose() => _orchestrator.StatusChanged -= _statusHandler;
 
     [RelayCommand]
     private void Start()

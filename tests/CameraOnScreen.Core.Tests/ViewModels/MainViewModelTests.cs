@@ -4,6 +4,8 @@ using CameraOnScreen.Core.Orchestration;
 using CameraOnScreen.Core.ViewModels;
 using Xunit;
 
+namespace CameraOnScreen.Core.Tests.ViewModels;
+
 public class MainViewModelTests
 {
     private static MainViewModel Build(GpuTier tier, out FakeShim shim)
@@ -41,5 +43,37 @@ public class MainViewModelTests
         vm.OnStatus(new ShimStatus(true, 42, GazeState.OnCamera, true, false, null));
         Assert.Equal(42, vm.Fps);
         Assert.Equal(GazeState.OnCamera, vm.Gaze);
+    }
+
+    [Fact]
+    public void Dispose_unsubscribes_from_status()
+    {
+        var shim = new ControllableFpsShim { FpsValue = 10 };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        var vm = new MainViewModel(orch);
+
+        // Start then poll to confirm subscription is live
+        orch.Start(new ShimParams("cam", false, 1.0, false, 0.5, 0.5));
+        orch.PollStatus();
+        Assert.Equal(10, vm.Fps);
+
+        // Dispose then change fps and poll again — vm.Fps must NOT update
+        vm.Dispose();
+        shim.FpsValue = 99;
+        orch.PollStatus();
+        Assert.Equal(10, vm.Fps);
+    }
+
+    private sealed class ControllableFpsShim : INativeShim
+    {
+        public double FpsValue { get; set; }
+        private bool _running;
+        public bool Init(IntPtr d) => true;
+        public IReadOnlyList<CameraInfo> EnumerateCameras() => Array.Empty<CameraInfo>();
+        public void SetParams(ShimParams p) { }
+        public void Start() => _running = true;
+        public void Stop() => _running = false;
+        public ShimStatus GetStatus() => new(_running, FpsValue, GazeState.Unknown, false, false, null);
+        public void Dispose() { }
     }
 }
