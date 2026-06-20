@@ -31,4 +31,6 @@ COS_API void cos_set_params(const CosParams* p);
 COS_API void cos_start(void);
 COS_API void cos_stop(void);
 COS_API void cos_get_status(CosStatus* out);
+// Copies latest BGRA8 frame into dst (width*height*4 bytes). Returns 1 if a new frame was copied.
+COS_API int  cos_get_frame(uint8_t* dst, int* width, int* height, int dst_capacity);
 COS_API void cos_shutdown(void);

@@ -43,6 +43,10 @@
       <WarningLevel>Level3</WarningLevel>
       <!-- COS_EXPORTS is defined in shim.cpp itself; do not redefine here (avoids C4005). -->
     </ClCompile>
+    <Link>
+      <!-- Media Foundation capture (capture.cpp) link dependencies. -->
+      <AdditionalDependencies>mfplat.lib;mf.lib;mfreadwrite.lib;mfuuid.lib;ole32.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
 
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -61,10 +65,12 @@
 
   <ItemGroup>
     <ClCompile Include="shim.cpp" />
+    <ClCompile Include="capture.cpp" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="shim.h" />
+    <ClInclude Include="capture.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

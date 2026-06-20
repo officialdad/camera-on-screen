@@ -31,6 +31,7 @@ public sealed class PInvokeShim : INativeShim
     [DllImport(Dll)] private static extern void cos_start();
     [DllImport(Dll)] private static extern void cos_stop();
     [DllImport(Dll)] private static extern void cos_get_status(out CosStatus s);
+    [DllImport(Dll)] private static extern int cos_get_frame(byte[] dst, out int w, out int h, int cap);
     [DllImport(Dll)] private static extern void cos_shutdown();
 
     public bool Init(IntPtr d3dDevice) => cos_init(d3dDevice) != 0;
@@ -80,6 +81,9 @@ public sealed class PInvokeShim : INativeShim
             EyeContactActive: s.eye_contact_active != 0,
             Error: string.IsNullOrEmpty(s.error) ? null : s.error);
     }
+
+    public bool TryGetFrame(byte[] buffer, out int width, out int height)
+        => cos_get_frame(buffer, out width, out height, buffer.Length) != 0;
 
     public void Dispose() => cos_shutdown();
 

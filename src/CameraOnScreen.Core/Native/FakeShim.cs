@@ -20,5 +20,10 @@ public sealed class FakeShim : INativeShim
         EyeContactActive: _running && (LastParams?.EyeContactEnabled ?? false),
         Error: null);
 
+    public bool TryGetFrame(byte[] buffer, out int width, out int height)
+    {
+        width = 0; height = 0; return false;
+    }
+
     public void Dispose() { }
 }

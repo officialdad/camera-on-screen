@@ -74,6 +74,7 @@ public class MainViewModelTests
         public void Start() => _running = true;
         public void Stop() => _running = false;
         public ShimStatus GetStatus() => new(_running, FpsValue, GazeState.Unknown, false, false, null);
+        public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
         public void Dispose() { }
     }
 }
