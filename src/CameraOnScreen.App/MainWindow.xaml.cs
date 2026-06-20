@@ -9,6 +9,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 {
     public MainViewModel Vm { get; }
 
+    private readonly Overlay.OverlayWindow _overlay;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainWindow()
@@ -17,12 +19,16 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         Vm.PropertyChanged += OnVmPropertyChanged;
         this.Closed += OnWindowClosed;
         InitializeComponent();
+        _overlay = new Overlay.OverlayWindow(200, 200, 320, 240);
+        _overlay.Show();
+        _overlay.PresentTestPattern();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         Vm.PropertyChanged -= OnVmPropertyChanged;
         Vm.Dispose();
+        _overlay.Dispose();
     }
 
     public Visibility NotAvailableVisibility =>
