@@ -35,6 +35,9 @@ public sealed class GlobalHotkeyService : IDisposable
     /// </summary>
     public IReadOnlyList<HotkeyAction> Register(IReadOnlyList<HotkeyBinding> bindings, Action<HotkeyAction> onPressed)
     {
+        // Unregister any previously registered hotkeys so Register is safe to call more than once.
+        foreach (var id in _ids) UnregisterHotKey(_hwnd, id);
+        _ids.Clear();
         _bindings = bindings; _onPressed = onPressed;
         _failed.Clear();
         for (int i = 0; i < bindings.Count; i++)

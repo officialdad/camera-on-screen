@@ -66,9 +66,13 @@ public class MainViewModelTests
         vm.GreenScreenEnabled = true; vm.Locked = true;
         var cfg = vm.ToAppConfig(10, 20, 300, 400);
         Assert.Equal(10, cfg.Overlay.X);
+        Assert.Equal(20, cfg.Overlay.Y);
+        Assert.Equal(300, cfg.Overlay.Width);
         Assert.Equal(400, cfg.Overlay.Height);
         Assert.True(cfg.Overlay.Locked);
+        Assert.False(cfg.Overlay.ClickThrough);
         Assert.True(cfg.Effects.GreenScreenEnabled);
+        Assert.Null(cfg.CameraId);
     }
 
     [Fact]

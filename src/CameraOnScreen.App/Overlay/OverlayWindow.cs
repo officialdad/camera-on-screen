@@ -42,6 +42,7 @@ public sealed class OverlayWindow : IDisposable
 
     // Visibility state for ToggleVisible (Task 14). Starts true: the window is shown at startup.
     private bool _visible = true;
+    private bool _disposed;
 
     /// <summary>Window position changed (WM_MOVE). Carries new top-left in screen coords.</summary>
     public event Action<int, int>? Moved;
@@ -129,6 +130,7 @@ public sealed class OverlayWindow : IDisposable
     /// </summary>
     public void ToggleVisible()
     {
+        if (_disposed) return;
         _visible = !_visible;
         ShowWindow(_hwnd, _visible ? SW_SHOWNOACTIVATE : SW_HIDE);
     }
@@ -345,6 +347,8 @@ public sealed class OverlayWindow : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         if (_instance == this) _instance = null;
         _frameTex?.Dispose();
         _visual.Dispose(); _target.Dispose(); _dcomp.Dispose(); _swapChain.Dispose();

@@ -12,6 +12,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 
     private readonly Overlay.OverlayWindow _overlay;
     private readonly Hotkeys.GlobalHotkeyService _hotkeys;
+    private readonly JsonSettingsStore _store = new(JsonSettingsStore.DefaultPath());
     // Big enough for 1920x1080 BGRA; the test camera is 640x480. TryGetFrame writes the actual size.
     private readonly byte[] _frameBuf = new byte[1920 * 1080 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
@@ -26,7 +27,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // Read the persisted config BEFORE creating the overlay so we can restore geometry into the
         // ctor. Only restore when the saved size is sane (non-zero); otherwise fall back to defaults
         // (e.g. first run, corrupt config, or a config written before geometry was persisted).
-        var config = new JsonSettingsStore(JsonSettingsStore.DefaultPath()).Load();
+        var config = _store.Load();
         var (x, y, w, h) = ResolveStartupBounds(config.Overlay);
 
         // Build the overlay BEFORE the VM so its D3D device pointer exists when shim.Init runs.
@@ -65,13 +66,16 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        // Stop the timer first so no WM_EXITSIZEMOVE-driven InteractionEnded can race with Save().
         _timer?.Stop();
         _timer = null;
-        Save(); // final persist with the closing geometry/state
-        Vm.PropertyChanged -= OnVmPropertyChanged;
-        _overlay.HotkeyPressed -= _hotkeys.OnHotkeyMessage;
+        // Unsubscribe both event sources BEFORE saving so a late WM_EXITSIZEMOVE cannot trigger a
+        // double-save while teardown is in progress.
         _overlay.InteractionEnded -= Save;
+        _overlay.HotkeyPressed -= _hotkeys.OnHotkeyMessage;
+        Save(); // final persist with the closing geometry/state
         _hotkeys.Dispose(); // unregister all hotkeys
+        Vm.PropertyChanged -= OnVmPropertyChanged;
         Vm.Dispose();
         _overlay.Dispose();
     }
@@ -95,7 +99,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 case HotkeyAction.ToggleClickThrough: Vm.ClickThrough = !Vm.ClickThrough; break;
                 case HotkeyAction.ToggleOverlayVisible: _overlay.ToggleVisible(); break;
                 case HotkeyAction.ToggleRunning:
-                    if (Vm.IsRunning) Vm.StopCommand.Execute(null); else Vm.StartCommand.Execute(null);
+                    if (Vm.IsRunning) Vm.StopCommand?.Execute(null); else Vm.StartCommand?.Execute(null);
                     break;
             }
         });
@@ -106,7 +110,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private void Save()
     {
         var (x, y, w, h) = _overlay.GetBounds();
-        new JsonSettingsStore(JsonSettingsStore.DefaultPath()).Save(Vm.ToAppConfig(x, y, w, h));
+        _store.Save(Vm.ToAppConfig(x, y, w, h));
     }
 
     public Visibility NotAvailableVisibility =>
