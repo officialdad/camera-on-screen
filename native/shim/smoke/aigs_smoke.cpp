@@ -1,7 +1,7 @@
 // Headless smoke test for AIGS init. Build ad hoc (not part of the DLL).
 // Run from a Developer PowerShell for VS 2022 with COS_VFX_SDK_DIR set, e.g.:
 //
-//   $env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+//   $env:COS_VFX_SDK_DIR = "C:\path\to\VideoFX"
 //   cl /EHsc /std:c++17 /I "%COS_VFX_SDK_DIR%\nvvfx\include" /I "%COS_VFX_SDK_DIR%\features\nvvfxgreenscreen\include" /DCOS_HAS_MAXINE ^
 //      native\shim\smoke\aigs_smoke.cpp native\shim\aigs.cpp ^
 //      "%COS_VFX_SDK_DIR%\nvvfx\src\nvVideoEffectsProxy.cpp" "%COS_VFX_SDK_DIR%\nvvfx\src\nvCVImageProxy.cpp"

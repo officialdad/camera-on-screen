@@ -3,6 +3,7 @@
 #ifdef COS_HAS_MAXINE
 #include <windows.h>
 #include <cstdlib>
+#include <new>
 #include <string>
 #include "nvCVStatus.h"
 #include "nvCVImage.h"
@@ -56,6 +57,7 @@ bool Aigs::Probe(std::string& detail) {
     if (!ResolveSdkPaths(binDir, modelDir, err)) { detail = err; return false; }
     PointProxiesAt(binDir);
 
+    // Probe uses the SDK's default CUDA stream (no explicit CudaStreamCreate); sufficient for a load-only check.
     NvVFX_Handle eff = nullptr;
     if (NvVFX_CreateEffect(NVVFX_FX_GREEN_SCREEN, &eff) != NVCV_SUCCESS || !eff) {
         detail = "NvVFX_CreateEffect(GreenScreen) failed (DLL/SDK load?)";
@@ -81,25 +83,28 @@ bool Aigs::Probe(std::string& detail) {
 
 bool Aigs::Start() {
     Stop();
-    auto* impl = new AigsImpl();
-    impl_ = impl;
+    AigsImpl* impl = new (std::nothrow) AigsImpl();
+    if (!impl) { lastError_ = "out of memory"; return false; }
 
     std::string binDir, err;
-    if (!ResolveSdkPaths(binDir, impl->modelDir, err)) { lastError_ = err; return false; }
+    if (!ResolveSdkPaths(binDir, impl->modelDir, err)) {
+        lastError_ = err; delete impl; return false;
+    }
     PointProxiesAt(binDir);
 
     if (NvVFX_CudaStreamCreate(&impl->stream) != NVCV_SUCCESS) {
-        lastError_ = "NvVFX_CudaStreamCreate failed"; return false;
+        lastError_ = "NvVFX_CudaStreamCreate failed"; delete impl; return false;
     }
     if (NvVFX_CreateEffect(NVVFX_FX_GREEN_SCREEN, &impl->effect) != NVCV_SUCCESS || !impl->effect) {
-        lastError_ = "NvVFX_CreateEffect failed"; return false;
+        lastError_ = "NvVFX_CreateEffect failed"; delete impl; return false;
     }
     NvVFX_SetString(impl->effect, NVVFX_MODEL_DIRECTORY, impl->modelDir.c_str());
     NvVFX_SetCudaStream(impl->effect, NVVFX_CUDA_STREAM, impl->stream);
     NvVFX_SetU32(impl->effect, NVVFX_MODE,     0u); // mode 0 = best quality; models m0 confirmed present
     NvVFX_SetU32(impl->effect, NVVFX_TEMPORAL, 1u); // video: reduce matte flicker
     // NvVFX_Load is called after SetImage in Task 3 (requires known input dimensions).
-    ready_ = true; // "configured"; model load completes on first frame (Task 3)
+    impl_ = impl;    // assign only on full success
+    ready_ = true;   // "configured"; model load completes on first frame (Task 3)
     lastError_.clear();
     return true;
 }
