@@ -10,22 +10,39 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     public MainViewModel Vm { get; }
 
     private readonly Overlay.OverlayWindow _overlay;
+    // Big enough for 1920x1080 BGRA; the test camera is 640x480. TryGetFrame writes the actual size.
+    private readonly byte[] _frameBuf = new byte[1920 * 1080 * 4];
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainWindow()
     {
-        Vm = Services.BuildViewModel();
+        // Build the overlay BEFORE the VM so its D3D device pointer exists when shim.Init runs.
+        _overlay = new Overlay.OverlayWindow(200, 200, 320, 240);
+        _overlay.Show();
+        Vm = Services.BuildViewModel(_overlay);
         Vm.PropertyChanged += OnVmPropertyChanged;
         this.Closed += OnWindowClosed;
         InitializeComponent();
-        _overlay = new Overlay.OverlayWindow(200, 200, 320, 240);
-        _overlay.Show();
-        _overlay.PresentTestPattern();
+
+        // ~30 Hz frame pump on the WinUI UI thread: pull the latest BGRA frame from the shim and
+        // blit it into the overlay, then refresh status. All D3D work happens here on the UI thread.
+        _timer = DispatcherQueue.CreateTimer();
+        _timer.Interval = TimeSpan.FromMilliseconds(33);
+        _timer.Tick += (_, _) =>
+        {
+            if (Vm.IsRunning && Vm.ShimRef.TryGetFrame(_frameBuf, out int w, out int h) && w > 0)
+                _overlay.PresentFrame(_frameBuf, w, h);
+            Vm.PollStatusTick();
+        };
+        _timer.Start();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        _timer?.Stop();
+        _timer = null;
         Vm.PropertyChanged -= OnVmPropertyChanged;
         Vm.Dispose();
         _overlay.Dispose();

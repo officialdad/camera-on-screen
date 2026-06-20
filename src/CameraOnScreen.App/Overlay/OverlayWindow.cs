@@ -19,6 +19,12 @@ public sealed class OverlayWindow : IDisposable
     private readonly IDCompositionVisual _visual;
     private static WndProc? _proc; // keep delegate alive
 
+    // Cached upload texture (Dynamic, CPU-writable) for the incoming BGRA frame.
+    private ID3D11Texture2D? _frameTex;
+    private int _texW, _texH;
+    // Current back-buffer (swap chain) size; starts at the ctor dimensions.
+    private int _bufW, _bufH;
+
     public IntPtr D3DDevicePtr => _device.NativePointer;
 
     public OverlayWindow(int x, int y, int width, int height)
@@ -63,6 +69,7 @@ public sealed class OverlayWindow : IDisposable
         // Vortice 3.8.3: IDXGIFactory2.CreateSwapChainForComposition returns IDXGISwapChain1
         // directly and throws a SharpGenException on HRESULT failure — no CheckError() needed.
         _swapChain = factory.CreateSwapChainForComposition(_device, desc);
+        _bufW = width; _bufH = height;
 
         DComp.DCompositionCreateDevice(dxgi, out _dcomp!).CheckError();
         _dcomp.CreateTargetForHwnd(_hwnd, topmost: true, out _target!).CheckError();
@@ -82,8 +89,66 @@ public sealed class OverlayWindow : IDisposable
         _swapChain.Present(1, PresentFlags.None);
     }
 
+    /// <summary>
+    /// Uploads a tightly-packed (width*4 per row) BGRA frame and blits it 1:1 into the back buffer.
+    /// </summary>
+    /// <remarks>
+    /// CORRECTNESS: <see cref="ID3D11DeviceContext.CopyResource"/> requires identical dimensions and
+    /// format for source and destination — it cannot scale. The overlay is created at a placeholder
+    /// size (e.g. 320x240) but the first real camera frame may be a different native resolution
+    /// (e.g. 640x480). So before the copy, if the back-buffer size != the incoming frame size we
+    /// resize the swap chain (ResizeBuffers) AND the host window (SetWindowPos) to the frame's native
+    /// resolution, making the back buffer match the frame 1:1. The first real frame therefore
+    /// establishes the overlay at the camera's native resolution — acceptable for M2 passthrough.
+    ///
+    /// TASK 13 MUST INTRODUCE SCALING: when the user is allowed to resize the overlay away from the
+    /// camera's native resolution (window size != frame size), a straight CopyResource is no longer
+    /// valid. Task 13 must draw the frame through a textured quad (or apply a DComp visual transform)
+    /// so the frame can be scaled into an arbitrarily-sized back buffer. Do NOT extend this method to
+    /// "handle" arbitrary scale by snapping the window to native — that defeats user resize.
+    /// </remarks>
+    public void PresentFrame(byte[] bgra, int width, int height)
+    {
+        if (width <= 0 || height <= 0) return;
+
+        // Match the back buffer (and window) to the frame so CopyResource is a valid same-size copy.
+        if (_bufW != width || _bufH != height)
+        {
+            _swapChain.ResizeBuffers(0, (uint)width, (uint)height, Format.Unknown, SwapChainFlags.None);
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, width, height,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            _bufW = width; _bufH = height;
+        }
+
+        // (Re)create the CPU-writable upload texture when the frame size changes.
+        if (_frameTex is null || _texW != width || _texH != height)
+        {
+            _frameTex?.Dispose();
+            _frameTex = _device.CreateTexture2D(new Texture2DDescription
+            {
+                Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1,
+                Format = Format.B8G8R8A8_UNorm, SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Dynamic, BindFlags = BindFlags.ShaderResource,
+                CPUAccessFlags = CpuAccessFlags.Write
+            });
+            _texW = width; _texH = height;
+        }
+
+        // Upload row-by-row honoring the texture's RowPitch (may exceed width*4); the source rows
+        // are tightly packed at width*4 (native side already de-strided).
+        var map = _context.Map(_frameTex, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        for (int row = 0; row < height; row++)
+            Marshal.Copy(bgra, row * width * 4, map.DataPointer + row * (int)map.RowPitch, width * 4);
+        _context.Unmap(_frameTex, 0);
+
+        using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+        _context.CopyResource(back, _frameTex); // valid: back buffer == frame size (see remarks)
+        _swapChain.Present(1, PresentFlags.None);
+    }
+
     public void Dispose()
     {
+        _frameTex?.Dispose();
         _visual.Dispose(); _target.Dispose(); _dcomp.Dispose(); _swapChain.Dispose();
         _context.Dispose(); _device.Dispose();
         GC.SuppressFinalize(this); // CA1816: suppress finalizer even though none exists (sealed)

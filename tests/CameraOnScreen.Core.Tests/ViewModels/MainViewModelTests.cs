@@ -11,7 +11,8 @@ public class MainViewModelTests
     private static MainViewModel Build(GpuTier tier, out FakeShim shim)
     {
         shim = new FakeShim { Cameras = { new CameraInfo("cam", "Cam") } };
-        return new MainViewModel(new Orchestrator(shim, tier));
+        // Same shim instance drives the orchestrator AND is exposed via VM.ShimRef.
+        return new MainViewModel(new Orchestrator(shim, tier), shim);
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public class MainViewModelTests
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
-        var vm = new MainViewModel(orch);
+        var vm = new MainViewModel(orch, shim);
 
         // Start then poll to confirm subscription is live
         orch.Start(new ShimParams("cam", false, 1.0, false, 0.5, 0.5));

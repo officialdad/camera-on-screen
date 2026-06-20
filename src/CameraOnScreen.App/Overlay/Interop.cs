@@ -32,7 +32,14 @@ internal static class Interop
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int idx);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int idx, int val);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+        int x, int y, int cx, int cy, uint flags);
     public const int GWL_EXSTYLE = -20;
     public const int SW_SHOWNOACTIVATE = 4;
+    // SetWindowPos flags: keep current position/Z-order/activation, only change size.
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
     [DllImport("kernel32.dll")] public static extern IntPtr GetModuleHandle(string? name);
 }

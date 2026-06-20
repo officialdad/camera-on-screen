@@ -12,13 +12,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly Orchestrator _orchestrator;
     private readonly EventHandler<ShimStatus> _statusHandler;
 
-    public MainViewModel(Orchestrator orchestrator)
+    // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
+    // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
+    public INativeShim ShimRef { get; }
+
+    public MainViewModel(Orchestrator orchestrator, INativeShim shim)
     {
         _orchestrator = orchestrator;
+        ShimRef = shim;
         EffectsAvailable = orchestrator.EffectsAvailable;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
+
+    // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
+    public void PollStatusTick() => _orchestrator.PollStatus();
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
 
