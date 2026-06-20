@@ -12,6 +12,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly Orchestrator _orchestrator;
     private readonly EventHandler<ShimStatus> _statusHandler;
 
+    // Retained across LoadFrom → ToAppConfig so Save never discards loaded/custom hotkeys. The VM
+    // has no UI for editing hotkeys, so it must round-trip them verbatim. Initialised to the
+    // defaults so ToAppConfig is valid even if LoadFrom is never called.
+    private IReadOnlyList<HotkeyBinding> _hotkeys = AppConfig.DefaultHotkeys();
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
@@ -53,6 +58,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
         Locked = config.Overlay.Locked;
         ClickThrough = config.Overlay.ClickThrough;
+        _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
     }
@@ -73,7 +79,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             GreenScreenEnabled = GreenScreenEnabled, GreenScreenStrength = GreenScreenStrength,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
             EyeContactLookAwayRange = EyeContactLookAwayRange
-        }
+        },
+        Hotkeys = _hotkeys
     };
 
     public ShimParams BuildParams() => new(

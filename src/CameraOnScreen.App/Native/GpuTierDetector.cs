@@ -10,7 +10,13 @@ public static class GpuTierDetector
     public static GpuTier Detect()
     {
         if (DXGI.CreateDXGIFactory1(out IDXGIFactory1? factory).Failure || factory is null)
+        {
+            // Factory creation failed: we fall back to NonRtx (effects off). Log so a wrongly
+            // detected NonRtx on an actual RTX box is diagnosable from the trace.
+            System.Diagnostics.Debug.WriteLine(
+                "GpuTierDetector: CreateDXGIFactory1 failed; falling back to GpuTier.NonRtx.");
             return GpuTier.NonRtx;
+        }
         using (factory)
         {
             for (uint i = 0; factory.EnumAdapters1(i, out IDXGIAdapter1? adapter).Success; i++)

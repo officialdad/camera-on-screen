@@ -76,6 +76,24 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void ToAppConfig_preserves_loaded_hotkeys()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        // Start from the defaults but change one binding's VirtualKey so the loaded list is
+        // provably different from DefaultHotkeys() — guards against ToAppConfig silently
+        // reverting hotkeys to the defaults on Save.
+        var custom = AppConfig.DefaultHotkeys()
+            .Select((b, i) => i == 0 ? b with { VirtualKey = 0x42 } : b)
+            .ToArray();
+        vm.LoadFrom(new AppConfig { Hotkeys = custom });
+
+        var cfg = vm.ToAppConfig(10, 20, 300, 400);
+
+        Assert.True(cfg.Hotkeys.SequenceEqual(custom));
+        Assert.False(cfg.Hotkeys.SequenceEqual(AppConfig.DefaultHotkeys()));
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_from_status()
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };

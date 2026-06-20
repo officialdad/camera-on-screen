@@ -44,13 +44,9 @@ public sealed class OverlayWindow : IDisposable
     private bool _visible = true;
     private bool _disposed;
 
-    /// <summary>Window position changed (WM_MOVE). Carries new top-left in screen coords.</summary>
-    public event Action<int, int>? Moved;
-    /// <summary>Client size changed (WM_SIZE). Carries new client width/height.</summary>
-    public event Action<int, int>? Resized;
     /// <summary>
     /// User finished a drag/resize (WM_EXITSIZEMOVE). Fires ONCE per interaction — the cue to
-    /// persist geometry, unlike Moved/Resized which fire continuously during the gesture.
+    /// persist geometry, debounced (it does not fire continuously during the gesture).
     /// </summary>
     public event Action? InteractionEnded;
     /// <summary>
@@ -156,14 +152,6 @@ public sealed class OverlayWindow : IDisposable
         }
     }
 
-    /// <summary>
-    /// Resize the overlay WINDOW to (w,h). The swap chain stays frame-res; the resulting WM_SIZE
-    /// updates the DComp scale transform so the content fills the new window. Does NOT touch the
-    /// swap-chain buffers — that would break the 1:1 CopyResource in <see cref="PresentFrame"/>.
-    /// </summary>
-    public void Resize(int w, int h) =>
-        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-
     /// <summary>Current window rectangle (screen coords) as (x, y, width, height).</summary>
     public (int x, int y, int w, int h) GetBounds()
     {
@@ -191,9 +179,6 @@ public sealed class OverlayWindow : IDisposable
                     break;
                 case WM_SIZE:
                     self.OnSize(LoWord(lParam), HiWord(lParam));
-                    break;
-                case WM_MOVE:
-                    self.Moved?.Invoke(LoWord(lParam), HiWord(lParam));
                     break;
                 case WM_EXITSIZEMOVE:
                     // Drag/resize finished — single, debounced cue for the host to persist geometry.
@@ -245,11 +230,7 @@ public sealed class OverlayWindow : IDisposable
 
     // WM_SIZE: window size is decoupled from the frame-res back buffer. Scale the DComp visual so
     // native-res content fills the new client area. The swap chain is NEVER resized here.
-    private void OnSize(int clientW, int clientH)
-    {
-        UpdateScale(clientW, clientH);
-        Resized?.Invoke(clientW, clientH);
-    }
+    private void OnSize(int clientW, int clientH) => UpdateScale(clientW, clientH);
 
     // Apply scaleX = clientW/frameW, scaleY = clientH/frameH to the visual, then commit.
     private void UpdateScale(int clientW, int clientH)
@@ -259,14 +240,6 @@ public sealed class OverlayWindow : IDisposable
         float sy = clientH / (float)_bufH;
         _visual.SetTransform(Matrix3x2.CreateScale(sx, sy));
         _dcomp.Commit();
-    }
-
-    public void PresentTestPattern()
-    {
-        using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-        using var rtv = _device.CreateRenderTargetView(back);
-        _context.ClearRenderTargetView(rtv, new Vortice.Mathematics.Color4(0f, 0.4f, 1f, 0.5f));
-        _swapChain.Present(1, PresentFlags.None);
     }
 
     /// <summary>
