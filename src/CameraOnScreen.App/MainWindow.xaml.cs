@@ -23,6 +23,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.Show();
         Vm = Services.BuildViewModel(_overlay);
         Vm.PropertyChanged += OnVmPropertyChanged;
+        // Apply the initial lock / click-through state loaded from config to the overlay.
+        _overlay.SetLocked(Vm.Locked);
+        _overlay.SetClickThrough(Vm.ClickThrough);
         this.Closed += OnWindowClosed;
         InitializeComponent();
 
@@ -58,5 +61,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (e.PropertyName is nameof(MainViewModel.IsRunning) or nameof(MainViewModel.Fps))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusLine)));
+        else if (e.PropertyName == nameof(MainViewModel.Locked))
+            _overlay.SetLocked(Vm.Locked);
+        else if (e.PropertyName == nameof(MainViewModel.ClickThrough))
+            _overlay.SetClickThrough(Vm.ClickThrough);
     }
 }

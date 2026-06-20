@@ -24,6 +24,10 @@
             <TextBlock Text="Effects require an RTX GPU."
                        Visibility="{x:Bind NotAvailableVisibility}"
                        Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+            <ToggleSwitch Header="Lock overlay"
+                          IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
+            <ToggleSwitch Header="Click-through"
+                          IsOn="{x:Bind Vm.ClickThrough, Mode=TwoWay}"/>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">

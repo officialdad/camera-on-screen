@@ -38,6 +38,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private bool isRunning;
+    [ObservableProperty] private bool locked;
+    [ObservableProperty] private bool clickThrough;
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
@@ -49,6 +51,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
+        Locked = config.Overlay.Locked;
+        ClickThrough = config.Overlay.ClickThrough;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
     }

@@ -21,6 +21,42 @@ internal static class Interop
 
     public delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    // Window messages handled by the overlay proc (Task 13).
+    public const uint WM_MOVE = 0x0003;
+    public const uint WM_SIZE = 0x0005;
+    public const uint WM_NCHITTEST = 0x0084;
+    public const uint WM_MOUSEMOVE = 0x0200;
+    public const uint WM_MOUSELEAVE = 0x02A3;
+
+    // WM_NCHITTEST return codes: HTCLIENT (no drag), HTCAPTION (drag-anywhere),
+    // HTBOTTOMRIGHT (bottom-right resize grip).
+    public const int HTCLIENT = 1;
+    public const int HTCAPTION = 2;
+    public const int HTBOTTOMRIGHT = 17;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int left, top, right, bottom; }
+
+    // TrackMouseEvent flags + struct: request a WM_MOUSELEAVE once the pointer exits the window.
+    public const uint TME_LEAVE = 0x00000002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TRACKMOUSEEVENT
+    {
+        public int cbSize;
+        public uint dwFlags;
+        public IntPtr hwndTrack;
+        public uint dwHoverTime;
+    }
+
+    [DllImport("user32.dll")] public static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT lpEventTrack);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int x, y; }
+
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     public static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
 

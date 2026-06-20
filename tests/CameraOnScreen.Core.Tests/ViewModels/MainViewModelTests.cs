@@ -47,6 +47,19 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void LoadFrom_propagates_locked_and_clickthrough()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        var config = new AppConfig
+        {
+            Overlay = new OverlaySettings { Locked = true, ClickThrough = true }
+        };
+        vm.LoadFrom(config);
+        Assert.True(vm.Locked);
+        Assert.True(vm.ClickThrough);
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_from_status()
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };
