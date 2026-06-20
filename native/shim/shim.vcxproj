@@ -18,6 +18,11 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- SDK dir: MSBuild property overrides the COS_VFX_SDK_DIR env var. Empty => stub build. -->
+    <CosVfxSdkDir Condition="'$(CosVfxSdkDir)' == ''">$(COS_VFX_SDK_DIR)</CosVfxSdkDir>
+  </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
   <PropertyGroup Label="Configuration">
@@ -63,14 +68,29 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <ItemDefinitionGroup Condition="'$(CosVfxSdkDir)' != ''">
+    <ClCompile>
+      <PreprocessorDefinitions>COS_HAS_MAXINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(CosVfxSdkDir)\nvvfx\include;$(CosVfxSdkDir)\features\nvvfxgreenscreen\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
+    <ClCompile Include="aigs.cpp" />
+  </ItemGroup>
+
+  <!-- Proxy stubs provide the Maxine API by LoadLibrary'ing the runtime DLLs (no import .lib). -->
+  <ItemGroup Condition="'$(CosVfxSdkDir)' != ''">
+    <ClCompile Include="$(CosVfxSdkDir)\nvvfx\src\nvVideoEffectsProxy.cpp" />
+    <ClCompile Include="$(CosVfxSdkDir)\nvvfx\src\nvCVImageProxy.cpp" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
+    <ClInclude Include="aigs.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
