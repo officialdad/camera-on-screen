@@ -145,11 +145,11 @@ NvCV_Status EnsureImages(AigsImpl* impl, int w, int h) {
     s = NvCVImage_Alloc(&impl->matteCpu, w, h, NVCV_A,    NVCV_U8, NVCV_CHUNKY, NVCV_CPU, 1); if (s != NVCV_SUCCESS) return s;
     s = NvCVImage_Alloc(&impl->stage,    w, h, NVCV_BGRA, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1); if (s != NVCV_SUCCESS) return s;
 
-    NvVFX_SetImage(impl->effect, NVVFX_INPUT_IMAGE,  &impl->srcGpu);
-    NvVFX_SetImage(impl->effect, NVVFX_OUTPUT_IMAGE, &impl->matteGpu);
+    s = NvVFX_SetImage(impl->effect, NVVFX_INPUT_IMAGE,  &impl->srcGpu);   if (s != NVCV_SUCCESS) return s;
+    s = NvVFX_SetImage(impl->effect, NVVFX_OUTPUT_IMAGE, &impl->matteGpu); if (s != NVCV_SUCCESS) return s;
     // Set max input dimensions before Load (required by some SDK versions).
-    NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_WIDTH,  static_cast<unsigned>(w));
-    NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_HEIGHT, static_cast<unsigned>(h));
+    s = NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_WIDTH,  static_cast<unsigned>(w)); if (s != NVCV_SUCCESS) return s;
+    s = NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_HEIGHT, static_cast<unsigned>(h)); if (s != NVCV_SUCCESS) return s;
     s = NvVFX_Load(impl->effect); // builds/loads the engine for this input size
     if (s != NVCV_SUCCESS) return s;
 
