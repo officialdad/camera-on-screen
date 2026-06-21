@@ -34,8 +34,9 @@ jobs:
           if (-not (Test-Path $dll)) { throw "shim DLL missing: $dll" }
           $dumpbin = (Get-ChildItem "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC" -Directory |
             Sort-Object Name -Descending | Select-Object -First 1).FullName + "/bin/Hostx64/x64/dumpbin.exe"
+          if (-not (Test-Path $dumpbin)) { throw "dumpbin not found at $dumpbin — check the MSVC Build Tools install on the runner" }
           $exports = & $dumpbin /exports $dll | Out-String
-          $strings = [System.IO.File]::ReadAllText($dll)
+          $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
           $hasGS  = $exports -match 'GreenScreen'   -or $strings -match 'GreenScreen'
           $hasGaze = $exports -match 'GazeRedirection' -or $strings -match 'GazeRedirection'
           $isStub = $strings -match 'not built in'
