@@ -53,7 +53,7 @@ public class JsonSettingsStoreTests
                 },
                 Effects = new EffectSettings
                 {
-                    GreenScreenEnabled = false, GreenScreenStrength = 0.25,
+                    GreenScreenEnabled = false, GreenScreenExpand = 0.25, GreenScreenFeather = 0.4,
                     EyeContactEnabled = true, EyeContactSensitivity = 0.75,
                     EyeContactLookAwayRange = 0.9
                 }
@@ -69,7 +69,8 @@ public class JsonSettingsStoreTests
             Assert.True(loaded.Overlay.Locked);
             Assert.True(loaded.Overlay.ClickThrough);
             Assert.False(loaded.Effects.GreenScreenEnabled);
-            Assert.Equal(0.25, loaded.Effects.GreenScreenStrength);
+            Assert.Equal(0.25, loaded.Effects.GreenScreenExpand);
+            Assert.Equal(0.4, loaded.Effects.GreenScreenFeather);
             Assert.True(loaded.Effects.EyeContactEnabled);
             Assert.Equal(0.75, loaded.Effects.EyeContactSensitivity);
             Assert.Equal(0.9, loaded.Effects.EyeContactLookAwayRange);

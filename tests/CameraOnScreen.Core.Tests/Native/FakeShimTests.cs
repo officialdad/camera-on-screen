@@ -22,7 +22,7 @@ public class FakeShimTests
     public void SetParams_is_recorded()
     {
         var shim = new FakeShim();
-        var p = new ShimParams("cam-1", true, 0.8, false, 0.5, 0.5);
+        var p = new ShimParams("cam-1", true, 0.8, 0.0, false, 0.5, 0.5);
         shim.SetParams(p);
         Assert.Equal(p, shim.LastParams);
     }
