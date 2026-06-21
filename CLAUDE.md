@@ -79,7 +79,7 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 
 ## Status
 
-M1 (Core), M2 (App + shim + overlay passthrough), and M3 (AI Green Screen) are complete and merged to `main`. M3 is runtime-verified on an RTX 3090 (green screen works on screen).
+M1 (Core), M2 (App + shim + overlay passthrough), and M3 (AI Green Screen) are complete and merged to `main`. **M3 is fully verified on an RTX 3090: green screen works on screen, the live toggle switches it on/off in real time, and NVIDIA ShadowPlay records the overlay correctly (DWM/hardware capture — GDI shows black by design). The M3 user gate is complete.**
 
 **M3: AI Green Screen** — design `docs/superpowers/specs/2026-06-21-camera-on-screen-m3-aigs-design.md`, plan `docs/superpowers/plans/2026-06-21-camera-on-screen-m3-aigs.md`. Decisions: green-screen only; **CPU-copy** interop (GPU work on Maxine, frames round-trip CPU↔GPU — zero-copy D3D11 interop deferred); SDK located via `COS_VFX_SDK_DIR` env var. The RTX-substring tier heuristic is replaced as the effect gate by a new `cos_query_capabilities` shim probe; `GpuTierDetector` keeps only the GPU-name display. The two M3 polish follow-ups are **done**: the probe is now deferred and run off the UI thread (no startup freeze), and the disabled-effects note is bound to the real `CapabilityDetail` from the probe (not a static "requires RTX GPU" string).
 
@@ -93,6 +93,6 @@ Ordered roughly by size.
 
 1. ~~**Surface the real probe reason.**~~ **DONE.** The note's text is bound to `Vm.CapabilityDetail` (real `cos_query_capabilities` reason), not the static "requires RTX GPU" string.
 2. ~~**Make the capability probe async/lazy.**~~ **DONE.** The probe is deferred out of the `Orchestrator` ctor into `ProbeCapabilities()` and run off the UI thread via `MainViewModel.ProbeCapabilitiesAsync()` (kicked off from the `MainWindow` ctor); effects gate OFF until it lands, OneWay bindings propagate the result. No startup freeze.
-3. **M3 user gate (pending).** Eyeball + screen-recorder confirmation is an inherent human gate (GDI can't capture the overlay). Steps + result slots: `docs/superpowers/verification/2026-06-20-recorder-capture.md` (M3 section). Green screen is confirmed working on screen on the RTX 3090; the recorder-capture confirmation is still to be filled.
+3. ~~**M3 user gate.**~~ **COMPLETE (2026-06-21).** Green screen confirmed on screen on the RTX 3090, live toggle works, and **NVIDIA ShadowPlay** captures the overlay correctly (DWM/hardware path, as designed — GDI shows black). Results filled in `docs/superpowers/verification/2026-06-20-recorder-capture.md` (M3 section).
 4. **M4 — Eye Contact.** Needs the separate **Maxine AR SDK** installed (NOT the VFX SDK) + a new effect in the chain; brainstorm → spec → plan as its own milestone.
 5. **M5 — ship-time** (the Distribution bullet above): bundle runtime+models, app-relative SDK discovery, multi-GPU models, license compliance, installer.

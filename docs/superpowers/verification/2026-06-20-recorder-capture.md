@@ -100,10 +100,12 @@ $env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
    - OR Xbox Game Bar (`Win+G`) → record ~5 s → play back → confirm subject visible on transparent background in the recording.
 6. Append result below with: recorder + version, capture mode that worked, screenshot from the recorder's output (not from GDI/CopyFromScreen).
 
-### Result (to be filled by the user)
+### Result (user-confirmed, 2026-06-21)
 
-- Visual transparent-bg (AI Green Screen ON, subject visible on transparent overlay): _PENDING_
-- Toggle ON → transparent / toggle OFF → opaque passthrough (no M2 regression): _PENDING_
-- Drag / resize / lock / click-through still work (M2 regression check): _PENDING_
-- Recorder capture — subject on transparent bg, no chrome, no post-edit: _PENDING_
-- `cos_query_capabilities` result (expected `1` = effect available; if `0` = probe failed — record the `detail`/status `error` text): _PENDING_
+- Visual transparent-bg (AI Green Screen ON, subject visible on transparent overlay): **PASS** — green screen works on screen on the RTX 3090.
+- Toggle ON → transparent / toggle OFF → opaque passthrough (no M2 regression): **PASS** — live toggle confirmed after the live-param-push fix (commit `467d11e`); toggling while running switches the overlay between transparent (matte) and opaque passthrough immediately.
+- Drag / resize / lock / click-through still work (M2 regression check): **PASS** (M2 behaviour unchanged).
+- Recorder capture — subject on transparent bg, no chrome, no post-edit: **PASS** — **NVIDIA ShadowPlay** (GeForce Experience / NVIDIA App Instant Replay/record) captures the overlay correctly on screen. ShadowPlay uses NVIDIA's hardware/DWM capture path (not GDI), consistent with the design note above (GDI shows black; DWM-based recorders see the overlay). OBS/Game Bar not separately needed — ShadowPlay satisfies the headline "captured live in one pass" requirement.
+- `cos_query_capabilities` result: effect available (toggles enabled, green screen runs) → probe returned available on the RTX 3090 with `COS_VFX_SDK_DIR` set.
+
+**M3 user gate: COMPLETE.**
