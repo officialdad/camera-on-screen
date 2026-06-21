@@ -28,12 +28,39 @@ second capability gate, and the UI wiring for the already-stubbed Eye Contact to
 
 ## Architecture — the pipeline
 
-New `native/shim/eyecontact.{h,cpp}` wraps `NvAR_Feature_GazeRedirection`. Unlike the VFX
-green screen, **GazeRedirection is one NvAR feature that internally performs face
-detection + landmark tracking + gaze redirection** — the shim creates one feature, sets
-ModelDir + Landmarks_Size, sets an input image and an output image, calls
-`NvAR_Create`/`NvAR_Load`/`NvAR_Run`. Its output is a **full redirected RGB frame** (not a
-matte), so the composite is a straight frame replacement.
+New `native/shim/eyecontact.{h,cpp}` wraps `NvAR_Feature_GazeRedirection`. Per the
+official `samples/GazeRedirect/GazeEngine.cpp`, GazeRedirection is **one NvAR feature that
+internally performs face detection + landmark tracking + gaze redirection** — the runtime
+path (`acquireGazeRedirection`) is just `Transfer(in) → NvAR_Run(handle) → Transfer(out)`.
+(The sample also declares separate `faceDetectHandle` / `landmarkDetectHandle` for its
+diagnostic side-by-side visualization; those are **not** needed for redirection and the
+shim omits them.) Its output is a **full redirected frame** (not a matte), so the composite
+is a straight frame replacement.
+
+**Exact NvAR sequence (from `GazeEngine.cpp`, no OpenCV — we wrap NvCVImage directly):**
+- **Create:** `NvAR_CudaStreamCreate(&stream)`;
+  `NvAR_Create(NvAR_Feature_GazeRedirection, &h)`.
+- **Config (then `NvAR_Load(h)`):** `NvAR_SetString(h, NvAR_Parameter_Config(ModelDir),
+  modelDir)`; `NvAR_SetU32(Landmarks_Size, 126)`; `NvAR_SetU32(Temporal, 0xFFFFFFFF)` (all
+  filtering on); `NvAR_SetU32(GazeRedirect, 1)`; `NvAR_SetCudaStream(CUDAStream, stream)`;
+  `NvAR_SetU32(UseCudaGraph, 1)`; `NvAR_SetU32(EyeSizeSensitivity, 3)`.
+- **I/O bind (once, on first frame when size known):** input `inputImageBuffer` and output
+  `outputImageBuffer` are **`NVCV_BGR`, `NVCV_U8`, `NVCV_CHUNKY`, `NVCV_GPU`** (note: BGR,
+  *not* BGRA). `NvAR_SetObject(Input(Image))`, `NvAR_SetObject(Output(Image))`,
+  `NvAR_SetS32(Input(Width/Height))`. The SDK **also requires these output buffers bound**
+  even though the shim ignores them: `Output(Landmarks)` (NvAR_Point2f ×Landmarks_Size),
+  `Output(GazeOutputLandmarks)` (×12), `Output(LandmarksConfidence)` (f32 ×Landmarks_Size),
+  `Output(OutputGazeVector)` (f32 ×2), `Output(OutputHeadTranslation)` (f32 ×3),
+  `Output(HeadPose)` (NvAR_Quaternion), `Output(GazeDirection)` (NvAR_Point3f ×2),
+  `Output(BoundingBoxes)` (NvAR_BBoxes). Skipping any returns a parameter error from Load/Run.
+- **Per frame:** wrap the CPU BGRA buffer as a source `NvCVImage` →
+  `NvCVImage_Transfer(src → inputImageBuffer, 1.0, stream, &tmpImage)` (converts BGRA→BGR);
+  `NvAR_Run(h)`; `NvCVImage_Transfer(outputImageBuffer → dst, 1.0, stream, &tmpImage)`
+  (converts BGR→BGRA, alpha set to 255). `tmpImage` is the staging buffer for the
+  format/layout conversion (analogous to AIGS's `stage`).
+- **Low-confidence:** when no face is found / `LandmarksConfidence` is low, `NvAR_Run` still
+  writes `outputImageBuffer` (redirection ≈ identity), so the shim always uses the output —
+  no special-casing. (The sample returns an error here only for its UI; the frame is valid.)
 
 The `EyeContact` object is **worker-thread-local** (NvAR/CUDA stream has thread affinity),
 exactly like the M3 `Aigs` object. `cos_set_params` (UI thread) only flips an atomic
@@ -64,6 +91,15 @@ The VFX SDK (green screen, located via `COS_VFX_SDK_DIR`) and the **AR SDK** (ey
 located via a new `COS_AR_SDK_DIR`) load independently. Each can be present or missing on
 its own, so each gets its **own capability probe and its own gate**. Both effect objects
 live on the same capture worker thread.
+
+**Coexistence risk: low (verified).** Both SDKs are the same runtime generation — each ships
+`cudart64_12`, `nvinfer_10`/`nvinfer_plugin_10`/`nvonnxparser_10` (CUDA 12 / TensorRT 10) and
+`NVCVImage.dll`. The shared `NVCVImage.dll` (whichever loads first wins; same API version) is
+compatible, so running both Maxine pipelines in one process has no version clash. The
+remaining concern is purely throughput (two effects per frame) — covered by the perf gate.
+`SetDllDirectory` is per-process and single-valued; each proxy sets it before its own first
+DLL load and the OS caches loaded modules by name, so the green-screen (VFX bin) and
+eye-contact (AR root) DLLs each resolve correctly despite the shared setting.
 
 ## C ABI — changes
 
@@ -102,12 +138,36 @@ live on the same capture worker thread.
   passthrough **stub** that reports `"AR SDK not built in"`, so CI / no-SDK machines still
   build and Core tests still pass. The two guards are orthogonal: a machine can have one
   SDK, both, or neither.
-- **Link via proxy stubs** (no import `.lib`, same as VFX): `nvar/src/nvARProxy.cpp` plus
-  the (shared) `nvCVImageProxy.cpp` compiled into the shim.
-- **SDK discovery:** `COS_AR_SDK_DIR` env var (mirrors `COS_VFX_SDK_DIR`). ModelDir =
-  `%COS_AR_SDK_DIR%\bin\models` (confirm the exact subpath against the installed layout at
-  build). The app needs `COS_AR_SDK_DIR` in its launch process env (persistent USER env var
-  for Explorer launch), exactly like the VFX var.
+- **Two-location SDK (differs from VFX).** Unlike the VFX SDK (one tree with headers, src,
+  and `bin/` runtime), the AR SDK splits into:
+  1. **Source** — the GitHub repo clone `https://github.com/NVIDIA-Maxine/Maxine-AR-SDK`
+     (provides `nvar/include/*.h` and the proxy stubs `nvar/src/nvARProxy.cpp` +
+     `nvar/src/nvCVImageProxy.cpp`). **Build-time only.** `COS_AR_SDK_DIR` points here.
+  2. **Runtime** — the installer output at `%ProgramFiles%\NVIDIA Corporation\NVIDIA AR
+     SDK\` (the DLLs `nvARPose.dll`, `NVCVImage.dll`, CUDA 12 + TensorRT 10 chain, directly
+     in the root — **not** a `bin/` subdir) and `…\NVIDIA AR SDK\models\` (the
+     `gazeredir_*_86`, `face_detection_86`, `faceland_*_86` engines — compute **86** = RTX
+     3090). **Not** in the repo; comes from the NGC/installer download.
+- **Link via proxy stubs** (no import `.lib`, same idea as VFX): compile
+  `$(CosArSdkDir)\nvar\src\nvARProxy.cpp` into the shim. **Do NOT also compile the AR
+  tree's `nvCVImageProxy.cpp`** — the VFX build already compiles `nvCVImageProxy.cpp` and a
+  second copy is a duplicate-symbol link error (`NvCVImage_*`). The single VFX-provided
+  `nvCVImageProxy.cpp` serves both SDKs (same NvCVImage API + shared `NVCVImage.dll`). When
+  the shim is built **AR-only** (VFX guard off), compile the AR tree's `nvCVImageProxy.cpp`
+  instead — exactly one copy must be in the build. (vcxproj conditions handle this; see plan.)
+- **Runtime DLL discovery.** The proxy global `extern char* g_nvARSDKPath;` (defined in
+  `eyecontact.cpp`, mirroring `g_nvVFXSDKPath`) is `SetDllDirectory`'d before loading
+  `nvARPose.dll`. The proxy **auto-falls back** to `%ProgramFiles%\NVIDIA Corporation\NVIDIA
+  AR SDK\` when the global is left null — so for a default install no path wiring is needed.
+  The shim sets it explicitly from `COS_AR_RUNTIME_DIR` (env var, **optional**, defaults to
+  that Program Files path) to support non-default installs and ship-time relocation.
+- **ModelDir** passed to `NvAR_Parameter_Config(ModelDir)` = `<runtime>\models` (i.e.
+  `%COS_AR_RUNTIME_DIR%\models`, default `%ProgramFiles%\NVIDIA Corporation\NVIDIA AR
+  SDK\models`). **Not** under the repo / `COS_AR_SDK_DIR`.
+- **Env summary:** `COS_AR_SDK_DIR` (build, = repo clone, required for a non-stub build);
+  `COS_AR_RUNTIME_DIR` (runtime, optional, defaults to the Program Files install). The app
+  needs neither in its launch env for a default install (proxy auto-resolves) — set
+  `COS_AR_RUNTIME_DIR` only for a relocated install.
 - **Deploy gotcha (same shape as M3):** the AR-SDK build and the CI stub write the **same**
   shim DLL path. Build the SDK config **last**, then `-t:Rebuild` the App, or it silently
   deploys the stub (eye-contact toggle greyed). Verify the deployed DLL: `GazeRedirection`
@@ -188,9 +248,10 @@ section).
 
 The official AR SDK System Guide install section
 (`https://docs.nvidia.com/deeplearning/maxine/ar-sdk-system-guide/index.html#install-sdk-assoc-sw`)
-links to a **non-existent GitHub repository**. The correct repo is
-**`https://github.com/NVIDIA-Maxine/Maxine-AR-SDK`**. Note this when documenting setup so
-the next person isn't sent to a dead link.
+links to a **non-existent GitHub repository** — the old `github.com/NVIDIA/MAXINE-AR-SDK`
+returns **HTTP 404** (confirmed via the GitHub API during this design). The correct, live
+repo is **`https://github.com/NVIDIA-Maxine/Maxine-AR-SDK`** (default branch `main`). Note
+this when documenting setup so the next person isn't sent to a dead link.
 
 ## References
 
