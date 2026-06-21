@@ -209,6 +209,33 @@ public class MainViewModelTests
         Assert.Equal(10, vm.Fps);
     }
 
+    [Fact]
+    public async Task ProbeCapabilitiesAsync_publishes_eye_contact_gate_to_vm()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false, EyeContactAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        var vm = new MainViewModel(orch, shim);
+        Assert.False(vm.EyeContactAvailable);          // gated off pre-probe
+        await vm.ProbeCapabilitiesAsync();
+        Assert.True(vm.EyeContactAvailable);
+        Assert.False(vm.EffectsAvailable);             // independent of green screen
+        Assert.Equal("fake: ec available", vm.EyeContactDetail);
+    }
+
+    [Fact]
+    public void Toggling_eye_contact_while_running_pushes_params()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        var vm = new MainViewModel(orch, shim);
+        vm.StartCommand.Execute(null);                 // running → live push enabled
+        vm.EyeContactEnabled = true;
+        Assert.True(shim.LastParams!.EyeContactEnabled);
+        vm.EyeContactEnabled = false;
+        Assert.False(shim.LastParams!.EyeContactEnabled);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

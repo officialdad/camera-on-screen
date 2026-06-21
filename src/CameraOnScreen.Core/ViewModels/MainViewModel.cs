@@ -29,6 +29,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // ProbeCapabilitiesAsync publishes the real values once the (deferred) probe completes.
         EffectsAvailable = orchestrator.EffectsAvailable;
         CapabilityDetail = orchestrator.CapabilityDetail;
+        EyeContactAvailable = orchestrator.EyeContactAvailable;
+        EyeContactDetail = orchestrator.EyeContactDetail;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
@@ -45,6 +47,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await Task.Run(_orchestrator.ProbeCapabilities);
         EffectsAvailable = _orchestrator.EffectsAvailable;
         CapabilityDetail = _orchestrator.CapabilityDetail;
+        EyeContactAvailable = _orchestrator.EyeContactAvailable;
+        EyeContactDetail = _orchestrator.EyeContactDetail;
     }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
@@ -58,6 +62,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
+    [ObservableProperty] private bool eyeContactAvailable;
+    [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool locked;
     [ObservableProperty] private bool clickThrough;
