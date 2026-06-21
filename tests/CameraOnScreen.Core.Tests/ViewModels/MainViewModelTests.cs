@@ -165,6 +165,30 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void LoadFrom_propagates_mirror_and_zoom()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        var config = new AppConfig
+        {
+            Overlay = new OverlaySettings { Mirror = true, Zoom = 2.0 }
+        };
+        vm.LoadFrom(config);
+        Assert.True(vm.Mirror);
+        Assert.Equal(2.0, vm.Zoom);
+    }
+
+    [Fact]
+    public void ToAppConfig_captures_mirror_and_zoom()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        vm.Mirror = true;
+        vm.Zoom = 1.5;
+        var cfg = vm.ToAppConfig(10, 20, 300, 400);
+        Assert.True(cfg.Overlay.Mirror);
+        Assert.Equal(1.5, cfg.Overlay.Zoom);
+    }
+
+    [Fact]
     public void Dispose_unsubscribes_from_status()
     {
         var shim = new ControllableFpsShim { FpsValue = 10 };

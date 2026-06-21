@@ -60,6 +60,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool locked;
     [ObservableProperty] private bool clickThrough;
+    [ObservableProperty] private bool mirror;
+    [ObservableProperty] private double zoom = 1.0;
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
@@ -73,6 +75,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
         Locked = config.Overlay.Locked;
         ClickThrough = config.Overlay.ClickThrough;
+        Mirror = config.Overlay.Mirror;
+        Zoom = config.Overlay.Zoom;
         _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
@@ -87,7 +91,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Overlay = new OverlaySettings
         {
             X = x, Y = y, Width = w, Height = h,
-            Locked = Locked, ClickThrough = ClickThrough
+            Locked = Locked, ClickThrough = ClickThrough,
+            Mirror = Mirror, Zoom = Zoom
         },
         Effects = new EffectSettings
         {
