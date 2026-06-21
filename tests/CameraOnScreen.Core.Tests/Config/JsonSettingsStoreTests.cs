@@ -80,4 +80,27 @@ public class JsonSettingsStoreTests
             if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void Save_then_load_round_trips_overlay_mirror_and_zoom()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cos-cfg-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new JsonSettingsStore(path);
+            store.Save(new AppConfig
+            {
+                Overlay = new OverlaySettings { Mirror = true, Zoom = 2.5 }
+            });
+
+            var loaded = store.Load();
+
+            Assert.True(loaded.Overlay.Mirror);
+            Assert.Equal(2.5, loaded.Overlay.Zoom);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
 }

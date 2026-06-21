@@ -38,6 +38,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // Apply the initial lock / click-through state loaded from config to the overlay.
         _overlay.SetLocked(Vm.Locked);
         _overlay.SetClickThrough(Vm.ClickThrough);
+        _overlay.SetMirror(Vm.Mirror);
+        _overlay.SetZoom(Vm.Zoom);
 
         // Global hotkeys. RegisterHotKey targets the overlay HWND, so WM_HOTKEY arrives at the
         // overlay proc and is forwarded here via HotkeyPressed → the service. Action handling is
@@ -137,5 +139,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             _overlay.SetLocked(Vm.Locked);
         else if (e.PropertyName == nameof(MainViewModel.ClickThrough))
             _overlay.SetClickThrough(Vm.ClickThrough);
+        else if (e.PropertyName == nameof(MainViewModel.Mirror))
+            _overlay.SetMirror(Vm.Mirror);
+        else if (e.PropertyName == nameof(MainViewModel.Zoom))
+            _overlay.SetZoom(Vm.Zoom);
     }
 }

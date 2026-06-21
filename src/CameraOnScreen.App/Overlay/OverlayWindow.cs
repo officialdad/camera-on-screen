@@ -37,6 +37,12 @@ public sealed class OverlayWindow : IDisposable
     private bool _hovered;    // pointer currently over the client area; gates chrome drawing.
     private bool _trackingMouse; // a TrackMouseEvent leave request is outstanding.
 
+    // Presentation transform state (Bucket 2). Mirror flips horizontally about the window centre;
+    // zoom (1.0–3.0) scales about the centre so the window edges crop the overflow = tighter framing.
+    // Both fold into the single DComp visual transform in UpdateScale — the swap chain is untouched.
+    private bool _mirror;
+    private double _zoom = 1.0;
+
     // Size of the resize grip hot-zone / drawn handle, in window client pixels.
     private const int GripSize = 16;
 
@@ -152,6 +158,25 @@ public sealed class OverlayWindow : IDisposable
         }
     }
 
+    /// <summary>Horizontal mirror (selfie view). Presentation-only; re-applies the visual transform live.</summary>
+    public void SetMirror(bool on)
+    {
+        if (_disposed || _mirror == on) return;
+        _mirror = on;
+        GetClientRect(_hwnd, out RECT rc);
+        UpdateScale(rc.right - rc.left, rc.bottom - rc.top);
+    }
+
+    /// <summary>Center zoom, clamped 1.0–3.0. Window edges crop the overflow = tighter framing. Live.</summary>
+    public void SetZoom(double zoom)
+    {
+        zoom = Math.Clamp(zoom, 1.0, 3.0);
+        if (_disposed || _zoom == zoom) return;
+        _zoom = zoom;
+        GetClientRect(_hwnd, out RECT rc);
+        UpdateScale(rc.right - rc.left, rc.bottom - rc.top);
+    }
+
     /// <summary>Current window rectangle (screen coords) as (x, y, width, height).</summary>
     public (int x, int y, int w, int h) GetBounds()
     {
@@ -238,7 +263,14 @@ public sealed class OverlayWindow : IDisposable
         if (_bufW <= 0 || _bufH <= 0 || clientW <= 0 || clientH <= 0) return;
         float sx = clientW / (float)_bufW;
         float sy = clientH / (float)_bufH;
-        _visual.SetTransform(Matrix3x2.CreateScale(sx, sy));
+        var center = new Vector2(clientW / 2f, clientH / 2f);
+        // Fit frame-res content to the window, then flip and zoom about the window centre.
+        var m = Matrix3x2.CreateScale(sx, sy);
+        if (_mirror)
+            m *= Matrix3x2.CreateScale(-1f, 1f, center);
+        if (_zoom != 1.0)
+            m *= Matrix3x2.CreateScale((float)_zoom, center);
+        _visual.SetTransform(m);
         _dcomp.Commit();
     }
 
