@@ -28,6 +28,10 @@
                           IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
             <ToggleSwitch Header="Click-through"
                           IsOn="{x:Bind Vm.ClickThrough, Mode=TwoWay}"/>
+            <ToggleSwitch Header="Mirror (selfie view)"
+                          IsOn="{x:Bind Vm.Mirror, Mode=TwoWay}"/>
+            <Slider Header="Zoom" Minimum="1" Maximum="3" StepFrequency="0.1"
+                    Value="{x:Bind Vm.Zoom, Mode=TwoWay}"/>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
