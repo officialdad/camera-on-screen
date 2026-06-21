@@ -20,7 +20,8 @@ public sealed class PInvokeShim : INativeShim
     private struct CosParams
     {
         public IntPtr camera_id;
-        public int green_screen_enabled; public double green_screen_strength;
+        public int green_screen_enabled; public double green_screen_expand;
+        public double green_screen_feather;
         public int eye_contact_enabled; public double eye_contact_sensitivity;
         public double eye_contact_look_away_range;
     }
@@ -70,7 +71,8 @@ public sealed class PInvokeShim : INativeShim
             {
                 camera_id = idPtr,
                 green_screen_enabled = p.GreenScreenEnabled ? 1 : 0,
-                green_screen_strength = p.GreenScreenStrength,
+                green_screen_expand = p.GreenScreenExpand,
+                green_screen_feather = p.GreenScreenFeather,
                 eye_contact_enabled = p.EyeContactEnabled ? 1 : 0,
                 eye_contact_sensitivity = p.EyeContactSensitivity,
                 eye_contact_look_away_range = p.EyeContactLookAwayRange,

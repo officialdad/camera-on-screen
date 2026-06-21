@@ -98,11 +98,13 @@ public class MainViewModelTests
     {
         var vm = Build(GpuTier.Rtx, out _);
         vm.GreenScreenEnabled = true;
-        vm.GreenScreenStrength = 0.7;
+        vm.GreenScreenExpand = 0.7;
+        vm.GreenScreenFeather = 0.2;
         vm.SelectedCamera = new CameraInfo("cam", "Cam");
         var p = vm.BuildParams();
         Assert.Equal("cam", p.CameraId);
-        Assert.Equal(0.7, p.GreenScreenStrength);
+        Assert.Equal(0.7, p.GreenScreenExpand);
+        Assert.Equal(0.2, p.GreenScreenFeather);
     }
 
     [Fact]
@@ -196,7 +198,7 @@ public class MainViewModelTests
         var vm = new MainViewModel(orch, shim);
 
         // Start then poll to confirm subscription is live
-        orch.Start(new ShimParams("cam", false, 1.0, false, 0.5, 0.5));
+        orch.Start(new ShimParams("cam", false, 0.0, 0.0, false, 0.5, 0.5));
         orch.PollStatus();
         Assert.Equal(10, vm.Fps);
 

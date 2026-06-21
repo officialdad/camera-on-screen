@@ -61,6 +61,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_params = *p;
     g_cameraId = p->camera_id ? p->camera_id : "";
     g_capture.SetGreenScreen(p->green_screen_enabled != 0);
+    g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }

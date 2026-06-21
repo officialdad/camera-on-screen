@@ -24,7 +24,8 @@ public sealed record OverlaySettings
 public sealed record EffectSettings
 {
     public bool GreenScreenEnabled { get; init; } = true;
-    public double GreenScreenStrength { get; init; } = 1.0;
+    public double GreenScreenExpand { get; init; }
+    public double GreenScreenFeather { get; init; }
     public bool EyeContactEnabled { get; init; }
     public double EyeContactSensitivity { get; init; } = 0.5;
     public double EyeContactLookAwayRange { get; init; } = 0.5;

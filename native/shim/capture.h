@@ -31,6 +31,8 @@ public:
 
     // Toggles AIGS for subsequent frames. Thread-safe; the worker owns the Aigs object.
     void SetGreenScreen(bool enabled);
+    // Sets matte post-process amounts (0..1). Thread-safe; worker reads per frame.
+    void SetMatteParams(double expand, double feather);
     // Snapshot for status polling. Thread-safe.
     bool GreenScreenActive() const;       // true only while AIGS is transforming frames
     std::string GreenScreenError() const; // empty when none

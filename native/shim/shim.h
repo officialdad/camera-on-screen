@@ -18,7 +18,8 @@ typedef struct {
 typedef struct {
     const char* camera_id;   // UTF-8, may be null
     int    green_screen_enabled;
-    double green_screen_strength;
+    double green_screen_expand;       // 0..1 matte dilate (was green_screen_strength, unused)
+    double green_screen_feather;      // 0..1 matte blur
     int    eye_contact_enabled;
     double eye_contact_sensitivity;
     double eye_contact_look_away_range;

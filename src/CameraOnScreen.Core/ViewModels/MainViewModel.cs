@@ -51,7 +51,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private CameraInfo? selectedCamera;
     [ObservableProperty] private bool greenScreenEnabled = true;
-    [ObservableProperty] private double greenScreenStrength = 1.0;
+    [ObservableProperty] private double greenScreenExpand;
+    [ObservableProperty] private double greenScreenFeather;
     [ObservableProperty] private bool eyeContactEnabled;
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
@@ -69,7 +70,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void LoadFrom(AppConfig config)
     {
         GreenScreenEnabled = config.Effects.GreenScreenEnabled;
-        GreenScreenStrength = config.Effects.GreenScreenStrength;
+        GreenScreenExpand = config.Effects.GreenScreenExpand;
+        GreenScreenFeather = config.Effects.GreenScreenFeather;
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
@@ -96,7 +98,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         },
         Effects = new EffectSettings
         {
-            GreenScreenEnabled = GreenScreenEnabled, GreenScreenStrength = GreenScreenStrength,
+            GreenScreenEnabled = GreenScreenEnabled, GreenScreenExpand = GreenScreenExpand,
+            GreenScreenFeather = GreenScreenFeather,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
             EyeContactLookAwayRange = EyeContactLookAwayRange
         },
@@ -109,7 +112,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // and pre-start changes don't drive a not-yet-started shim — Start sends the initial params.
     // The MVVM-toolkit source generator calls these On…Changed partials after each property setter.
     partial void OnGreenScreenEnabledChanged(bool value) => ApplyLiveParams();
-    partial void OnGreenScreenStrengthChanged(double value) => ApplyLiveParams();
+    partial void OnGreenScreenExpandChanged(double value) => ApplyLiveParams();
+    partial void OnGreenScreenFeatherChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
@@ -122,7 +126,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ShimParams BuildParams() => new(
         CameraId: SelectedCamera?.Id,
         GreenScreenEnabled: GreenScreenEnabled,
-        GreenScreenStrength: GreenScreenStrength,
+        GreenScreenExpand: GreenScreenExpand,
+        GreenScreenFeather: GreenScreenFeather,
         EyeContactEnabled: EyeContactEnabled,
         EyeContactSensitivity: EyeContactSensitivity,
         EyeContactLookAwayRange: EyeContactLookAwayRange);

@@ -18,7 +18,8 @@ public readonly record struct ShimStatus(
 public sealed record ShimParams(
     string? CameraId,
     bool GreenScreenEnabled,
-    double GreenScreenStrength,
+    double GreenScreenExpand,
+    double GreenScreenFeather,
     bool EyeContactEnabled,
     double EyeContactSensitivity,
     double EyeContactLookAwayRange);

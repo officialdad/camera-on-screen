@@ -19,6 +19,12 @@
         <StackPanel Grid.Row="1" Spacing="8">
             <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
                           IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
+            <Slider Header="Green-screen Expand" Minimum="0" Maximum="1" StepFrequency="0.05"
+                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                    Value="{x:Bind Vm.GreenScreenExpand, Mode=TwoWay}"/>
+            <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
+                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                    Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
             <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
                           IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
             <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"

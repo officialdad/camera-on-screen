@@ -25,9 +25,9 @@ public:
     void Stop();
 
     // Run GreenScreen on a tightly-packed BGRA buffer (width*height*4) in place:
-    // A = matte, RGB premultiplied by matte/255. Returns true if the matte was
-    // applied; false leaves 'bgra' untouched (caller keeps opaque passthrough).
-    bool ProcessFrame(uint8_t* bgra, int width, int height);
+    // A = matte, RGB premultiplied by matte/255. expand/feather (0..1) dilate then
+    // blur the matte before compositing. Returns true if applied; false leaves 'bgra' untouched.
+    bool ProcessFrame(uint8_t* bgra, int width, int height, double expand, double feather);
 
     bool IsReady() const { return ready_; }
     const std::string& LastError() const { return lastError_; }

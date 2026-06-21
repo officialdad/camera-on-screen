@@ -7,7 +7,7 @@ namespace CameraOnScreen.Core.Tests.Orchestration;
 public class OrchestratorTests
 {
     private static ShimParams Requested() =>
-        new(CameraId: "cam", GreenScreenEnabled: true, GreenScreenStrength: 1.0,
+        new(CameraId: "cam", GreenScreenEnabled: true, GreenScreenExpand: 0.5, GreenScreenFeather: 0.3,
             EyeContactEnabled: true, EyeContactSensitivity: 0.5, EyeContactLookAwayRange: 0.5);
 
     [Fact]
