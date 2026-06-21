@@ -563,9 +563,10 @@ bool EyeContact::ProcessFrame(uint8_t* bgra, int w, int h) {
 
     if (BindIO(impl, w, h) != NVCV_SUCCESS) { lastError_ = "BindIO failed"; ready_ = false; return false; }
     if (Upload(impl, bgra, w, h) != NVCV_SUCCESS) { lastError_ = "Upload (Transfer) failed"; return false; }
-    if (NvAR_Run(impl->handle, 0) != NVCV_SUCCESS) { lastError_ = "NvAR_Run failed"; return false; }
+    if (NvAR_Run(impl->handle) != NVCV_SUCCESS) { lastError_ = "NvAR_Run failed"; return false; }
+    // No explicit stream sync: NvAR has no CudaStreamSynchronize, and the GPU->CPU
+    // NvCVImage_Transfer in Download is host-blocking (as in the GazeRedirect sample).
     if (Download(impl, bgra, w, h) != NVCV_SUCCESS) { lastError_ = "Download (Transfer) failed"; return false; }
-    if (NvAR_CudaStreamSynchronize(impl->stream) != NVCV_SUCCESS) { lastError_ = "stream sync failed"; return false; }
     return true;
 }
 
@@ -580,13 +581,17 @@ bool EyeContact::ProcessFrame(uint8_t*, int, int) { return false; }
 #endif
 ```
 
-> **NvAR API cross-check (do this before building the real config):** open
-> `$(COS_AR_SDK_DIR)\samples\GazeRedirect\GazeEngine.cpp` and confirm the exact spellings of
-> `NvAR_Run` (arity: the sample calls `NvAR_Run(handle)` — if your header's signature is
-> `NvAR_Run(handle, flags)`, keep the `, 0`; otherwise drop it), `NvAR_CudaStreamSynchronize`
-> (if absent, replace with `cudaStreamSynchronize`/omit — the SDK runs synchronously per
-> `NvAR_Run`), and every `NvAR_Parameter_*` macro used above. The names above are taken
-> verbatim from the sample; reconcile any header drift and keep the build at 0 warnings.
+> **NvAR API facts (verified against the cloned `nvar/include/nvAR.h` for this plan):**
+> `NvAR_Run(NvAR_FeatureHandle handle)` is **one arg** (no flags) — the code above reflects
+> this. There is **no** `NvAR_CudaStreamSynchronize`; the code omits any stream sync (GPU→CPU
+> `NvCVImage_Transfer` is host-blocking). `NvAR_SetObject(handle, name, void* ptr, unsigned
+> long typeSize)` takes **`unsigned long`** — on Win64 LLP64 that is 32-bit, so passing
+> `sizeof(...)` (a 64-bit `size_t`) emits **C4267** at /W3. **Cast every `sizeof(...)` arg in
+> the `NvAR_SetObject` calls to `(unsigned long)`** to keep the build at 0 warnings (e.g.
+> `(unsigned long)sizeof(NvCVImage)`). The `NvAR_Parameter_*` macros stringize their argument
+> (`NvAR_Parameter_Config(ModelDir)` → `"NvAR_Parameter_Config_ModelDir"`), so any name
+> compiles; the names above are taken verbatim from `samples/GazeRedirect/GazeEngine.cpp`
+> (cross-check there if a runtime parameter error appears).
 
 - [ ] **Step 3: Add a `CosArSdkDir` property to the vcxproj**
 
