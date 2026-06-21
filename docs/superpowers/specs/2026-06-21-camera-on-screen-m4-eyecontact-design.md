@@ -125,7 +125,7 @@ eye-contact (AR root) DLLs each resolve correctly despite the shared setting.
   ```
   One `cos_query_capabilities` call returns both gates. The
   `[StructLayout(LayoutKind.Sequential)]` mirror in `PInvokeShim` must match byte-for-byte
-  on x64 (the existing 260-byte struct becomes 524 bytes: 4 + 256 + 4 + 256). `detail` /
+  on x64 (the existing 260-byte struct becomes 520 bytes: 4 + 256 + 4 + 256). `detail` /
   `ec_detail` are UTF-8. Verify with `dumpbin /exports` + a struct-parity check after the
   change.
 - **No new exports** (9 stays 9; the second gate rides in the existing
@@ -209,7 +209,7 @@ eye-contact (AR root) DLLs each resolve correctly despite the shared setting.
 - The native NvAR path is **not** unit-tested (guarded native code, same as M3 `aigs`).
 
 **Build verification:**
-- `dumpbin /exports` + struct-parity check after the `CosCaps` change (524 bytes x64).
+- `dumpbin /exports` + struct-parity check after the `CosCaps` change (520 bytes x64).
 - Pristine builds: 0 warnings across shim (SDK + stub), App, Core.
 - Deployed-DLL grep check (above).
 

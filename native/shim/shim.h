@@ -42,6 +42,7 @@ COS_API void cos_get_status(CosStatus* out);
 // Copies latest BGRA8 frame into dst (width*height*4 bytes). Returns 1 if a new frame was copied.
 COS_API int  cos_get_frame(uint8_t* dst, int* width, int* height, int dst_capacity);
 COS_API void cos_shutdown(void);
-// Probes whether AI Green Screen is available (SDK loads + effect creates + model loads).
-// Fills *out. Returns 1 if available, 0 otherwise. Safe to call before cos_start.
+// Probes AI Green Screen and Eye Contact availability (each SDK loads + effect creates +
+// model loads). Fills both gates in *out. Returns 1 if EITHER effect is available, 0 if
+// neither; callers read the per-gate ints. Safe to call before cos_start.
 COS_API int  cos_query_capabilities(CosCaps* out);

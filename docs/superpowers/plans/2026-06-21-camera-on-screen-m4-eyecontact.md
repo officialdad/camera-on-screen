@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Pristine builds: 0 warnings** across shim (SDK + stub), App, Core. Warnings are findings.
-- **C ABI struct parity is load-bearing.** `CosCaps` (C in `shim.h`) and its `[StructLayout(LayoutKind.Sequential)]` mirror in `PInvokeShim` must match byte-for-byte on x64. After this plan `CosCaps` = `int green_screen_available; char detail[256]; int eye_contact_available; char ec_detail[256]` = **524 bytes**. `detail`/`ec_detail` are UTF-8.
+- **C ABI struct parity is load-bearing.** `CosCaps` (C in `shim.h`) and its `[StructLayout(LayoutKind.Sequential)]` mirror in `PInvokeShim` must match byte-for-byte on x64. After this plan `CosCaps` = `int green_screen_available; char detail[256]; int eye_contact_available; char ec_detail[256]` = **520 bytes**. `detail`/`ec_detail` are UTF-8.
 - **9 C exports stay 9.** No new exports — the second gate rides in the existing `cos_query_capabilities`.
 - **Native effects are worker-thread-local** (CUDA/NvAR thread affinity). `cos_set_params` (UI thread) only flips atomics. Status crosses threads via atomics + a leaf-lock mutex never nested under `g_state.mtx`/`g_lifecycleMtx`.
 - **Build guards are orthogonal.** `COS_HAS_MAXINE` (green screen, VFX) and `COS_HAS_MAXINE_AR` (eye contact, AR) are independent; the shim must build and Core tests must pass with neither, either, or both. Without a guard the corresponding effect is a passthrough stub.
@@ -687,7 +687,7 @@ Grow `CosCaps` with the second gate (byte-parity both sides) and fill it from `E
 
 **Interfaces:**
 - Consumes: `EyeContact::Probe` (Task 3), `ShimCapabilities` 4-arg ctor (Task 1).
-- Produces: `CosCaps { int green_screen_available; char detail[256]; int eye_contact_available; char ec_detail[256]; }` (524 bytes x64) on both sides.
+- Produces: `CosCaps { int green_screen_available; char detail[256]; int eye_contact_available; char ec_detail[256]; }` (520 bytes x64) on both sides.
 
 - [ ] **Step 1: Extend the C struct in `shim.h`**
 
