@@ -13,6 +13,7 @@
 #include "nvCVImage.h"
 #include "nvVideoEffects.h"
 #include "nvVFXGreenScreen.h" // defines NVVFX_FX_GREEN_SCREEN "GreenScreen"
+#include "paths.h"
 
 // The proxy stub (nvVideoEffectsProxy.cpp) declares this as extern; we define it here.
 // When non-null it points at the dir that holds NVVideoEffects.dll, which the proxy
@@ -42,12 +43,26 @@ bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& er
         return true;
     }
     n = GetEnvironmentVariableA("COS_VFX_SDK_DIR", buf, sizeof(buf));
-    if (n == 0 || n >= sizeof(buf)) { err = "COS_VFX_RUNTIME_DIR / COS_VFX_SDK_DIR not set"; return false; }
-    std::string root(buf, n);
-    if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
-    binDir   = root + "\\bin";
-    modelDir = root + "\\bin\\models";
-    return true;
+    if (n > 0 && n < sizeof(buf)) {
+        std::string root(buf, n);
+        if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
+        binDir   = root + "\\bin";
+        modelDir = root + "\\bin\\models";
+        return true;
+    }
+    // Ship default: runtime bundled beside the app at <shimDir>\maxine (shared co-versioned
+    // root; green-screen models in models\vfx).
+    std::string appDir = ShimModuleDir();
+    if (!appDir.empty()) {
+        std::string maxine = appDir + "\\maxine";
+        if (DirExists(maxine)) {
+            binDir   = maxine;
+            modelDir = maxine + "\\models\\vfx";
+            return true;
+        }
+    }
+    err = "VFX runtime not found: set COS_VFX_RUNTIME_DIR or bundle maxine\\ beside the app";
+    return false;
 }
 
 // Points the VFX proxy global at the bin dir so NVVideoEffects.dll is found.

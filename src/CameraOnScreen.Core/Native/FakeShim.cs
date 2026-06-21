@@ -33,5 +33,6 @@ public sealed class FakeShim : INativeShim
             EyeContactAvailable,
             EyeContactAvailable ? "fake: ec available" : "fake: ec unavailable");
 
-    public void Dispose() { }
+    public bool Disposed { get; private set; }
+    public void Dispose() => Disposed = true;
 }

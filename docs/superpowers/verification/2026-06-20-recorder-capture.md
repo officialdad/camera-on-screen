@@ -109,3 +109,51 @@ $env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
 - `cos_query_capabilities` result: effect available (toggles enabled, green screen runs) → probe returned available on the RTX 3090 with `COS_VFX_SDK_DIR` set.
 
 **M3 user gate: COMPLETE.**
+
+---
+
+## M5 part 1 — App-relative SDK discovery (bundled `maxine\`)
+
+Date: 2026-06-21
+Branch: `feat/m5-app-relative-discovery`
+Build: .NET 8.0 + VS2022 Build Tools (MSVC v143); shim SDK config (`COS_HAS_MAXINE` + `COS_HAS_MAXINE_AR`).
+Target machine: Windows 10 Pro 19045, NVIDIA RTX 3090, camera "Brio 100".
+Change under test: both Maxine resolvers gained a `<app>\maxine\` tier (env vars now an optional dev override). Single shared `maxine\` root: shared TRT/CUDA DLLs + `NVVideoEffects.dll` + `nvARPose.dll` + `models\vfx` + `models\ar`.
+
+### Bundle assembled for the test
+
+`src\CameraOnScreen.App\bin\Debug\net8.0-windows10.0.19041.0\win-x64\maxine\` (2.1 GB), hand-copied:
+- VFX 0.7.6 flat runtime (`VideoFX-0.7.6`) DLLs → `maxine\`; its `models\` → `maxine\models\vfx\`.
+- AR 0.8.7 install (`%ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK`) DLLs → `maxine\` (`nvARPose.dll`, `cufft*`, `nvvpi2`); its `models\` → `maxine\models\ar\`.
+- Shared heavy runtime confirmed **byte-identical** between the two SDKs (sha256): `nvinfer_10.dll`, `cudart64_12.dll`, `cublas64_12.dll`, `nvinfer_plugin_10.dll` — the co-version invariant. `NVCVImage.dll` differs (VFX 0.7.6 Jan-22 vs AR Jan-21); the **VFX 0.7.6** copy was kept (the AR-matched build blessed by the M4 co-version fix).
+
+### Objectively verified (automated, this session)
+
+| # | Claim | Evidence |
+|---|-------|----------|
+| 1 | Shim SDK build pristine, both effects compiled in | `Build succeeded. 0 Warning(s) 0 Error(s)`; deployed DLL has `GreenScreen` + `GazeRedirection`, no "not built in" stub string. |
+| 2 | CI-stub build still pristine (paths.cpp unguarded) | `0 Warning(s) 0 Error(s)` with `/p:CosVfxSdkDir= /p:CosArSdkDir=` (verified by Task-1 build + final reviewer's independent rebuild). |
+| 3 | App rebuild pristine | `dotnet build -t:Rebuild`: `0 Warning(s) 0 Error(s)`. |
+| 4 | **Both resolvers find `<app>\maxine\` with NO env vars** | Headless combined probe `bundle_probe.exe` (links `aigs.cpp`+`eyecontact.cpp`+`paths.cpp`+ both proxy sets), run with all `COS_*` **unset** and **cwd = `%TEMP%`** (proves CWD-independence): `VFX  Probe: AVAILABLE (GreenScreen available)` / `AR   Probe: AVAILABLE (GazeRedirection available)`, exit 0. |
+| 5 | TRT engines load from the bundle (models present + co-version holds) | A passing `Probe()` for each effect performs `NvVFX_CreateEffect`+`NvVFX_Load` / `NvAR_Create`+`NvAR_Load` against the bundled models — both succeeded, i.e. no `cudaErrorNoKernelImageForDevice`, confirming the single shared `maxine\` runtime co-versions correctly. |
+
+Conclusion from #4–#5: `ShimModuleDir()` → `<app>\maxine` resolution and TensorRT engine load are proven end-to-end for **both** effects with zero environment configuration. Probe tool committed at `native/shim/smoke/bundle_probe.cpp` (+ `build_bundle_probe.bat`).
+
+### Remaining manual gate (user — on-screen pixels only)
+
+The resolver/load path is proven above. What automated tooling still cannot observe (GDI can't see the overlay — `WS_EX_NOREDIRECTIONBITMAP`, same as M2/M3/M4) is the **live on-screen result**, which is unchanged effect behavior from M4:
+
+**Setup (note: NO `COS_*` env vars — that is the point):**
+```powershell
+# ensure none are set in this shell
+Remove-Item Env:COS_VFX_RUNTIME_DIR,Env:COS_VFX_SDK_DIR,Env:COS_AR_RUNTIME_DIR,Env:COS_AR_SDK_DIR -ErrorAction SilentlyContinue
+& "src\CameraOnScreen.App\bin\Debug\net8.0-windows10.0.19041.0\win-x64\CameraOnScreen.App.exe"
+```
+**Steps:** select "Brio 100" → Start. Confirm both toggles are **enabled** (probe passed from the bundle). Toggle AI Green Screen — transparent bg. Toggle Eye Contact — gaze redirects. Both ON together. (Capture via OBS/Game Bar as in M3/M4 if recording confirmation is wanted.)
+
+### Result (to be filled by the user)
+
+- Both toggles enabled with `COS_*` unset (probe resolved from `maxine\`): _pending on-screen confirm (headlessly verified AVAILABLE above)_
+- Green screen live: _pending_
+- Eye contact live: _pending_
+- Both together: _pending_

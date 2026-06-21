@@ -210,6 +210,21 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void Dispose_disposes_the_shim()
+    {
+        // The shim owns the native capture worker thread; Dispose() must reach cos_shutdown
+        // (PInvokeShim.Dispose) so the worker is joined. Without it the native global std::thread
+        // is destroyed while joinable at process exit -> std::terminate -> debug abort dialog.
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        Assert.False(shim.Disposed);
+
+        vm.Dispose();
+
+        Assert.True(shim.Disposed);
+    }
+
+    [Fact]
     public async Task ProbeCapabilitiesAsync_publishes_eye_contact_gate_to_vm()
     {
         var shim = new FakeShim { GreenScreenAvailable = false, EyeContactAvailable = true };
