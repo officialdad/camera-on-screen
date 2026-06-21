@@ -15,3 +15,7 @@ x86/
 *.exe
 *.exp
 *.lib
+
+# Project-scoped agent skills — user-scoped instead (relocated to ~/.claude/skills)
+/.agents/
+/skills-lock.json
