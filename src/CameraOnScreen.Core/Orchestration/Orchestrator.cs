@@ -15,21 +15,30 @@ public sealed class Orchestrator
     {
         _shim = shim;
         _tier = tier;
-
-        // Probe the shim to determine real effect availability.
-        // The tier (RTX heuristic) is kept only for display; the probe is authoritative.
-        var caps = _shim.QueryCapabilities();
-        EffectsAvailable = caps.GreenScreenAvailable;
-        CapabilityDetail = caps.Detail;
+        // No probe here: QueryCapabilities does a ~1s TensorRT model load, so running it in the ctor
+        // froze the UI thread at startup. Capabilities are probed lazily via ProbeCapabilities()
+        // (callers run it off the UI thread). Until then effects stay gated OFF (safe default).
     }
 
     public OrchestratorState State { get; private set; } = OrchestratorState.Idle;
 
-    /// <summary>True when the native shim reports Green Screen can actually run.</summary>
-    public bool EffectsAvailable { get; }
+    /// <summary>True when the native shim reports Green Screen can actually run. False until
+    /// <see cref="ProbeCapabilities"/> has run.</summary>
+    public bool EffectsAvailable { get; private set; }
 
-    /// <summary>Human-readable reason string from the shim probe (e.g. "SDK not found").</summary>
-    public string CapabilityDetail { get; }
+    /// <summary>Human-readable reason string from the shim probe (e.g. "SDK not found"). Shows a
+    /// "checking" placeholder until <see cref="ProbeCapabilities"/> has run.</summary>
+    public string CapabilityDetail { get; private set; } = "Checking effect availability…";
+
+    /// <summary>Runs the (blocking) native capability probe and records the result. Run this OFF the
+    /// UI thread — the real probe does a ~1s TensorRT model load. The tier (RTX heuristic) is kept
+    /// only for display; this probe is the authoritative effect gate.</summary>
+    public void ProbeCapabilities()
+    {
+        var caps = _shim.QueryCapabilities();
+        EffectsAvailable = caps.GreenScreenAvailable;
+        CapabilityDetail = caps.Detail;
+    }
 
     /// <summary>The detected GPU tier — used for display only, not for effect gating.</summary>
     public GpuTier GpuTier => _tier;
@@ -38,12 +47,20 @@ public sealed class Orchestrator
 
     public void Start(ShimParams requested)
     {
+        ApplyParams(requested);
+        _shim.Start();
+        State = OrchestratorState.Running;
+    }
+
+    /// <summary>Push effect params to the shim — at Start and on every live toggle/slider change
+    /// while running. Applies the effect gate: when effects are unavailable they are forced off
+    /// (so a UI toggle can never enable an effect the probe said can't run).</summary>
+    public void ApplyParams(ShimParams requested)
+    {
         var effective = EffectsAvailable
             ? requested
             : requested with { GreenScreenEnabled = false, EyeContactEnabled = false };
         _shim.SetParams(effective);
-        _shim.Start();
-        State = OrchestratorState.Running;
     }
 
     public void Stop()

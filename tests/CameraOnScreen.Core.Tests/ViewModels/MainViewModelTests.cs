@@ -21,19 +21,76 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void Probe_unavailable_disables_effects_in_vm()
+    public void Effects_gated_off_before_probe_runs()
     {
-        // Explicitly set GreenScreenAvailable = false; tier is irrelevant.
-        var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: false);
+        // Probe is async now — until ProbeCapabilitiesAsync completes, effects stay gated off and
+        // the note shows the "checking" placeholder (so the toggles aren't briefly enabled).
+        var vm = Build(GpuTier.Rtx, out _, greenScreenAvailable: true);
         Assert.False(vm.EffectsAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(vm.CapabilityDetail));
     }
 
     [Fact]
-    public void NonRtx_tier_does_not_gate_effects_when_probe_says_available()
+    public async Task Probe_unavailable_disables_effects_and_surfaces_detail()
+    {
+        // Explicitly set GreenScreenAvailable = false; tier is irrelevant. After the async probe the
+        // VM must keep effects off AND surface the shim's real reason string (not a static message).
+        var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: false);
+        await vm.ProbeCapabilitiesAsync();
+        Assert.False(vm.EffectsAvailable);
+        Assert.Equal("fake: unavailable", vm.CapabilityDetail);
+    }
+
+    [Fact]
+    public async Task NonRtx_tier_does_not_gate_effects_when_probe_says_available()
     {
         // Non-RTX tier must NOT disable effects when the shim probe reports available.
         var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: true);
+        await vm.ProbeCapabilitiesAsync();
         Assert.True(vm.EffectsAvailable);
+        Assert.Equal("fake: available", vm.CapabilityDetail);
+    }
+
+    [Fact]
+    public async Task Toggling_effect_while_running_pushes_params_live_to_shim()
+    {
+        // Bug: SetParams only fired at Start, so toggling green screen while running was a no-op
+        // until the next Stop→Start. Live toggles must push fresh params to the shim immediately.
+        var vm = Build(GpuTier.Rtx, out var shim, greenScreenAvailable: true);
+        await vm.ProbeCapabilitiesAsync();
+        vm.SelectedCamera = new CameraInfo("cam", "Cam");
+        vm.GreenScreenEnabled = true;
+        vm.StartCommand.Execute(null);
+        Assert.True(shim.LastParams!.GreenScreenEnabled);
+
+        vm.GreenScreenEnabled = false;      // toggle OFF while running
+        Assert.False(shim.LastParams!.GreenScreenEnabled);
+
+        vm.GreenScreenEnabled = true;       // toggle back ON while running
+        Assert.True(shim.LastParams!.GreenScreenEnabled);
+    }
+
+    [Fact]
+    public void Toggling_effect_before_start_does_not_push_to_shim()
+    {
+        // Before Start the shim isn't running; live-push must be gated on IsRunning so config load
+        // (LoadFrom) and pre-start fiddling don't drive a not-yet-started shim. Start sends params.
+        var vm = Build(GpuTier.Rtx, out var shim, greenScreenAvailable: true);
+        vm.GreenScreenEnabled = false;
+        vm.GreenScreenEnabled = true;
+        Assert.Null(shim.LastParams);
+    }
+
+    [Fact]
+    public async Task Live_toggle_respects_probe_gate()
+    {
+        // When effects are unavailable, a live toggle ON must still be forced OFF (same gate as Start).
+        var vm = Build(GpuTier.Rtx, out var shim, greenScreenAvailable: false);
+        await vm.ProbeCapabilitiesAsync();
+        vm.SelectedCamera = new CameraInfo("cam", "Cam");
+        vm.StartCommand.Execute(null);
+        vm.GreenScreenEnabled = true;
+        Assert.False(shim.LastParams!.GreenScreenEnabled);
     }
 
     [Fact]

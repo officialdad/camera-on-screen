@@ -15,8 +15,10 @@ public class OrchestratorTests
     {
         // When the shim reports effects available the orchestrator must forward them unchanged.
         // GpuTier is irrelevant to the gate; Rtx is used here only as a realistic construction arg.
+        // Capabilities are probed lazily now (not in the ctor), so probe before Start.
         var shim = new FakeShim { GreenScreenAvailable = true };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
         orch.Start(Requested());
         Assert.Equal(OrchestratorState.Running, orch.State);
         Assert.True(shim.LastParams!.GreenScreenEnabled);
@@ -29,6 +31,7 @@ public class OrchestratorTests
         // When the shim reports effects unavailable, the orchestrator must strip them — even on RTX.
         var shim = new FakeShim { GreenScreenAvailable = false };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
         Assert.False(orch.EffectsAvailable);
         orch.Start(Requested());
         Assert.False(shim.LastParams!.GreenScreenEnabled);
@@ -100,6 +103,7 @@ public class OrchestratorTests
     {
         var shim = new FakeShim { GreenScreenAvailable = false };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
         Assert.False(orch.EffectsAvailable);
     }
 
@@ -108,6 +112,30 @@ public class OrchestratorTests
     {
         var shim = new FakeShim { GreenScreenAvailable = true };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
         Assert.True(orch.EffectsAvailable);
+    }
+
+    // --- Deferred (lazy/async) probe: ctor must NOT call the native probe ---
+
+    [Fact]
+    public void Effects_Gated_Off_Before_Probe_Runs()
+    {
+        // The real probe does a ~1s TensorRT model load; it must not run in the ctor. Until
+        // ProbeCapabilities() is called, effects stay gated OFF regardless of what the shim reports.
+        var shim = new FakeShim { GreenScreenAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        Assert.False(orch.EffectsAvailable);
+        orch.ProbeCapabilities();
+        Assert.True(orch.EffectsAvailable);
+    }
+
+    [Fact]
+    public void ProbeCapabilities_Records_Detail_From_Shim()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.Equal("fake: unavailable", orch.CapabilityDetail);
     }
 }

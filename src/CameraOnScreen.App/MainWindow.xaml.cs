@@ -62,6 +62,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             Vm.PollStatusTick();
         };
         _timer.Start();
+
+        // Probe effect availability OFF the UI thread (the real probe does a ~1s TensorRT model
+        // load — running it in the ctor froze startup). Until it completes, EffectsAvailable is false
+        // (toggles disabled) and the note shows "Checking effect availability…". `await` resumes on
+        // the UI dispatcher, so the resulting OneWay binding updates happen on the UI thread.
+        _ = Vm.ProbeCapabilitiesAsync();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -123,6 +129,10 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (e.PropertyName is nameof(MainViewModel.IsRunning) or nameof(MainViewModel.Fps))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusLine)));
+        else if (e.PropertyName == nameof(MainViewModel.EffectsAvailable))
+            // The note's Visibility is derived from EffectsAvailable; re-evaluate it when the probe
+            // result lands (Text is bound directly to Vm.CapabilityDetail and updates on its own).
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotAvailableVisibility)));
         else if (e.PropertyName == nameof(MainViewModel.Locked))
             _overlay.SetLocked(Vm.Locked);
         else if (e.PropertyName == nameof(MainViewModel.ClickThrough))

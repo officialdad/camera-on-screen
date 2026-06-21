@@ -25,13 +25,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _orchestrator = orchestrator;
         ShimRef = shim;
+        // Mirror the orchestrator's pre-probe state: effects gated off, "checking" placeholder note.
+        // ProbeCapabilitiesAsync publishes the real values once the (deferred) probe completes.
         EffectsAvailable = orchestrator.EffectsAvailable;
+        CapabilityDetail = orchestrator.CapabilityDetail;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
 
     // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
     public void PollStatusTick() => _orchestrator.PollStatus();
+
+    /// <summary>Runs the native capability probe off the UI thread, then publishes the result to the
+    /// observable props. The probe does a ~1s TensorRT model load, so it must not block startup. In
+    /// the app `await` resumes on the UI dispatcher (so the XAML bindings update on the UI thread);
+    /// in unit tests (no SynchronizationContext) it resumes on the thread pool.</summary>
+    public async Task ProbeCapabilitiesAsync()
+    {
+        await Task.Run(_orchestrator.ProbeCapabilities);
+        EffectsAvailable = _orchestrator.EffectsAvailable;
+        CapabilityDetail = _orchestrator.CapabilityDetail;
+    }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
 
@@ -42,6 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private bool effectsAvailable;
+    [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool locked;
     [ObservableProperty] private bool clickThrough;
@@ -82,6 +97,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         },
         Hotkeys = _hotkeys
     };
+
+    // Live param push: when the user flips an effect toggle or moves a slider WHILE running, send the
+    // fresh params to the shim immediately. Without this, SetParams only fired at Start, so toggling
+    // green screen did nothing until the next Stop→Start. Gated on IsRunning so config load (LoadFrom)
+    // and pre-start changes don't drive a not-yet-started shim — Start sends the initial params.
+    // The MVVM-toolkit source generator calls these On…Changed partials after each property setter.
+    partial void OnGreenScreenEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnGreenScreenStrengthChanged(double value) => ApplyLiveParams();
+    partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
+    partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
+
+    private void ApplyLiveParams()
+    {
+        if (IsRunning) _orchestrator.ApplyParams(BuildParams());
+    }
 
     public ShimParams BuildParams() => new(
         CameraId: SelectedCamera?.Id,

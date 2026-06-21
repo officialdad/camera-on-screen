@@ -17,12 +17,12 @@
                   DisplayMemberPath="Name" Width="280"/>
 
         <StackPanel Grid.Row="1" Spacing="8">
-            <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable}"
+            <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
                           IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
-            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EffectsAvailable}"
+            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
                           IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
-            <TextBlock Text="Effects require an RTX GPU."
-                       Visibility="{x:Bind NotAvailableVisibility}"
+            <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
+                       Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
                        Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
             <ToggleSwitch Header="Lock overlay"
                           IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
