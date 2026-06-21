@@ -38,6 +38,7 @@ Describe 'bundle-maxine' {
         Test-Path (Join-Path $out 'maxine\NVVideoEffects.dll')      | Should -BeTrue
         Test-Path (Join-Path $out 'maxine\nvARPose.dll')            | Should -BeTrue
         Test-Path (Join-Path $out 'maxine\NVIDIA Maxine EULA.pdf')  | Should -BeTrue
+        Test-Path (Join-Path $out 'maxine\ThirdPartyLicenses.txt')  | Should -BeTrue
         Test-Path (Join-Path $out 'maxine\models\vfx\AIGS_288x512_86_m0.engine.trtpkg') | Should -BeTrue
         Test-Path (Join-Path $out 'maxine\models\ar\gazeredir_encoder_fp16_86.engine.trtpkg') | Should -BeTrue
         Test-Path (Join-Path $out 'maxine\models\ar\face_detection_86.engine.trtpkg')   | Should -BeTrue
@@ -48,6 +49,10 @@ Describe 'bundle-maxine' {
     }
     It 'throws when an AR-only shared DLL is missing from the AR source' {
         Remove-Item (Join-Path $ar 'cufft64_11.dll')
+        { & $script -OutDir $out -VfxRuntime $vfx -ArRuntime $ar -ManifestPath $manifest } | Should -Throw
+    }
+    It 'throws when a models source dir is missing' {
+        Remove-Item -Recurse -Force (Join-Path $vfx 'models')
         { & $script -OutDir $out -VfxRuntime $vfx -ArRuntime $ar -ManifestPath $manifest } | Should -Throw
     }
 }

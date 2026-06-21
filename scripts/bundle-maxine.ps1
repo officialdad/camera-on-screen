@@ -22,6 +22,7 @@ function Copy-Required {
 }
 function Copy-Glob {
     param([string]$Src, [string]$Dst, [string]$Glob)
+    if (-not (Test-Path -LiteralPath $Src)) { throw "models source dir not found: '$Src'" }
     $files = @(Get-ChildItem -LiteralPath $Src -Filter $Glob -File -ErrorAction SilentlyContinue)
     if ($files.Count -eq 0) { throw "no files matched '$Glob' in '$Src'" }
     foreach ($f in $files) { Copy-Item -LiteralPath $f.FullName -Destination $Dst -Force }
