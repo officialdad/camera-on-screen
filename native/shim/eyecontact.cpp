@@ -11,6 +11,7 @@
 #include "nvCVImage.h"
 #include "nvAR.h"
 #include "nvAR_defs.h"
+#include "paths.h"
 
 // The AR proxy stub (nvARProxy.cpp) declares this extern; define it here. When non-null it
 // is SetDllDirectory'd before LoadLibrary(nvARPose.dll). When null the proxy auto-falls back
@@ -18,21 +19,40 @@
 char* g_nvARSDKPath = nullptr;
 
 namespace {
-// Resolves the AR runtime root (holds nvARPose.dll) and its models dir. Prefers
-// COS_AR_RUNTIME_DIR; otherwise defaults to the Program Files install.
+// Resolves the AR runtime root (holds nvARPose.dll) and its models dir.
+// Tier 1: COS_AR_RUNTIME_DIR env var (dev override).
+// Tier 2: <shimDir>\maxine bundled beside the app (ship default, ABOVE ProgramFiles so a
+//         shipped app stays self-contained and never loads a non-co-versioned system AR SDK).
+// Tier 3: %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK (dev last resort).
 bool ResolveArPaths(std::string& runtimeDir, std::string& modelDir, std::string& err) {
     char buf[1024] = {0};
+    // Tier 1: dev override.
     DWORD n = GetEnvironmentVariableA("COS_AR_RUNTIME_DIR", buf, sizeof(buf));
-    std::string root;
     if (n > 0 && n < sizeof(buf)) {
-        root.assign(buf, n);
-    } else {
-        char pf[1024] = {0};
-        DWORD m = GetEnvironmentVariableA("ProgramFiles", pf, sizeof(pf));
-        if (m == 0 || m >= sizeof(pf)) { err = "ProgramFiles not set"; return false; }
-        root.assign(pf, m);
-        root += "\\NVIDIA Corporation\\NVIDIA AR SDK";
+        std::string root(buf, n);
+        if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
+        runtimeDir = root;
+        modelDir   = root + "\\models";
+        return true;
     }
+    // Tier 2 (ship default): runtime bundled beside the app at <shimDir>\maxine (shared
+    // co-versioned root; gaze models in models\ar). Placed ABOVE the ProgramFiles install so a
+    // shipped app stays self-contained and never loads a non-co-versioned system AR SDK.
+    std::string appDir = ShimModuleDir();
+    if (!appDir.empty()) {
+        std::string maxine = appDir + "\\maxine";
+        if (DirExists(maxine)) {
+            runtimeDir = maxine;
+            modelDir   = maxine + "\\models\\ar";
+            return true;
+        }
+    }
+    // Tier 3 (dev last resort): the installed AR SDK under Program Files.
+    char pf[1024] = {0};
+    DWORD m = GetEnvironmentVariableA("ProgramFiles", pf, sizeof(pf));
+    if (m == 0 || m >= sizeof(pf)) { err = "AR runtime not found: set COS_AR_RUNTIME_DIR or bundle maxine\\ beside the app"; return false; }
+    std::string root(pf, m);
+    root += "\\NVIDIA Corporation\\NVIDIA AR SDK";
     if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
     runtimeDir = root;
     modelDir   = root + "\\models";
