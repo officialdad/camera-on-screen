@@ -25,8 +25,11 @@
             <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
                     IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
                     Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
-            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
+            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EyeContactAvailable, Mode=OneWay}"
                           IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
+            <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
+                       Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
             <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
                        Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
                        Foreground="{ThemeResource SystemFillColorCautionBrush}"/>

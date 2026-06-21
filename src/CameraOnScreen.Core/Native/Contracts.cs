@@ -2,8 +2,11 @@ namespace CameraOnScreen.Core.Native;
 
 public readonly record struct CameraInfo(string Id, string Name);
 
-/// <summary>Result of probing the native shim for effect availability.</summary>
-public sealed record ShimCapabilities(bool GreenScreenAvailable, string Detail);
+/// <summary>Result of probing the native shim for effect availability. Eye-contact fields default
+/// so existing 2-arg call sites keep compiling.</summary>
+public sealed record ShimCapabilities(
+    bool GreenScreenAvailable, string Detail,
+    bool EyeContactAvailable = false, string EyeContactDetail = "");
 
 public enum GazeState { Unknown, OnCamera, Redirected, RealEyes }
 

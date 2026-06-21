@@ -16,7 +16,7 @@ public class OrchestratorTests
         // When the shim reports effects available the orchestrator must forward them unchanged.
         // GpuTier is irrelevant to the gate; Rtx is used here only as a realistic construction arg.
         // Capabilities are probed lazily now (not in the ctor), so probe before Start.
-        var shim = new FakeShim { GreenScreenAvailable = true };
+        var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = true };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
         orch.ProbeCapabilities();
         orch.Start(Requested());
@@ -137,5 +137,54 @@ public class OrchestratorTests
         var orch = new Orchestrator(shim, GpuTier.Rtx);
         orch.ProbeCapabilities();
         Assert.Equal("fake: unavailable", orch.CapabilityDetail);
+    }
+
+    // --- M4: split eye-contact gate ---
+
+    [Fact]
+    public void EyeContact_available_independent_of_greenscreen()
+    {
+        // Green screen unavailable, eye contact available: GS stripped, EC forwarded.
+        var shim = new FakeShim { GreenScreenAvailable = false, EyeContactAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.False(orch.EffectsAvailable);
+        Assert.True(orch.EyeContactAvailable);
+        orch.Start(Requested());
+        Assert.False(shim.LastParams!.GreenScreenEnabled);
+        Assert.True(shim.LastParams!.EyeContactEnabled);
+    }
+
+    [Fact]
+    public void EyeContact_unavailable_forces_eye_contact_off()
+    {
+        // Eye contact unavailable, green screen available: EC stripped, GS forwarded.
+        var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.True(orch.EffectsAvailable);
+        Assert.False(orch.EyeContactAvailable);
+        orch.Start(Requested());
+        Assert.True(shim.LastParams!.GreenScreenEnabled);
+        Assert.False(shim.LastParams!.EyeContactEnabled);
+    }
+
+    [Fact]
+    public void EyeContact_gated_off_before_probe_runs()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        Assert.False(orch.EyeContactAvailable);
+        orch.ProbeCapabilities();
+        Assert.True(orch.EyeContactAvailable);
+    }
+
+    [Fact]
+    public void ProbeCapabilities_records_eye_contact_detail()
+    {
+        var shim = new FakeShim { EyeContactAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.Equal("fake: ec unavailable", orch.EyeContactDetail);
     }
 }

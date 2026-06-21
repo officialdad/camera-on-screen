@@ -1,5 +1,6 @@
 #include "capture.h"
 #include "aigs.h"
+#include "eyecontact.h"
 
 #include <atomic>
 #include <mutex>
@@ -39,6 +40,11 @@ struct CaptureState {
     std::atomic<bool>     greenScreenActive{false};  // set by worker
     std::mutex            gsErrMtx;
     std::string           gsError;                   // guarded by gsErrMtx
+
+    std::atomic<bool>     eyeContactEnabled{false}; // set by UI thread, read by worker
+    std::atomic<bool>     eyeContactActive{false};  // set by worker
+    std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
+    std::string           ecError;                   // guarded by ecErrMtx
 };
 
 // Module-level singleton state. Capture is used as a single global instance by the
@@ -249,6 +255,7 @@ void Capture::WorkerLoop() {
     // Aigs must live entirely on the worker thread: CUDA stream/effect have thread
     // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
     Aigs aigs;
+    EyeContact eyeContact;
 
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
@@ -289,6 +296,33 @@ void Capture::WorkerLoop() {
 
         if (sample) {
             if (CopyFrame(sample, width, height, stride, scratch)) {
+                // Eye Contact runs first, on the raw frame (needs real eyes/landmarks).
+                const bool ecWant = g_state.eyeContactEnabled.load(std::memory_order_acquire);
+                if (ecWant && !eyeContact.IsReady()) {
+                    if (!eyeContact.Start()) {
+                        std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                        const std::string& newErr = eyeContact.LastError();
+                        if (g_state.ecError != newErr) g_state.ecError = newErr;
+                    }
+                } else if (!ecWant && eyeContact.IsReady()) {
+                    eyeContact.Stop();
+                    std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                    if (!g_state.ecError.empty()) g_state.ecError.clear();
+                }
+
+                bool ecApplied = false;
+                if (ecWant && eyeContact.IsReady()) {
+                    ecApplied = eyeContact.ProcessFrame(scratch.data(), width, height);
+                    std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                    if (!ecApplied) {
+                        const std::string& newErr = eyeContact.LastError();
+                        if (g_state.ecError != newErr) g_state.ecError = newErr;
+                    } else if (!g_state.ecError.empty()) {
+                        g_state.ecError.clear();
+                    }
+                }
+                g_state.eyeContactActive.store(ecApplied, std::memory_order_release);
+
                 // Lazily start/stop AIGS to match the enabled flag.
                 const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
                 if (want && !aigs.IsReady()) {
@@ -335,7 +369,8 @@ void Capture::WorkerLoop() {
         }
     }
 
-    // Tear down AIGS before releasing the reader (thread-affinity requirement).
+    // Tear down Eye Contact and AIGS before releasing the reader (thread-affinity requirement).
+    eyeContact.Stop();
     aigs.Stop();
     SafeRelease(reader);
     if (SUCCEEDED(coHr)) CoUninitialize();
@@ -368,8 +403,17 @@ void Capture::Stop() {
     // true just before stopping, so clear it here to avoid a stale status read.
     g_state.greenScreenActive.store(false, std::memory_order_release);
     // Clear the error so the next session starts clean (no stale error from prior run).
-    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-    g_state.gsError.clear();
+    {
+        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+        g_state.gsError.clear();
+    }
+    // Eye contact: reset active flag and clear error in its own separate lock scope
+    // (ecErrMtx is a leaf lock — never nested under gsErrMtx).
+    g_state.eyeContactActive.store(false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+        g_state.ecError.clear();
+    }
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
@@ -398,6 +442,19 @@ bool Capture::GreenScreenActive() const {
 std::string Capture::GreenScreenError() const {
     std::lock_guard<std::mutex> e(g_state.gsErrMtx);
     return g_state.gsError;
+}
+
+void Capture::SetEyeContact(bool enabled) {
+    g_state.eyeContactEnabled.store(enabled, std::memory_order_release);
+}
+
+bool Capture::EyeContactActive() const {
+    return g_state.eyeContactActive.load(std::memory_order_acquire);
+}
+
+std::string Capture::EyeContactError() const {
+    std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+    return g_state.ecError;
 }
 
 Capture::~Capture() {

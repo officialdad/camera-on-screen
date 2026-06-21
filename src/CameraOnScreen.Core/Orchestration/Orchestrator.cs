@@ -30,6 +30,12 @@ public sealed class Orchestrator
     /// "checking" placeholder until <see cref="ProbeCapabilities"/> has run.</summary>
     public string CapabilityDetail { get; private set; } = "Checking effect availability…";
 
+    /// <summary>True when the shim reports Eye Contact can run. False until <see cref="ProbeCapabilities"/>.</summary>
+    public bool EyeContactAvailable { get; private set; }
+
+    /// <summary>Human-readable reason from the eye-contact probe. "Checking…" until probed.</summary>
+    public string EyeContactDetail { get; private set; } = "Checking effect availability…";
+
     /// <summary>Runs the (blocking) native capability probe and records the result. Run this OFF the
     /// UI thread — the real probe does a ~1s TensorRT model load. The tier (RTX heuristic) is kept
     /// only for display; this probe is the authoritative effect gate.</summary>
@@ -38,6 +44,8 @@ public sealed class Orchestrator
         var caps = _shim.QueryCapabilities();
         EffectsAvailable = caps.GreenScreenAvailable;
         CapabilityDetail = caps.Detail;
+        EyeContactAvailable = caps.EyeContactAvailable;
+        EyeContactDetail = caps.EyeContactDetail;
     }
 
     /// <summary>The detected GPU tier — used for display only, not for effect gating.</summary>
@@ -57,9 +65,11 @@ public sealed class Orchestrator
     /// (so a UI toggle can never enable an effect the probe said can't run).</summary>
     public void ApplyParams(ShimParams requested)
     {
-        var effective = EffectsAvailable
-            ? requested
-            : requested with { GreenScreenEnabled = false, EyeContactEnabled = false };
+        var effective = requested with
+        {
+            GreenScreenEnabled = requested.GreenScreenEnabled && EffectsAvailable,
+            EyeContactEnabled = requested.EyeContactEnabled && EyeContactAvailable,
+        };
         _shim.SetParams(effective);
     }
 

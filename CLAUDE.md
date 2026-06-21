@@ -21,16 +21,22 @@ The native shim must be built **before** the App (the App csproj copies `native/
 ```powershell
 # 1. Native shim — use Build Tools MSBuild, and run it from PowerShell.
 #    (Git Bash mangles MSBuild's /p: switches — do NOT build the shim from the Bash tool.)
-#    Set COS_VFX_SDK_DIR so the Maxine effects (COS_HAS_MAXINE) compile in. WITHOUT it the
-#    shim builds a CI-safe passthrough STUB (effects unavailable at runtime).
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"  # your VideoFX SDK root
+#    Set COS_VFX_SDK_DIR (green screen, COS_HAS_MAXINE) + COS_AR_SDK_DIR (eye contact,
+#    COS_HAS_MAXINE_AR) so both Maxine effects compile in. WITHOUT a var the corresponding
+#    effect builds a CI-safe passthrough STUB. The two guards are orthogonal.
+#      COS_VFX_SDK_DIR -> VFX SDK source (headers + nvvfx/src proxy). 1.2.0.0 tree is fine for
+#                        BUILD (NvVFX green-screen ABI is stable); see CO-VERSION gotcha for runtime.
+#      COS_AR_SDK_DIR  -> a clone of github.com/NVIDIA-Maxine/Maxine-AR-SDK (nvar/include +
+#                        nvar/src/nvARProxy.cpp). Build-time only; AR runtime is the installer.
+$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"        # VFX source (build)
+$env:COS_AR_SDK_DIR  = "C:\Users\opari\OneDrive\Desktop\claude-code\Maxine-AR-SDK"  # AR source clone (build)
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 # Output: native/shim/x64/Debug/CameraOnScreen.Shim.dll  (x64 only)
-# GOTCHA: the SDK build and the CI stub (/p:CosVfxSdkDir=) write the SAME DLL path; whichever
-# built LAST is what App -t:Rebuild deploys. Always build the SDK config LAST before running,
-# else the app silently runs passthrough (toggles greyed, "Effects require an RTX GPU"). Verify
-# the deployed DLL with `grep -a GreenScreen` present and `grep -a "Maxine SDK not built in"` absent.
+# GOTCHA: the SDK build and the CI stub (/p:CosVfxSdkDir= /p:CosArSdkDir=) write the SAME DLL path;
+# whichever built LAST is what App -t:Rebuild deploys. Always build the SDK config LAST before
+# running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL with
+# `grep -a GreenScreen` AND `grep -a GazeRedirection` present, and `grep -a "not built in"` absent.
 
 # 2. App (pulls in Core; copies the shim DLL). Use -t:Rebuild to avoid a transient incremental XAML warning.
 dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj -t:Rebuild
@@ -41,14 +47,34 @@ dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj
 # Single test / class
 dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj --filter "FullyQualifiedName~MainViewModelTests"
 
-# Run the app. COS_VFX_SDK_DIR MUST be set in the launching process for the AI Green Screen
-# effect to be available (the shim's proxy loads NVVideoEffects.dll + the CUDA/TensorRT chain
-# from %COS_VFX_SDK_DIR%\bin; the GreenScreen model dir is %COS_VFX_SDK_DIR%\bin\models). Without
-# it, the app runs raw passthrough with effects disabled. For Explorer/double-click launch, set it
-# as a persistent USER env var: [Environment]::SetEnvironmentVariable("COS_VFX_SDK_DIR","...","User").
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+# Run the app (M4: BOTH effects). Two env vars at runtime:
+#   COS_VFX_RUNTIME_DIR -> VFX **0.7.6** runtime (green screen). FLAT layout: DLLs in <root>,
+#       models in <root>\models. MUST be the AR-MATCHED VFX SDK 0.7.6 (TensorRT 10.4.0.26 /
+#       CUDA 12.1) — see the CO-VERSION gotcha below. If unset, the shim falls back to
+#       COS_VFX_SDK_DIR\bin (legacy 1.2.0.0 layout) which is TRT 10.9 and CONFLICTS with AR.
+#   AR (eye contact) runtime auto-resolves from %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK
+#       (proxy default; override with COS_AR_RUNTIME_DIR). Must be AR 0.8.7 (TRT 10.4).
+# Without these the app runs raw passthrough with effects disabled. For Explorer/double-click,
+# set them as persistent USER env vars via [Environment]::SetEnvironmentVariable(...,"User").
+$env:COS_VFX_RUNTIME_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX-0.7.6"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
+
+**CO-VERSION GOTCHA (M4, cost a full debugging cycle).** The Maxine **VFX** SDK (green screen,
+`NvVFX_*`) and **AR** SDK (eye contact / GazeRedirection, `NvAR_*`) are separate products that
+each bundle an **exact, pinned** CUDA + TensorRT runtime. Two different TRT/CUDA runtimes
+**cannot coexist** in one process — same DLL names (`nvinfer_10.dll`, `cudart64_12.dll`,
+`NVCVImage.dll`), first `LoadLibrary` wins, and the loser's `NvVFX_Load`/`NvAR_Load` fails with
+`cudaErrorNoKernelImageForDevice` ("no kernel image available for execution on the device"). The
+fix is **co-versioning**: use a VFX + AR SDK pair that bundle the **same** TRT. The verified pair
+is **VFX 0.7.6 + AR 0.8.7** — both ship **TensorRT 10.4.0.26 / CUDA 12.1** (byte-identical
+`nvinfer_10.dll`/`cudart64_12.dll`). Both installers are direct, no-auth downloads from
+`nvidia.com/.../broadcast-sdk/resources` (pick the GPU-arch variant — `_ampere` for the RTX 3090).
+Do NOT mix the newer VFX 1.2.0.0 (TRT 10.9) with AR 0.8.7 (TRT 10.4). NVIDIA Broadcast does both
+effects only because it uses one private co-versioned runtime; there is no public unified SDK.
+**Build** still compiles against the VFX **1.2.0.0** headers/proxy at `COS_VFX_SDK_DIR` (the
+green-screen NvVFX ABI is stable across 0.7.6/1.2.0.0); only the **runtime** DLLs/models come from
+the matched 0.7.6 via `COS_VFX_RUNTIME_DIR`.
 
 `dotnet build CameraOnScreen.sln` builds the three SDK-style projects (Core, App, tests) but **not** the vcxproj — build the shim separately first. Verify the C ABI after a shim change with `dumpbin /exports` (under the MSVC `bin/Hostx64/x64/` dir).
 

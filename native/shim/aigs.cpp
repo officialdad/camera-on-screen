@@ -28,8 +28,21 @@ namespace {
 // callers can keep them alive as needed.
 bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err) {
     char buf[1024] = {0};
-    DWORD n = GetEnvironmentVariableA("COS_VFX_SDK_DIR", buf, sizeof(buf));
-    if (n == 0 || n >= sizeof(buf)) { err = "COS_VFX_SDK_DIR not set"; return false; }
+    // Prefer COS_VFX_RUNTIME_DIR — a FLAT runtime layout (DLLs in <root>, models in
+    // <root>\models). This pins the green-screen VFX runtime to the AR-matched 0.7.6 SDK so
+    // both Maxine SDKs load the SAME TensorRT 10.4 / CUDA 12.1 runtime (co-versioned — a
+    // mismatch makes NvVFX_Load fail with "no kernel image"). Fall back to COS_VFX_SDK_DIR
+    // (legacy full-SDK tree: DLLs in <root>\bin, models in <root>\bin\models).
+    DWORD n = GetEnvironmentVariableA("COS_VFX_RUNTIME_DIR", buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) {
+        std::string root(buf, n);
+        if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
+        binDir   = root;
+        modelDir = root + "\\models";
+        return true;
+    }
+    n = GetEnvironmentVariableA("COS_VFX_SDK_DIR", buf, sizeof(buf));
+    if (n == 0 || n >= sizeof(buf)) { err = "COS_VFX_RUNTIME_DIR / COS_VFX_SDK_DIR not set"; return false; }
     std::string root(buf, n);
     if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
     binDir   = root + "\\bin";
@@ -271,7 +284,7 @@ bool Aigs::ProcessFrame(uint8_t* bgra, int w, int h, double expand, double feath
     auto* impl = static_cast<AigsImpl*>(impl_);
     if (!impl || !impl->effect || !bgra || w <= 0 || h <= 0) return false;
 
-    if (EnsureImages(impl, w, h) != NVCV_SUCCESS) { lastError_ = "EnsureImages/Load failed"; ready_ = false; return false; }
+    if (NvCV_Status es = EnsureImages(impl, w, h); es != NVCV_SUCCESS) { lastError_ = std::string("EnsureImages/Load failed: ") + NvCV_GetErrorStringFromCode(es); ready_ = false; return false; }
     if (Upload(impl, bgra, w, h) != NVCV_SUCCESS) { lastError_ = "Upload (Transfer) failed"; return false; }
     if (NvVFX_Run(impl->effect, 0) != NVCV_SUCCESS) { lastError_ = "NvVFX_Run failed"; return false; }
     if (Download(impl) != NVCV_SUCCESS) { lastError_ = "Download (Transfer) failed"; return false; }

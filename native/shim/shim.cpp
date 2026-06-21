@@ -2,6 +2,7 @@
 #include "shim.h"
 #include "capture.h"
 #include "aigs.h"
+#include "eyecontact.h"
 
 #include <atomic>
 #include <cstring>
@@ -62,6 +63,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_cameraId = p->camera_id ? p->camera_id : "";
     g_capture.SetGreenScreen(p->green_screen_enabled != 0);
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
+    g_capture.SetEyeContact(p->eye_contact_enabled != 0);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }
@@ -73,7 +75,9 @@ COS_API void cos_get_status(CosStatus* out) {
     out->running = g_running ? 1 : 0;
     out->fps = g_running ? 30.0 : 0.0; // still a stub count (documented)
     out->green_screen_active = g_capture.GreenScreenActive() ? 1 : 0;
+    out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
     std::string err = g_capture.GreenScreenError();
+    if (err.empty()) err = g_capture.EyeContactError();
     if (!err.empty()) {
         size_t n = err.size() < 255 ? err.size() : 255;
         std::memcpy(out->error, err.data(), n);
@@ -96,14 +100,23 @@ COS_API int cos_get_frame(uint8_t* dst, int* width, int* height, int dst_capacit
 COS_API int cos_query_capabilities(CosCaps* out) {
     if (!out) return 0;
     std::memset(out, 0, sizeof(*out));
-    std::string detail;
-    bool ok = Aigs::Probe(detail);
-    out->green_screen_available = ok ? 1 : 0;
-    // Copy detail into the fixed slot (truncate to 255 + NUL).
-    size_t n = detail.size() < 255 ? detail.size() : 255;
-    std::memcpy(out->detail, detail.data(), n);
-    out->detail[n] = '\0';
-    return ok ? 1 : 0;
+
+    std::string gsDetail;
+    bool gsOk = Aigs::Probe(gsDetail);
+    out->green_screen_available = gsOk ? 1 : 0;
+    size_t gn = gsDetail.size() < 255 ? gsDetail.size() : 255;
+    std::memcpy(out->detail, gsDetail.data(), gn);
+    out->detail[gn] = '\0';
+
+    std::string ecDetail;
+    bool ecOk = EyeContact::Probe(ecDetail);
+    out->eye_contact_available = ecOk ? 1 : 0;
+    size_t en = ecDetail.size() < 255 ? ecDetail.size() : 255;
+    std::memcpy(out->ec_detail, ecDetail.data(), en);
+    out->ec_detail[en] = '\0';
+
+    // Return 1 if either effect is available (the managed side reads the per-gate ints).
+    return (gsOk || ecOk) ? 1 : 0;
 }
 
 COS_API void cos_shutdown(void) {
