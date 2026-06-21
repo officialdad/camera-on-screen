@@ -21,9 +21,16 @@ The native shim must be built **before** the App (the App csproj copies `native/
 ```powershell
 # 1. Native shim — use Build Tools MSBuild, and run it from PowerShell.
 #    (Git Bash mangles MSBuild's /p: switches — do NOT build the shim from the Bash tool.)
+#    Set COS_VFX_SDK_DIR so the Maxine effects (COS_HAS_MAXINE) compile in. WITHOUT it the
+#    shim builds a CI-safe passthrough STUB (effects unavailable at runtime).
+$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"  # your VideoFX SDK root
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 # Output: native/shim/x64/Debug/CameraOnScreen.Shim.dll  (x64 only)
+# GOTCHA: the SDK build and the CI stub (/p:CosVfxSdkDir=) write the SAME DLL path; whichever
+# built LAST is what App -t:Rebuild deploys. Always build the SDK config LAST before running,
+# else the app silently runs passthrough (toggles greyed, "Effects require an RTX GPU"). Verify
+# the deployed DLL with `grep -a GreenScreen` present and `grep -a "Maxine SDK not built in"` absent.
 
 # 2. App (pulls in Core; copies the shim DLL). Use -t:Rebuild to avoid a transient incremental XAML warning.
 dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj -t:Rebuild
@@ -34,7 +41,12 @@ dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj
 # Single test / class
 dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj --filter "FullyQualifiedName~MainViewModelTests"
 
-# Run the app
+# Run the app. COS_VFX_SDK_DIR MUST be set in the launching process for the AI Green Screen
+# effect to be available (the shim's proxy loads NVVideoEffects.dll + the CUDA/TensorRT chain
+# from %COS_VFX_SDK_DIR%\bin; the GreenScreen model dir is %COS_VFX_SDK_DIR%\bin\models). Without
+# it, the app runs raw passthrough with effects disabled. For Explorer/double-click launch, set it
+# as a persistent USER env var: [Environment]::SetEnvironmentVariable("COS_VFX_SDK_DIR","...","User").
+$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 
@@ -64,10 +76,10 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 
 ## Status
 
-M1 (Core) and M2 (App + shim + overlay passthrough) are complete and merged to `main`.
+M1 (Core), M2 (App + shim + overlay passthrough), and M3 (AI Green Screen) are complete and merged to `main`. M3 is runtime-verified on an RTX 3090 (green screen works on screen).
 
-**In progress — M3: AI Green Screen** (branch `feat/m3-aigs-green-screen`). Design approved + committed: `docs/superpowers/specs/2026-06-21-camera-on-screen-m3-aigs-design.md`. Decisions: green-screen only; **CPU-copy** interop (GPU work on Maxine, frames round-trip CPU↔GPU — zero-copy D3D11 interop deferred); SDK located via `COS_VFX_SDK_DIR` env var. The RTX-substring tier heuristic is replaced as the effect gate by a new `cos_query_capabilities` shim probe; `GpuTierDetector` keeps only the GPU-name display.
+**M3: AI Green Screen** — design `docs/superpowers/specs/2026-06-21-camera-on-screen-m3-aigs-design.md`, plan `docs/superpowers/plans/2026-06-21-camera-on-screen-m3-aigs.md`. Decisions: green-screen only; **CPU-copy** interop (GPU work on Maxine, frames round-trip CPU↔GPU — zero-copy D3D11 interop deferred); SDK located via `COS_VFX_SDK_DIR` env var. The RTX-substring tier heuristic is replaced as the effect gate by a new `cos_query_capabilities` shim probe; `GpuTierDetector` keeps only the GPU-name display. Known M3 follow-ups (logged, not done): the probe runs synchronously in the `Orchestrator` ctor (≈1s UI freeze at startup — make it async/lazy); the disabled-effects note shows a static "requires RTX GPU" string instead of the real `CapabilityDetail` from the probe.
 
 - **Maxine VFX SDK is installed** (not in repo) at the path given by `COS_VFX_SDK_DIR` (target machine: `…/claude-code/VideoFX`). GreenScreen feature `nvvfxgreenscreen` 1.2.0.0; models built for compute capability **86** (RTX 3090). No import `.lib` — link via the SDK's proxy stubs (`nvvfx/src/nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`) compiled into the shim. Heavy runtime DLL chain (CUDA + TensorRT) under `VideoFX/bin`.
 - **Eye Contact (M4) is NOT in the VFX SDK** — it lives in the separate **Maxine AR SDK** (not installed). M4 adds that as a distinct dependency.
-- **Ship-time gates (deferred):** bundling the CUDA/TensorRT runtime + models; Maxine redistribution **license review** (license PDFs ship in the feature dir).
+- **Distribution / ship-time gates (deferred).** End users do **not** need an NVIDIA Developer account or the SDK download — the NVIDIA sign-in is a *developer*-side gate. To ship: (1) **bundle** the Maxine runtime (`NVVideoEffects.dll`, `NVCVImage.dll`, CUDA cudart/cublas/npp, TensorRT nvinfer/nvonnxparser, nvngx, nvrtc, the GreenScreen DLL) **+ models** with the installer (~GBs — the "installer weight" risk); (2) switch the shim's SDK discovery from `COS_VFX_SDK_DIR` to **app-relative** (bundled beside the exe), so no env var is needed; (3) **multi-GPU models** — the installed models are prebuilt for compute **86** only; other GPUs (75/89/120) need their variants bundled, or ship the generic model and let TensorRT build the engine on first run; (4) **license review** — Maxine redistribution is permitted but governed by NVIDIA's terms + the bundled-model license (PDFs in `VideoFX/features/nvvfxgreenscreen/license/`) — read/comply before publishing. End-user requirement after bundling: an **RTX GPU + recent driver** (non-RTX → app runs, effects disabled by design).
