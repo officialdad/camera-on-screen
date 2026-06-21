@@ -23,6 +23,11 @@
     <CosVfxSdkDir Condition="'$(CosVfxSdkDir)' == ''">$(COS_VFX_SDK_DIR)</CosVfxSdkDir>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- AR SDK dir = a clone of NVIDIA-Maxine/Maxine-AR-SDK (headers + proxy). Empty => stub. -->
+    <CosArSdkDir Condition="'$(CosArSdkDir)' == ''">$(COS_AR_SDK_DIR)</CosArSdkDir>
+  </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
   <PropertyGroup Label="Configuration">
@@ -75,10 +80,18 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <ItemDefinitionGroup Condition="'$(CosArSdkDir)' != ''">
+    <ClCompile>
+      <PreprocessorDefinitions>COS_HAS_MAXINE_AR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(CosArSdkDir)\nvar\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
+    <ClCompile Include="eyecontact.cpp" />
   </ItemGroup>
 
   <!-- Proxy stubs provide the Maxine API by LoadLibrary'ing the runtime DLLs (no import .lib). -->
@@ -87,10 +100,21 @@
     <ClCompile Include="$(CosVfxSdkDir)\nvvfx\src\nvCVImageProxy.cpp" />
   </ItemGroup>
 
+  <!-- AR proxy stub provides NvAR_* by LoadLibrary'ing nvARPose.dll (no import .lib). -->
+  <ItemGroup Condition="'$(CosArSdkDir)' != ''">
+    <ClCompile Include="$(CosArSdkDir)\nvar\src\nvARProxy.cpp" />
+  </ItemGroup>
+  <!-- NvCVImage_* proxy: exactly one copy in the build. VFX provides it when present;
+       otherwise pull it from the AR tree. -->
+  <ItemGroup Condition="'$(CosArSdkDir)' != '' And '$(CosVfxSdkDir)' == ''">
+    <ClCompile Include="$(CosArSdkDir)\nvar\src\nvCVImageProxy.cpp" />
+  </ItemGroup>
+
   <ItemGroup>
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
+    <ClInclude Include="eyecontact.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
