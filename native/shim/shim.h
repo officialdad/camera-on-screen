@@ -27,7 +27,9 @@ typedef struct {
 
 typedef struct {
     int  green_screen_available; // 1 if Maxine GreenScreen can run, else 0
-    char detail[256];            // human-readable status/error (UTF-8, NUL-terminated)
+    char detail[256];            // green-screen status/error (UTF-8, NUL-terminated)
+    int  eye_contact_available;  // 1 if Maxine GazeRedirection can run, else 0
+    char ec_detail[256];         // eye-contact status/error (UTF-8, NUL-terminated)
 } CosCaps;
 
 COS_API int  cos_init(void* d3d11_device);

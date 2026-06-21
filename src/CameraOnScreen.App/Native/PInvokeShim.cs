@@ -32,6 +32,9 @@ public sealed class PInvokeShim : INativeShim
         public int GreenScreenAvailable;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
         public byte[] Detail;
+        public int EyeContactAvailable;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+        public byte[] EcDetail;
     }
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_init(IntPtr device);
@@ -100,10 +103,11 @@ public sealed class PInvokeShim : INativeShim
 
     public ShimCapabilities QueryCapabilities()
     {
-        var caps = new CosCaps { Detail = new byte[256] };
-        int ok = cos_query_capabilities(ref caps);
-        string detail = ReadUtf8(caps.Detail, 0, 256);
-        return new ShimCapabilities(ok != 0, detail);
+        var caps = new CosCaps { Detail = new byte[256], EcDetail = new byte[256] };
+        cos_query_capabilities(ref caps);
+        return new ShimCapabilities(
+            caps.GreenScreenAvailable != 0, ReadUtf8(caps.Detail, 0, 256),
+            caps.EyeContactAvailable != 0, ReadUtf8(caps.EcDetail, 0, 256));
     }
 
     public void Dispose() => cos_shutdown();
