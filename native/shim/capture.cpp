@@ -34,6 +34,8 @@ struct CaptureState {
     std::string           symbolicLink;
 
     std::atomic<bool>     greenScreenEnabled{false}; // set by UI thread, read by worker
+    std::atomic<double>   matteExpand{0.0};  // set by UI thread, read by worker
+    std::atomic<double>   matteFeather{0.0}; // set by UI thread, read by worker
     std::atomic<bool>     greenScreenActive{false};  // set by worker
     std::mutex            gsErrMtx;
     std::string           gsError;                   // guarded by gsErrMtx
@@ -304,7 +306,9 @@ void Capture::WorkerLoop() {
 
                 bool applied = false;
                 if (want && aigs.IsReady()) {
-                    applied = aigs.ProcessFrame(scratch.data(), width, height);
+                    const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
+                    const double feather = g_state.matteFeather.load(std::memory_order_acquire);
+                    applied = aigs.ProcessFrame(scratch.data(), width, height, expand, feather);
                     if (!applied) {
                         std::lock_guard<std::mutex> e(g_state.gsErrMtx);
                         const std::string& newErr = aigs.LastError();
@@ -380,6 +384,11 @@ bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
 
 void Capture::SetGreenScreen(bool enabled) {
     g_state.greenScreenEnabled.store(enabled, std::memory_order_release);
+}
+
+void Capture::SetMatteParams(double expand, double feather) {
+    g_state.matteExpand.store(expand, std::memory_order_release);
+    g_state.matteFeather.store(feather, std::memory_order_release);
 }
 
 bool Capture::GreenScreenActive() const {
