@@ -506,7 +506,7 @@ bool Aigs::ProcessFrame(uint8_t*, int, int, double, double) { return false; }
 Run in **PowerShell** (not Bash — MSBuild `/p:` mangling):
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 ```
@@ -543,7 +543,7 @@ Expected: PASS, 0 warnings.
 - [ ] **Step 6: Run the app and VISUAL GATE on the RTX 3090 (human)**
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 Verify (overlay is NOT GDI-capturable — observe live or via DWM/ShadowPlay):

@@ -660,7 +660,7 @@ Expected: `Build succeeded. 0 Warning(s) 0 Error(s)`. The stub path compiles (`A
 Set both SDK dirs and build (VFX last is not required for compile here; both guards on):
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 $env:COS_AR_SDK_DIR  = "<path to your Maxine-AR-SDK clone>"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
@@ -769,7 +769,7 @@ Replace `QueryCapabilities` (lines 101-107):
 - [ ] **Step 4: Rebuild the shim (real path) and verify exports + parity**
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 $env:COS_AR_SDK_DIR  = "<path to your Maxine-AR-SDK clone>"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
@@ -939,7 +939,7 @@ In `cos_get_status`, set the active flag and prefer a green-screen error then an
 - [ ] **Step 6: Rebuild the shim (real path, AR + VFX) and the App**
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 $env:COS_AR_SDK_DIR  = "<path to your Maxine-AR-SDK clone>"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
@@ -1030,7 +1030,7 @@ Full clean build in the correct order, deploy verification, and the human visual
 - [ ] **Step 1: Clean build in deploy order (SDK config LAST)**
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 $env:COS_AR_SDK_DIR  = "<path to your Maxine-AR-SDK clone>"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64 /t:Rebuild
@@ -1051,7 +1051,7 @@ Expected: `True`.
 For a default Program Files AR install no env var is needed (the proxy auto-resolves). `COS_VFX_SDK_DIR` is still needed for green screen.
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 

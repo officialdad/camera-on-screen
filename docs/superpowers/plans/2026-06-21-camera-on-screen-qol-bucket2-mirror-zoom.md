@@ -364,7 +364,7 @@ Expected: Build succeeded, 0 warnings.
 Per CLAUDE.md the overlay cannot be GDI-screenshotted — confirm visually. Ensure the SDK shim is the deployed DLL (so the app runs normally), then:
 
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 

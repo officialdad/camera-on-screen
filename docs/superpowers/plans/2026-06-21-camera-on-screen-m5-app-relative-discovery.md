@@ -260,8 +260,8 @@ In `ResolveSdkPaths`, replace the final fallback block (currently lines 44–50,
 
 Run from PowerShell (env vars set per CLAUDE.md, SDK config built LAST):
 ```
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
-$env:COS_AR_SDK_DIR  = "C:\Users\opari\OneDrive\Desktop\claude-code\Maxine-AR-SDK"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
+$env:COS_AR_SDK_DIR  = "C:\dev\Maxine-AR-SDK"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 ```
@@ -346,8 +346,8 @@ bool ResolveArPaths(std::string& runtimeDir, std::string& modelDir, std::string&
 
 Run from PowerShell (env vars set, SDK config built LAST so the SDK DLL is what gets deployed):
 ```
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
-$env:COS_AR_SDK_DIR  = "C:\Users\opari\OneDrive\Desktop\claude-code\Maxine-AR-SDK"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
+$env:COS_AR_SDK_DIR  = "C:\dev\Maxine-AR-SDK"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 ```
