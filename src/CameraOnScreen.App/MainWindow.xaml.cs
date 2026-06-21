@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using CameraOnScreen.App.Composition;
 using CameraOnScreen.Core.Config;
 using CameraOnScreen.Core.ViewModels;
@@ -8,6 +9,13 @@ namespace CameraOnScreen.App;
 
 public sealed partial class MainWindow : Window, INotifyPropertyChanged
 {
+    // Compact control-panel size (in DIPs) — the panel only holds a few Auto-height rows, so the
+    // WinUI default (~1100×700) leaves it mostly empty. Scaled by the window DPI before Resize,
+    // which wants physical pixels. No layout redesign — sensible defaults only.
+    private const int PanelWidthDip = 400, PanelHeightDip = 720;
+
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
+
     public MainViewModel Vm { get; }
 
     private readonly Overlay.OverlayWindow _overlay;
@@ -52,6 +60,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.InteractionEnded += Save;
         this.Closed += OnWindowClosed;
         InitializeComponent();
+        RightSizePanel();
 
         // ~30 Hz frame pump on the WinUI UI thread: pull the latest BGRA frame from the shim and
         // blit it into the overlay, then refresh status. All D3D work happens here on the UI thread.
@@ -70,6 +79,18 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // (toggles disabled) and the note shows "Checking effect availability…". `await` resumes on
         // the UI dispatcher, so the resulting OneWay binding updates happen on the UI thread.
         _ = Vm.ProbeCapabilitiesAsync();
+    }
+
+    // Shrink the control panel from the WinUI default to a compact size that fits its rows.
+    // AppWindow.Resize takes physical pixels, so scale the DIP target by the window's DPI.
+    private void RightSizePanel()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        double scale = GetDpiForWindow(hwnd) / 96.0;
+        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+        appWindow.Resize(new Windows.Graphics.SizeInt32(
+            (int)(PanelWidthDip * scale), (int)(PanelHeightDip * scale)));
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
