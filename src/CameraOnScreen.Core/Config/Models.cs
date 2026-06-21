@@ -16,6 +16,7 @@ public sealed record OverlaySettings
     public double Opacity { get; init; } = 1.0;
     public OverlayShape Shape { get; init; } = OverlayShape.Full;
     public bool Mirror { get; init; }
+    public double Zoom { get; init; } = 1.0;
     public bool Locked { get; init; }
     public bool ClickThrough { get; init; }
 }
