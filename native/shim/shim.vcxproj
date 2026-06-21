@@ -92,6 +92,7 @@
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
     <ClCompile Include="eyecontact.cpp" />
+    <ClCompile Include="paths.cpp" />
   </ItemGroup>
 
   <!-- Proxy stubs provide the Maxine API by LoadLibrary'ing the runtime DLLs (no import .lib). -->
@@ -115,6 +116,7 @@
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
     <ClInclude Include="eyecontact.h" />
+    <ClInclude Include="paths.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
