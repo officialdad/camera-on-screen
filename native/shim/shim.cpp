@@ -63,6 +63,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_cameraId = p->camera_id ? p->camera_id : "";
     g_capture.SetGreenScreen(p->green_screen_enabled != 0);
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
+    g_capture.SetEyeContact(p->eye_contact_enabled != 0);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }
@@ -74,7 +75,9 @@ COS_API void cos_get_status(CosStatus* out) {
     out->running = g_running ? 1 : 0;
     out->fps = g_running ? 30.0 : 0.0; // still a stub count (documented)
     out->green_screen_active = g_capture.GreenScreenActive() ? 1 : 0;
+    out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
     std::string err = g_capture.GreenScreenError();
+    if (err.empty()) err = g_capture.EyeContactError();
     if (!err.empty()) {
         size_t n = err.size() < 255 ? err.size() : 255;
         std::memcpy(out->error, err.data(), n);

@@ -37,6 +37,11 @@ public:
     bool GreenScreenActive() const;       // true only while AIGS is transforming frames
     std::string GreenScreenError() const; // empty when none
 
+    // Toggles Eye Contact for subsequent frames. Thread-safe; the worker owns the object.
+    void SetEyeContact(bool enabled);
+    bool EyeContactActive() const;        // true only while gaze redirection is transforming frames
+    std::string EyeContactError() const;  // empty when none
+
 private:
     void WorkerLoop();
 };
