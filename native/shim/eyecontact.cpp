@@ -123,7 +123,7 @@ bool EyeContact::Start() {
         lastError_ = "NvAR_CudaStreamCreate failed"; delete impl; return false;
     }
     if (NvAR_Create(NvAR_Feature_GazeRedirection, &impl->handle) != NVCV_SUCCESS || !impl->handle) {
-        lastError_ = "NvAR_Create failed"; delete impl; return false;
+        lastError_ = "NvAR_Create failed"; NvAR_CudaStreamDestroy(impl->stream); delete impl; return false;
     }
     NvAR_SetString(impl->handle, NvAR_Parameter_Config(ModelDir), impl->modelDir.c_str());
     NvAR_SetU32(impl->handle, NvAR_Parameter_Config(Landmarks_Size), kNumLandmarks);
@@ -165,6 +165,7 @@ NvCV_Status BindIO(EyeContactImpl* impl, int w, int h) {
 
     NvCVImage_Dealloc(&impl->inGpu);
     NvCVImage_Dealloc(&impl->outGpu);
+    NvCVImage_Dealloc(&impl->tmp);
 
     NvCV_Status s;
     s = NvCVImage_Alloc(&impl->inGpu,  w, h, NVCV_BGR, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1); if (s != NVCV_SUCCESS) return s;
