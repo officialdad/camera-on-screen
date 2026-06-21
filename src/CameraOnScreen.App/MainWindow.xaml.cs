@@ -145,6 +145,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility NotAvailableVisibility =>
         Vm.EffectsAvailable ? Visibility.Collapsed : Visibility.Visible;
 
+    public Visibility EyeContactNotAvailableVisibility =>
+        Vm.EyeContactAvailable ? Visibility.Collapsed : Visibility.Visible;
+
     public string StatusLine =>
         Vm.IsRunning ? $"Running — {Vm.Fps:F0} fps" : "Stopped";
 
@@ -156,6 +159,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             // The note's Visibility is derived from EffectsAvailable; re-evaluate it when the probe
             // result lands (Text is bound directly to Vm.CapabilityDetail and updates on its own).
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotAvailableVisibility)));
+        else if (e.PropertyName == nameof(MainViewModel.EyeContactAvailable))
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EyeContactNotAvailableVisibility)));
         else if (e.PropertyName == nameof(MainViewModel.Locked))
             _overlay.SetLocked(Vm.Locked);
         else if (e.PropertyName == nameof(MainViewModel.ClickThrough))
