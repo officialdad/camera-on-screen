@@ -292,10 +292,14 @@ void Capture::WorkerLoop() {
                 if (want && !aigs.IsReady()) {
                     if (!aigs.Start()) {
                         std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        g_state.gsError = aigs.LastError();
+                        const std::string& newErr = aigs.LastError();
+                        if (g_state.gsError != newErr) g_state.gsError = newErr;
                     }
                 } else if (!want && aigs.IsReady()) {
                     aigs.Stop();
+                    // Clear any stale error: green screen is off, error is no longer relevant.
+                    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                    if (!g_state.gsError.empty()) g_state.gsError.clear();
                 }
 
                 bool applied = false;
@@ -303,7 +307,12 @@ void Capture::WorkerLoop() {
                     applied = aigs.ProcessFrame(scratch.data(), width, height);
                     if (!applied) {
                         std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        g_state.gsError = aigs.LastError();
+                        const std::string& newErr = aigs.LastError();
+                        if (g_state.gsError != newErr) g_state.gsError = newErr;
+                    } else {
+                        // Frame succeeded — clear any stale error so status is consistent.
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        if (!g_state.gsError.empty()) g_state.gsError.clear();
                     }
                 }
                 g_state.greenScreenActive.store(applied, std::memory_order_release);
@@ -354,6 +363,9 @@ void Capture::Stop() {
     // Reset the active flag after the worker has joined: the worker may have set it
     // true just before stopping, so clear it here to avoid a stale status read.
     g_state.greenScreenActive.store(false, std::memory_order_release);
+    // Clear the error so the next session starts clean (no stale error from prior run).
+    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+    g_state.gsError.clear();
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {

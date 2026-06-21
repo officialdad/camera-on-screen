@@ -15,6 +15,8 @@
 // passes to SetDllDirectory before LoadLibrary.
 // (Defined in Task 1 — NOT redefined here.)
 char* g_nvVFXSDKPath = nullptr;
+// Note: NVCVImage.dll resolves via the search path the VFX proxy's SetDllDirectory sets;
+// nvCVImageProxy.cpp has no g_nvCVImageSDKPath global, so none is defined here.
 
 namespace {
 // Resolves "<COS_VFX_SDK_DIR>\bin" (DLLs) and "<COS_VFX_SDK_DIR>\bin\models" once.

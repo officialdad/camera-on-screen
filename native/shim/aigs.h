@@ -13,7 +13,8 @@ public:
     ~Aigs();
 
     // One-shot probe: can the SDK load and the GreenScreen effect be created+loaded?
-    // Does not retain the effect. Safe to call from any thread. Fills 'detail'.
+    // Does not retain the effect. Call before starting capture (e.g. from the
+    // orchestrator). Not designed for concurrent calls from multiple threads. Fills 'detail'.
     static bool Probe(std::string& detail);
 
     // Create the effect, CUDA stream, and (lazily) the GPU images. Call on the
