@@ -92,14 +92,23 @@ located via a new `COS_AR_SDK_DIR`) load independently. Each can be present or m
 its own, so each gets its **own capability probe and its own gate**. Both effect objects
 live on the same capture worker thread.
 
-**Coexistence risk: low (verified).** Both SDKs are the same runtime generation — each ships
-`cudart64_12`, `nvinfer_10`/`nvinfer_plugin_10`/`nvonnxparser_10` (CUDA 12 / TensorRT 10) and
-`NVCVImage.dll`. The shared `NVCVImage.dll` (whichever loads first wins; same API version) is
-compatible, so running both Maxine pipelines in one process has no version clash. The
-remaining concern is purely throughput (two effects per frame) — covered by the perf gate.
-`SetDllDirectory` is per-process and single-valued; each proxy sets it before its own first
-DLL load and the OS caches loaded modules by name, so the green-screen (VFX bin) and
-eye-contact (AR root) DLLs each resolve correctly despite the shared setting.
+**Coexistence: REQUIRES CO-VERSIONED SDKs (this was the M4 regression).** The original
+"low risk — both are CUDA 12 / TRT 10" assumption was **WRONG**. The Maxine VFX and AR SDKs
+each bundle an **exact, pinned** CUDA + TensorRT, and two different TRT/CUDA runtimes **cannot
+coexist** in one process: the shared DLLs (`nvinfer_10.dll`, `cudart64_12.dll`, `NVCVImage.dll`)
+have the same names but different binaries; `LoadLibrary` resolves a name once (first wins), so
+the second SDK's effect runs against the wrong runtime and `NvVFX_Load`/`NvAR_Load` fails with
+`cudaErrorNoKernelImageForDevice` ("no kernel image available for execution on the device").
+Observed exactly: VFX 1.2.0.0 (TRT 10.9) + AR 0.8.7 (TRT 10.4) → green screen broke the moment
+the AR probe loaded AR's runtime. **Fix = co-version:** run a VFX + AR pair that bundle the SAME
+TRT. Verified pair **VFX 0.7.6 + AR 0.8.7** — both **TensorRT 10.4.0.26 / CUDA 12.1**, with
+byte-identical `nvinfer_10.dll`/`cudart64_12.dll`, so one shared runtime serves both. The VFX
+runtime is selected via `COS_VFX_RUNTIME_DIR` (flat layout, the 0.7.6 install); the build still
+uses VFX 1.2.0.0 headers (stable NvVFX ABI). TensorRT engines (`.trtpkg`) are version-locked even
+across patch versions, so "force one runtime for both" without matched versions is impossible.
+NVIDIA Broadcast does both effects only via a private unified runtime; no public unified SDK
+exists. With versions matched, the remaining concern is purely throughput (two effects/frame) —
+the perf gate.
 
 ## C ABI — changes
 
