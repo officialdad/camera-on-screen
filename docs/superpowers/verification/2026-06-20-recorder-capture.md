@@ -58,7 +58,7 @@ The following cannot be substituted by automated tooling on this host (GDI can't
 ## M3 — AI Green Screen (CPU-copy)
 
 Date: 2026-06-21
-Branch: `feat/foundation-m1-m2`
+Branch: `feat/m3-aigs-green-screen`
 Build: .NET 8.0 + VS2022 Build Tools (MSVC v143 14.44.35207); MSBuild 17.14.40; WindowsAppSDK 1.8 (unpackaged, self-contained).
 SDK: NVIDIA VideoFX (nvvfxgreenscreen) — headers + proxy sources at `COS_VFX_SDK_DIR=C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX`; SDK version reported by proxy: nvvfxgreenscreen 1.2.0.0, compute capability 86 target.
 Target machine: Windows 10 Pro 19045, NVIDIA RTX 3090, camera "Brio 100".
@@ -106,4 +106,4 @@ $env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
 - Toggle ON → transparent / toggle OFF → opaque passthrough (no M2 regression): _PENDING_
 - Drag / resize / lock / click-through still work (M2 regression check): _PENDING_
 - Recorder capture — subject on transparent bg, no chrome, no post-edit: _PENDING_
-- `cos_query_capabilities` returned `green_screen_available=1` (effect active, not degraded): _PENDING_
+- `cos_query_capabilities` result (expected `1` = effect available; if `0` = probe failed — record the `detail`/status `error` text): _PENDING_
