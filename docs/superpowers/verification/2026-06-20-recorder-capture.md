@@ -60,7 +60,7 @@ The following cannot be substituted by automated tooling on this host (GDI can't
 Date: 2026-06-21
 Branch: `feat/m3-aigs-green-screen`
 Build: .NET 8.0 + VS2022 Build Tools (MSVC v143 14.44.35207); MSBuild 17.14.40; WindowsAppSDK 1.8 (unpackaged, self-contained).
-SDK: NVIDIA VideoFX (nvvfxgreenscreen) — headers + proxy sources at `COS_VFX_SDK_DIR=C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX`; SDK version reported by proxy: nvvfxgreenscreen 1.2.0.0, compute capability 86 target.
+SDK: NVIDIA VideoFX (nvvfxgreenscreen) — headers + proxy sources at `COS_VFX_SDK_DIR=C:\dev\VideoFX`; SDK version reported by proxy: nvvfxgreenscreen 1.2.0.0, compute capability 86 target.
 Target machine: Windows 10 Pro 19045, NVIDIA RTX 3090, camera "Brio 100".
 Architecture: CPU-copy seam — Maxine effect runs on GPU, result copied back to CPU buffer, existing `cos_get_frame` path unchanged.
 
@@ -86,7 +86,7 @@ The following steps require a human at the machine. GDI screenshots will show a 
 
 **Setup:**
 ```powershell
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"
 & "src\CameraOnScreen.App\bin\Debug\net8.0-windows10.0.19041.0\win-x64\CameraOnScreen.App.exe"
 ```
 

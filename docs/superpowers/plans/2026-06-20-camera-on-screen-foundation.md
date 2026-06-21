@@ -65,7 +65,7 @@
 
 Run:
 ```bash
-cd "C:/Users/opari/OneDrive/Desktop/claude-code/camera-on-screen"
+cd "C:/dev/camera-on-screen"
 dotnet new sln -n CameraOnScreen
 dotnet new classlib -n CameraOnScreen.Core -o src/CameraOnScreen.Core -f net8.0
 dotnet new xunit -n CameraOnScreen.Core.Tests -o tests/CameraOnScreen.Core.Tests -f net8.0

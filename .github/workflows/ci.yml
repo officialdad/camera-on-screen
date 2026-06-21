@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per ref; cancel superseded runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build (Maxine) + Test
+    runs-on: [self-hosted, windows, rtx]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build native shim (SDK config, x64 Release)
+        shell: pwsh
+        run: |
+          $msbuild = "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe"
+          & $msbuild native/shim/shim.vcxproj `
+            /p:Configuration=Release /p:Platform=x64 `
+            /warnaserror /nologo
+          if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
+
+      - name: Verify deployed shim has both Maxine effects (stale-stub guard)
+        shell: pwsh
+        run: |
+          $dll = "native/shim/x64/Release/CameraOnScreen.Shim.dll"
+          if (-not (Test-Path $dll)) { throw "shim DLL missing: $dll" }
+          $dumpbin = (Get-ChildItem "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1).FullName + "/bin/Hostx64/x64/dumpbin.exe"
+          if (-not (Test-Path $dumpbin)) { throw "dumpbin not found at $dumpbin — check the MSVC Build Tools install on the runner" }
+          $exports = & $dumpbin /exports $dll | Out-String
+          $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
+          $hasGS  = $exports -match 'GreenScreen'   -or $strings -match 'GreenScreen'
+          $hasGaze = $exports -match 'GazeRedirection' -or $strings -match 'GazeRedirection'
+          $isStub = $strings -match 'not built in'
+          Write-Host "GreenScreen=$hasGS GazeRedirection=$hasGaze stub=$isStub"
+          if (-not $hasGS)   { throw "GreenScreen missing — green-screen effect not built in" }
+          if (-not $hasGaze) { throw "GazeRedirection missing — eye-contact effect not built in" }
+          if ($isStub)       { throw "shim is the passthrough STUB ('not built in' present)" }
+
+      - name: Build App (copies shim, warnings = errors)
+        shell: pwsh
+        run: |
+          dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj `
+            -c Release -t:Rebuild /p:TreatWarningsAsErrors=true --nologo
+          if ($LASTEXITCODE -ne 0) { throw "App build failed ($LASTEXITCODE)" }
+
+      - name: Test Core (xUnit, warnings = errors)
+        shell: pwsh
+        run: |
+          dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj `
+            -c Release /p:TreatWarningsAsErrors=true --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Core tests failed ($LASTEXITCODE)" }

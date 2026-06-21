@@ -28,8 +28,8 @@ The native shim must be built **before** the App (the App csproj copies `native/
 #                        BUILD (NvVFX green-screen ABI is stable); see CO-VERSION gotcha for runtime.
 #      COS_AR_SDK_DIR  -> a clone of github.com/NVIDIA-Maxine/Maxine-AR-SDK (nvar/include +
 #                        nvar/src/nvARProxy.cpp). Build-time only; AR runtime is the installer.
-$env:COS_VFX_SDK_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX"        # VFX source (build)
-$env:COS_AR_SDK_DIR  = "C:\Users\opari\OneDrive\Desktop\claude-code\Maxine-AR-SDK"  # AR source clone (build)
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"        # VFX source (build)
+$env:COS_AR_SDK_DIR  = "C:\dev\Maxine-AR-SDK"  # AR source clone (build)
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 # Output: native/shim/x64/Debug/CameraOnScreen.Shim.dll  (x64 only)
@@ -56,7 +56,7 @@ dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj --f
 #       (proxy default; override with COS_AR_RUNTIME_DIR). Must be AR 0.8.7 (TRT 10.4).
 # Without these the app runs raw passthrough with effects disabled. For Explorer/double-click,
 # set them as persistent USER env vars via [Environment]::SetEnvironmentVariable(...,"User").
-$env:COS_VFX_RUNTIME_DIR = "C:\Users\opari\OneDrive\Desktop\claude-code\VideoFX-0.7.6"
+$env:COS_VFX_RUNTIME_DIR = "C:\dev\VideoFX-0.7.6"
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 
