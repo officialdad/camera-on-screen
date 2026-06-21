@@ -181,7 +181,7 @@ NvCV_Status Download(AigsImpl* impl) {
 constexpr int kMaxDilateRadius = 16;
 constexpr int kMaxBlurRadius   = 16;
 
-static int RadiusFromAmount(double amount, int maxRadius) {
+int RadiusFromAmount(double amount, int maxRadius) {
     if (amount <= 0.0) return 0;
     if (amount >= 1.0) return maxRadius;
     return static_cast<int>(std::lround(amount * maxRadius));
@@ -199,7 +199,7 @@ static void PackMatte(AigsImpl* impl, int w, int h) {
 }
 
 // Separable morphological dilate (max filter) over matteWork; result back in matteWork.
-static void DilateMatte(AigsImpl* impl, int w, int h, int r) {
+void DilateMatte(AigsImpl* impl, int w, int h, int r) {
     if (r <= 0) return;
     uint8_t* src = impl->matteWork.data();
     uint8_t* tmp = impl->matteTmp.data();
@@ -224,7 +224,7 @@ static void DilateMatte(AigsImpl* impl, int w, int h, int r) {
 }
 
 // Separable box blur over matteWork; result back in matteWork.
-static void FeatherMatte(AigsImpl* impl, int w, int h, int r) {
+void FeatherMatte(AigsImpl* impl, int w, int h, int r) {
     if (r <= 0) return;
     const int win = 2 * r + 1;
     uint8_t* src = impl->matteWork.data();
