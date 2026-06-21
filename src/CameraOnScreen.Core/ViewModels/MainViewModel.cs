@@ -146,7 +146,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusError = s.Error;
     }
 
-    public void Dispose() => _orchestrator.StatusChanged -= _statusHandler;
+    public void Dispose()
+    {
+        _orchestrator.StatusChanged -= _statusHandler;
+        // Dispose the shim: PInvokeShim.Dispose -> cos_shutdown -> Capture::Stop joins the native
+        // capture worker thread. Without this the worker is never stopped, so at process exit the
+        // global std::thread (CaptureState::worker) is destroyed while still joinable, which calls
+        // std::terminate()/abort() — the debug-build "Debug Error … abort() has been called" dialog.
+        ShimRef.Dispose();
+    }
 
     [RelayCommand]
     private void Start()
