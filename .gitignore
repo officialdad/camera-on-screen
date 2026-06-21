@@ -9,3 +9,9 @@ TestResults/
 x64/
 x86/
 .superpowers/
+
+# Ad-hoc MSVC build artifacts (e.g. the native smoke harness built with cl)
+*.obj
+*.exe
+*.exp
+*.lib

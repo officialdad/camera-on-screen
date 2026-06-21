@@ -11,9 +11,11 @@ public class OrchestratorTests
             EyeContactEnabled: true, EyeContactSensitivity: 0.5, EyeContactLookAwayRange: 0.5);
 
     [Fact]
-    public void Rtx_tier_passes_effects_through()
+    public void Probe_available_passes_effects_through()
     {
-        var shim = new FakeShim();
+        // When the shim reports effects available the orchestrator must forward them unchanged.
+        // GpuTier is irrelevant to the gate; Rtx is used here only as a realistic construction arg.
+        var shim = new FakeShim { GreenScreenAvailable = true };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
         orch.Start(Requested());
         Assert.Equal(OrchestratorState.Running, orch.State);
@@ -22,10 +24,11 @@ public class OrchestratorTests
     }
 
     [Fact]
-    public void NonRtx_tier_forces_effects_off()
+    public void Probe_unavailable_forces_effects_off_regardless_of_tier()
     {
-        var shim = new FakeShim();
-        var orch = new Orchestrator(shim, GpuTier.NonRtx);
+        // When the shim reports effects unavailable, the orchestrator must strip them — even on RTX.
+        var shim = new FakeShim { GreenScreenAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
         Assert.False(orch.EffectsAvailable);
         orch.Start(Requested());
         Assert.False(shim.LastParams!.GreenScreenEnabled);
@@ -72,6 +75,7 @@ public class OrchestratorTests
         public void Stop() { }
         public ShimStatus GetStatus() => new(true, 0, GazeState.Unknown, false, false, "boom");
         public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
+        public ShimCapabilities QueryCapabilities() => new(false, "test");
         public void Dispose() { }
     }
 
@@ -85,6 +89,25 @@ public class OrchestratorTests
         public void Stop() { }
         public ShimStatus GetStatus() => new(true, 30, GazeState.Unknown, false, false, HasError ? "transient error" : null);
         public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
+        public ShimCapabilities QueryCapabilities() => new(false, "test");
         public void Dispose() { }
+    }
+
+    // --- Task 7: probe-based gate ---
+
+    [Fact]
+    public void Effects_Disabled_When_Shim_Reports_Unavailable()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        Assert.False(orch.EffectsAvailable);
+    }
+
+    [Fact]
+    public void Effects_Enabled_When_Shim_Reports_Available()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        Assert.True(orch.EffectsAvailable);
     }
 }

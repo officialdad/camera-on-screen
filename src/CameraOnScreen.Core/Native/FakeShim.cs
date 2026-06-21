@@ -4,6 +4,7 @@ public sealed class FakeShim : INativeShim
 {
     public List<CameraInfo> Cameras { get; } = new();
     public ShimParams? LastParams { get; private set; }
+    public bool GreenScreenAvailable { get; set; }
     private bool _running;
 
     public bool Init(IntPtr d3dDevice) => true;
@@ -24,6 +25,10 @@ public sealed class FakeShim : INativeShim
     {
         width = 0; height = 0; return false;
     }
+
+    public ShimCapabilities QueryCapabilities() =>
+        new(GreenScreenAvailable,
+            GreenScreenAvailable ? "fake: available" : "fake: unavailable");
 
     public void Dispose() { }
 }

@@ -8,18 +8,32 @@ namespace CameraOnScreen.Core.Tests.ViewModels;
 
 public class MainViewModelTests
 {
-    private static MainViewModel Build(GpuTier tier, out FakeShim shim)
+    private static MainViewModel Build(GpuTier tier, out FakeShim shim,
+        bool greenScreenAvailable = false)
     {
-        shim = new FakeShim { Cameras = { new CameraInfo("cam", "Cam") } };
+        shim = new FakeShim
+        {
+            Cameras = { new CameraInfo("cam", "Cam") },
+            GreenScreenAvailable = greenScreenAvailable
+        };
         // Same shim instance drives the orchestrator AND is exposed via VM.ShimRef.
         return new MainViewModel(new Orchestrator(shim, tier), shim);
     }
 
     [Fact]
-    public void NonRtx_disables_effects_in_vm()
+    public void Probe_unavailable_disables_effects_in_vm()
     {
-        var vm = Build(GpuTier.NonRtx, out _);
+        // Explicitly set GreenScreenAvailable = false; tier is irrelevant.
+        var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: false);
         Assert.False(vm.EffectsAvailable);
+    }
+
+    [Fact]
+    public void NonRtx_tier_does_not_gate_effects_when_probe_says_available()
+    {
+        // Non-RTX tier must NOT disable effects when the shim probe reports available.
+        var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: true);
+        Assert.True(vm.EffectsAvailable);
     }
 
     [Fact]
@@ -123,6 +137,7 @@ public class MainViewModelTests
         public void Stop() => _running = false;
         public ShimStatus GetStatus() => new(_running, FpsValue, GazeState.Unknown, false, false, null);
         public bool TryGetFrame(byte[] buffer, out int width, out int height) { width = 0; height = 0; return false; }
+        public ShimCapabilities QueryCapabilities() => new(false, "test");
         public void Dispose() { }
     }
 }

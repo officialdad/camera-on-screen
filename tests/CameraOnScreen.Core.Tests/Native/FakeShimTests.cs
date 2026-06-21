@@ -33,4 +33,20 @@ public class FakeShimTests
         var shim = new FakeShim { Cameras = { new CameraInfo("a", "Cam A") } };
         Assert.Single(shim.EnumerateCameras());
     }
+
+    [Fact]
+    public void FakeShim_QueryCapabilities_ReportsConfiguredValue()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true };
+        var caps = shim.QueryCapabilities();
+        Assert.True(caps.GreenScreenAvailable);
+        Assert.False(string.IsNullOrEmpty(caps.Detail));
+    }
+
+    [Fact]
+    public void FakeShim_QueryCapabilities_DefaultsUnavailable()
+    {
+        var caps = new FakeShim().QueryCapabilities();
+        Assert.False(caps.GreenScreenAvailable);
+    }
 }
