@@ -25,6 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Self-hosted runner runs as NETWORK SERVICE, but _work is owned by Administrators,
+      # so git's dubious-ownership guard blocks `gh release create --verify-tag` (which
+      # shells out to git). Trust the workspace under THIS account's gitconfig — an
+      # interactive-user `git config --global` does not reach NETWORK SERVICE.
+      - name: Trust workspace for git (NETWORK SERVICE account)
+        shell: pwsh
+        run: git config --global --add safe.directory '*'
+
       - name: Derive version from tag
         id: ver
         shell: pwsh
