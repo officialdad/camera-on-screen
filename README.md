@@ -1,29 +1,70 @@
-# Camera-on-Screen
+<p align="center">
+  <img src="cos.png" alt="Camera-on-Screen" width="200">
+</p>
 
-[![ci](https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml)
+<h1 align="center">Camera-on-Screen</h1>
 
-A Windows webcam **desktop-overlay** app. A transparent, always-on-top,
-draggable overlay shows your live webcam so any screen recorder captures it
-live in one pass — no post-edit. Optional NVIDIA Maxine **AI Green Screen** and
-**AI Eye Contact** effects composite in real time.
+<p align="center">
+  Put your webcam on top of your screen — live, draggable, captured in one pass.
+</p>
 
-> **Requirements:** Windows + an **NVIDIA RTX GPU** with a recent driver. On
-> non-RTX hardware the app still runs, but the AI effects are disabled by
-> design.
+<p align="center">
+  <a href="https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml"><img src="https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+</p>
+
+---
+
+A transparent, always-on-top webcam overlay for Windows. It floats your live
+camera over everything else, so any screen recorder captures you and your screen
+together — no editing afterward. Optional NVIDIA **AI Green Screen** (background
+removal) and **AI Eye Contact** effects run in real time.
+
+> **You need:** Windows + an **NVIDIA RTX GPU** with a recent driver for the AI
+> effects. On other hardware the overlay still works — the AI effects are just
+> turned off.
 
 ## Install
 
-Download `CameraOnScreen-Setup-<ver>-x64.exe` (built by `scripts\build-installer.ps1`;
-GitHub Releases once the release workflow lands) and run it. It installs **per-user**
-(no admin) to `%LOCALAPPDATA%\Programs\CameraOnScreen`, adds a Start Menu shortcut, and
-registers an uninstaller. The .NET runtime is bundled — no prerequisite install.
+1. Download the latest `CameraOnScreen-Setup-<ver>-x64.exe` from
+   [**Releases**](https://github.com/officialdad/camera-on-screen/releases).
+2. Run it. It installs **per-user** (no admin), adds a Start Menu shortcut, and
+   bundles everything it needs — no extra downloads.
+3. Windows SmartScreen may warn (the installer is unsigned): click
+   **More info → Run anyway**.
 
-The installer is **unsigned**, so Windows SmartScreen may warn on first run: click
-**More info → Run anyway**. Uninstalling removes the app but keeps your settings
-(`%LOCALAPPDATA%\CameraOnScreen\config.json`).
+Uninstall from **Settings → Apps** as usual. Your preferences are kept at
+`%LOCALAPPDATA%\CameraOnScreen\config.json`.
 
-> **AI effects in this build are for RTX 30-series (Ampere) GPUs.** On other GPUs the
-> app installs and runs as a plain webcam overlay with the effects disabled.
+> The AI effects in this build are tuned for **RTX 30-series (Ampere)** GPUs. On
+> other GPUs the app still installs and runs as a plain webcam overlay.
+
+## Using it
+
+- **Move it** — drag the centre **+** handle.
+- **Resize it** — scroll the mouse wheel over the overlay.
+- **Mirror / zoom** — toggle in the control panel.
+- **AI Green Screen** — removes your background with adjustable edge expand /
+  feather (RTX only).
+- **AI Eye Contact** — gently redirects your gaze toward the camera (RTX only).
+
+Then record with OBS, Game Bar, or any screen recorder — the overlay shows up
+live in the capture.
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+how to build, the RTX/Maxine requirements, and the bar PRs need to clear.
+
+## License
+
+[MIT](LICENSE). The bundled NVIDIA Maxine runtime is governed separately under
+the NVIDIA Maxine SDK License — see
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). NVIDIA, Maxine, and RTX are
+trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
+
+---
+
+# Technical details
 
 ## What it is
 
@@ -33,10 +74,10 @@ The installer is **unsigned**, so Windows SmartScreen may warn on first run: cli
 - The C# side owns all windowing/compositing (a layered DirectComposition
   overlay); the shim only captures and applies effects.
 
-## NVIDIA Maxine SDKs (not included)
+## NVIDIA Maxine SDKs (not in this repo)
 
 The AI effects use the **NVIDIA Maxine Video Effects SDK** (green screen) and
-**NVIDIA Maxine AR SDK** (eye contact). These are **not bundled** in this
+**NVIDIA Maxine AR SDK** (eye contact). These are **not bundled** in the
 repository — download them from <https://developer.nvidia.com/maxine> and point
 the build at them. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
@@ -65,25 +106,21 @@ dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj
 
 Without the SDK env vars the shim builds a CI-safe **passthrough stub** (effects
 disabled) so the project still builds on machines without the SDK. For the
-runtime env vars needed to actually run the effects, see `CLAUDE.md`.
+runtime env vars needed to actually run the effects, see
+[`CLAUDE.md`](CLAUDE.md).
 
-## CI
+## CI / Release
 
 Every PR and push to `main` is gated by GitHub Actions on a **self-hosted RTX
 runner** — full co-versioned Maxine build, a stale-stub export verify, the App
-build, and Core unit tests, all with warnings treated as errors. See
+build, and Core unit tests, all with warnings treated as errors. A second
+workflow builds the installer and publishes a GitHub release on a `v*` tag. See
 [`docs/ci/self-hosted-runner.md`](docs/ci/self-hosted-runner.md).
 
 ## Status
 
 M1–M5 complete: Core, overlay passthrough, AI Green Screen, AI Eye Contact,
-app-relative SDK discovery, the runtime/model **bundler**, and the **installer**
-(a per-user Inno Setup `.exe`, ~0.59 GB) — all verified on an RTX 3090. Next:
-multi-GPU models (Ampere only today), full license review, and a tag-triggered
-release workflow.
-
-## License
-
-[MIT](LICENSE). NVIDIA Maxine SDKs are governed separately — see
-[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). NVIDIA, Maxine, and RTX are
-trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
+app-relative SDK discovery, the runtime/model **bundler**, the **installer** (a
+per-user Inno Setup `.exe`), license compliance, and the tag-triggered release
+pipeline — all verified on an RTX 3090. Remaining: multi-GPU models (Ampere
+only today).
