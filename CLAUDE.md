@@ -14,6 +14,8 @@ Design intent lives in `docs/superpowers/specs/`; task plans in `docs/superpower
 - Because of that, the App is built **unpackaged + self-contained via NuGet only** (`WindowsPackageType=None`, `WindowsAppSDKSelfContained=true`, no `Package.appxmanifest`).
 - The C++ `native/shim/shim.vcxproj` is **deliberately NOT in `CameraOnScreen.sln`** — a C++ project breaks `dotnet build`/`dotnet test` (the SDK MSBuild lacks C++ targets). Build it separately first; the App copies the produced DLL via a `<None>` item in its csproj.
 - Builds and tests must be **pristine (0 warnings)** — warnings are treated as findings (CI enforces `/warnaserror` + `TreatWarningsAsErrors`).
+- **Inno Setup 6** (`ISCC.exe`) is required to build the installer (issue #1):
+  `winget install JRSoftware.InnoSetup`. Not needed for normal build/test.
 
 ## Build & test
 
@@ -80,6 +82,17 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 - **VFX** green screen (`nvvfxgreenscreen`) and **AR** eye contact (gaze) are separate NVIDIA products. No import `.lib` — link via the SDKs' proxy stubs (`nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`, `nvARProxy.cpp`) compiled into the shim. Models are prebuilt TensorRT engines for compute capability **86** (RTX 3090) — arch-locked.
 - **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, both effect DLLs, `models\vfx` + `models\ar`).
 - **Bundler** (`scripts/bundle-maxine.ps1` + `native/shim/bundle/maxine-manifest.psd1`): copies the **minimal verified load-closure** (the manifest's DLL allow-list was produced by `native/shim/smoke/trace_closure.cpp`, which loads both effects and enumerates loaded modules) into `<output>\maxine\` (~1.28 GB, Ampere only). Co-version enforced physically: shared DLLs from the VFX runtime, AR-only DLLs (`cufft64_11`, `nppif64_12`) from the AR runtime. `trace_closure` re-run against the produced bundle (`COS_*` unset → both effects load) is the verify gate. End-user need: an **RTX GPU + recent driver**; no NVIDIA account or SDK download (the redistributable runtime is bundled).
+- **Installer** (`scripts/bundle-maxine.ps1` consumer): `scripts/build-installer.ps1`
+  builds the App **.NET-self-contained**, export-verifies the deployed shim, runs the
+  bundler, then compiles `installer/CameraOnScreen.iss` with Inno Setup 6 →
+  `dist/CameraOnScreen-Setup-<ver>-x64.exe` (per-user, unsigned, x64). Effects are
+  **Ampere-only** this build; non-RTX installs run as a plain overlay. Build the shim SDK
+  config **last** before running (deploy-the-right-shim). `-DryRun` prints the plan with no
+  SDK/RTX/Inno needed. **Stage via `dotnet build -p:SelfContained=true` — NOT `dotnet
+  publish`** (cost a debug cycle): for this unpackaged WinUI 3 app, `publish` silently drops
+  the app PRI + compiled XAML (`CameraOnScreen.App.pri`, `App.xbf`, `MainWindow.xbf`), so the
+  packaged exe dies at launch with `XamlParseException 0x802B000A` at `MainWindow.InitializeComponent`.
+  `build -p:SelfContained=true` bundles the .NET runtime *and* keeps the XAML resources.
 
 ## CI/CD
 
@@ -87,4 +100,4 @@ Public repo `github.com/officialdad/camera-on-screen` (MIT + `THIRD-PARTY-NOTICE
 
 ## Status
 
-M1–M5 complete and on `main`: Core, App + overlay, AI green screen, QoL (overlay mirror/zoom, green-screen expand/feather, panel right-size), AI eye contact (gaze redirection), app-relative SDK discovery, and the runtime **bundler**. User-verified on an RTX 3090. Remaining ship-time work is tracked as GitHub issues: **installer**, **multi-GPU models** (compute 86 only today), **full license review**, **tag-triggered release.yml**.
+M1–M5 complete: Core, App + overlay, AI green screen, QoL (overlay mirror/zoom, green-screen expand/feather, panel right-size), AI eye contact (gaze redirection), app-relative SDK discovery, the runtime **bundler**, and the **installer** (`scripts/build-installer.ps1` → Inno Setup `.exe`). All user-verified on an RTX 3090 — the installer was installed + launched from the Start Menu with both effects working (0.59 GB installer, issue #1). Remaining ship-time work tracked as GitHub issues: **multi-GPU models** (compute 86 only today; Turing models fetchable from NGC via `VideoFX\features\install_feature.ps1 -gpu 75` but co-version-trapped vs the shipped 0.7.6 runtime), **full license review** (#3 — gates any *public* redistribution), **tag-triggered release.yml** (#4 — needs #1 merged + #3 cleared).

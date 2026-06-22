@@ -11,6 +11,20 @@ live in one pass — no post-edit. Optional NVIDIA Maxine **AI Green Screen** an
 > non-RTX hardware the app still runs, but the AI effects are disabled by
 > design.
 
+## Install
+
+Download `CameraOnScreen-Setup-<ver>-x64.exe` (built by `scripts\build-installer.ps1`;
+GitHub Releases once the release workflow lands) and run it. It installs **per-user**
+(no admin) to `%LOCALAPPDATA%\Programs\CameraOnScreen`, adds a Start Menu shortcut, and
+registers an uninstaller. The .NET runtime is bundled — no prerequisite install.
+
+The installer is **unsigned**, so Windows SmartScreen may warn on first run: click
+**More info → Run anyway**. Uninstalling removes the app but keeps your settings
+(`%LOCALAPPDATA%\CameraOnScreen\config.json`).
+
+> **AI effects in this build are for RTX 30-series (Ampere) GPUs.** On other GPUs the
+> app installs and runs as a plain webcam overlay with the effects disabled.
+
 ## What it is
 
 - Single-process **C# .NET 8 + WinUI 3** control panel.
@@ -62,9 +76,11 @@ build, and Core unit tests, all with warnings treated as errors. See
 
 ## Status
 
-M1–M4 (Core, overlay passthrough, AI Green Screen, AI Eye Contact) and M5 part 1
-(app-relative SDK discovery) are complete. Next: the M5 ship-time work —
-runtime/model bundler, installer, multi-GPU models, license packaging.
+M1–M5 complete: Core, overlay passthrough, AI Green Screen, AI Eye Contact,
+app-relative SDK discovery, the runtime/model **bundler**, and the **installer**
+(a per-user Inno Setup `.exe`, ~0.59 GB) — all verified on an RTX 3090. Next:
+multi-GPU models (Ampere only today), full license review, and a tag-triggered
+release workflow.
 
 ## License
 
