@@ -25,7 +25,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private readonly byte[] _frameBuf = new byte[1920 * 1080 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
-    private Overlay.MouseWheelHook? _wheelHook;
+    private Overlay.OverlayMouseHook? _mouseHook;
+    // Hook-driven drag state (all touched on the UI thread inside the hook callback).
+    private bool _dragging;
+    private Overlay.Interop.POINT _dragStart;   // screen point where the drag began
+    private int _dragOrigX, _dragOrigY;          // overlay top-left when the drag began
 
     // Default overlay geometry, used when the saved config has no usable (non-zero) bounds.
     private const int DefaultX = 200, DefaultY = 200, DefaultW = 320, DefaultH = 240;
@@ -83,10 +87,10 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _saveTimer.IsRepeating = false;
         _saveTimer.Tick += (_, _) => Save();
 
-        // Global wheel hook: resize the overlay when the cursor is over it and it is interactive.
+        // Global mouse hook: resize the overlay on wheel, drag it by the handle on left-button.
         // The callback runs on the UI thread (the hook is installed here), so it touches the overlay
-        // directly. Returning true swallows the wheel so the app under the cursor doesn't scroll.
-        _wheelHook = new Overlay.MouseWheelHook(OnWheelOverScreen);
+        // directly. Returning true swallows the event so the app under the cursor doesn't also see it.
+        _mouseHook = new Overlay.OverlayMouseHook(OnMouse);
 
         // Probe effect availability OFF the UI thread (the real probe does a ~1s TensorRT model
         // load — running it in the ctor froze startup). Until it completes, EffectsAvailable is false
@@ -112,10 +116,10 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // Stop the timer first so no WM_EXITSIZEMOVE-driven InteractionEnded can race with Save().
         _timer?.Stop();
         _timer = null;
-        // Unhook the global wheel hook and flush any pending debounced save before teardown, so no
+        // Unhook the global mouse hook and flush any pending debounced save before teardown, so no
         // hook callback fires into a disposed overlay.
-        _wheelHook?.Dispose();
-        _wheelHook = null;
+        _mouseHook?.Dispose();
+        _mouseHook = null;
         _saveTimer?.Stop();
         _saveTimer = null;
         // Unsubscribe both event sources BEFORE saving so a late WM_EXITSIZEMOVE cannot trigger a
@@ -154,26 +158,58 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         });
     }
 
-    // Called on the UI thread for every WM_MOUSEWHEEL. Resize only when the cursor is inside the
-    // overlay AND the overlay is interactive (not locked / not click-through). Returns true when we
-    // handled the wheel so MouseWheelHook swallows it.
-    private bool OnWheelOverScreen(Overlay.Interop.POINT pt, int notches)
+    // Runs on the UI thread for every hooked mouse event. Returns true to swallow (so the app under
+    // the cursor doesn't also get it). Wheel = resize; left-button on the handle = drag the overlay.
+    private bool OnMouse(Overlay.MouseEventKind kind, Overlay.Interop.POINT pt, int notches)
     {
-        if (!_overlay.IsInteractive) return false;
+        switch (kind)
+        {
+            case Overlay.MouseEventKind.Wheel:
+                if (!_overlay.IsInteractive) return false;
+                var (wx, wy, ww, wh) = _overlay.GetBounds();
+                bool inside = pt.x >= wx && pt.x < wx + ww && pt.y >= wy && pt.y < wy + wh;
+                if (!inside) return false;
+                var next = CameraOnScreen.Core.Overlay.OverlaySizer.Resize(
+                    new CameraOnScreen.Core.Overlay.Rect(wx, wy, ww, wh), notches, GetWorkArea(_overlay.Hwnd));
+                _overlay.SetBounds(next.X, next.Y, next.W, next.H);
+                _saveTimer?.Stop(); _saveTimer?.Start();
+                return true;
 
-        var (x, y, w, h) = _overlay.GetBounds();
-        bool inside = pt.x >= x && pt.x < x + w && pt.y >= y && pt.y < y + h;
-        if (!inside) return false;
+            case Overlay.MouseEventKind.LeftDown:
+                if (_overlay.IsInteractive && _overlay.HitHandle(pt))
+                {
+                    _dragging = true;
+                    _dragStart = pt;
+                    (_dragOrigX, _dragOrigY, _, _) = _overlay.GetBounds();
+                    return true; // swallow: begin handle drag
+                }
+                return false;
 
-        var work = GetWorkArea(_overlay.Hwnd);
-        var next = CameraOnScreen.Core.Overlay.OverlaySizer.Resize(
-            new CameraOnScreen.Core.Overlay.Rect(x, y, w, h), notches, work);
-        _overlay.SetBounds(next.X, next.Y, next.W, next.H);
+            case Overlay.MouseEventKind.Move:
+                if (_dragging)
+                {
+                    var (_, _, dw, dh) = _overlay.GetBounds();
+                    _overlay.SetBounds(_dragOrigX + (pt.x - _dragStart.x), _dragOrigY + (pt.y - _dragStart.y), dw, dh);
+                    return true;
+                }
+                // Handle visibility: show on hover over the overlay when interactive (hook-driven,
+                // because window mouse messages are unreliable over the MPO plane).
+                var b = _overlay.GetBounds();
+                bool over = _overlay.IsInteractive
+                    && pt.x >= b.x && pt.x < b.x + b.w && pt.y >= b.y && pt.y < b.y + b.h;
+                _overlay.SetHandleVisible(over);
+                return false;
 
-        // Debounce the disk write: restart the one-shot timer on every notch.
-        _saveTimer?.Stop();
-        _saveTimer?.Start();
-        return true;
+            case Overlay.MouseEventKind.LeftUp:
+                if (_dragging)
+                {
+                    _dragging = false;
+                    _saveTimer?.Stop(); _saveTimer?.Start(); // debounced persist of new position
+                    return true;
+                }
+                return false;
+        }
+        return false;
     }
 
     // Work area (monitor minus taskbar) of the monitor the overlay is on, as an OverlaySizer.Rect.
