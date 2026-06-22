@@ -37,7 +37,7 @@ public class OverlaySizerTests
     }
 
     [Fact]
-    public void Aspect_ratio_is_preserved_within_one_pixel()
+    public void Aspect_ratio_is_preserved_approximately()
     {
         var result = OverlaySizer.Resize(new Rect(0, 0, 320, 240), 3, BigWorkArea);
         Assert.True(System.Math.Abs((double)result.W / result.H - 320.0 / 240.0) < 0.02);
