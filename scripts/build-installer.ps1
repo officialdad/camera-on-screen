@@ -93,7 +93,13 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
 Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
 
 # 4. Bundle the Maxine runtime into <staging>\maxine\.
-& $bundler -OutDir $StagingDir -VfxRuntime $VfxRuntime -ArRuntime $ArRuntime
+#    Only forward a runtime path when set, so empty values fall through to bundle-maxine's
+#    own defaults (esp. its %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK fallback) — passing
+#    an empty -ArRuntime here would otherwise override that default and fail.
+$bundlerArgs = @{ OutDir = $StagingDir }
+if ($VfxRuntime) { $bundlerArgs['VfxRuntime'] = $VfxRuntime }
+if ($ArRuntime)  { $bundlerArgs['ArRuntime']  = $ArRuntime }
+& $bundler @bundlerArgs
 if (-not (Test-Path -LiteralPath (Join-Path $StagingDir 'maxine'))) { throw "bundler did not produce maxine\ in $StagingDir" }
 
 # 5. Compile the installer.
