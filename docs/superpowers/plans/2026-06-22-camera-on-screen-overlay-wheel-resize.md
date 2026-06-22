@@ -536,3 +536,316 @@ git commit -m "feat(overlay): wire wheel-resize hook + debounced persist in Main
 - **Persistence reuses the existing path:** `Save()` already reads live geometry via `_overlay.GetBounds()` and writes `Overlay.Width/Height`; the only new piece is the debounce timer that calls it after the wheel settles.
 - **Do not** change the swap chain, `UpdateScale`, Zoom, or Mirror — `SetBounds` triggers `WM_SIZE` → `UpdateScale`, which already re-stretches content to the new size.
 ```
+
+---
+
+## Addendum tasks (drag-handle redesign — see spec addendum 2026-06-22)
+
+Human gate on Tasks 1–4 found that drag-anywhere fails over the video at larger sizes (MPO
+plane → DWM loses the layered window's hit-test alpha → clicks pass through). Fix: remove the
+BR resize grip + drag-anywhere; add a hook-driven, top-center **visible drag handle**. These
+tasks build on Tasks 1–4 (already merged on this branch).
+
+### Task 5: Replace BR resize grip with a top-center drag handle (OverlayWindow)
+
+**Files:**
+- Modify: `src/CameraOnScreen.App/Overlay/OverlayWindow.cs`
+
+**Interfaces:**
+- Produces (consumed by Task 6):
+  - `public bool HitHandle(POINT screenPt)` — true if a screen point is inside the handle's
+    fixed top-center screen rect.
+  - `public void SetHandleVisible(bool visible)` — host sets handle visibility (driven by the
+    hook's hover detection in Task 6).
+- Removes: `OnHitTest`, the `WM_NCHITTEST` case, `DrawGrip`, `GripSize`, the grip draw call,
+  and the `WM_MOUSEMOVE`/`WM_MOUSELEAVE`/`OnMouseMove`/`_hovered`/`_trackingMouse` machinery
+  (window mouse messages are unreliable over the MPO plane; visibility is now hook-driven).
+
+> No automated test (Win32/D3D drawing). Verified by build + the Task 6 human gate.
+
+- [ ] **Step 1: Remove drag-anywhere + BR resize**
+
+In `WndProcImpl`, delete the entire `case WM_NCHITTEST:` block (without a custom hit-test,
+`DefWindowProc` returns `HTCLIENT` for the borderless `WS_POPUP` — no native drag/resize).
+Delete the `OnHitTest` method.
+
+- [ ] **Step 2: Remove the old hover/grip machinery**
+
+Delete the `WM_MOUSEMOVE` and `WM_MOUSELEAVE` cases in `WndProcImpl`, the `OnMouseMove`
+method, the `_hovered` and `_trackingMouse` fields, the `DrawGrip` method, and the `GripSize`
+const. In `SetClickThrough`, replace the `_hovered = false; _trackingMouse = false;` lines
+(inside `if (on)`) with `_handleVisible = false;` (added in Step 3). (The `TrackMouseEvent`
+/ `TRACKMOUSEEVENT` / `ScreenToClient` P/Invokes in `Interop.cs` may remain unused — leave
+them; unused `extern` methods do not warn.)
+
+- [ ] **Step 3: Add handle state + geometry + hit-test**
+
+Add fields near `_locked` (replacing the removed ones):
+
+```csharp
+    private bool _handleVisible; // host (hook hover) toggles this; gates the drawn handle.
+
+    // Drag handle: fixed SCREEN-pixel size, centered on the overlay's top edge. Hit-testing uses
+    // the live window rect (fixed screen position, independent of zoom); the pill is DRAWN into the
+    // back buffer (see DrawHandle) so content zoom>1 shifts the drawn pill (v1 caveat) — mirror is
+    // fine (the pill is symmetric).
+    private const int HandleScreenW = 110, HandleScreenH = 28, HandleTopMarginPx = 6;
+```
+
+Add the public API (e.g. just after `SetBounds`):
+
+```csharp
+    /// <summary>Host toggles handle visibility (driven by the hook's hover detection).</summary>
+    public void SetHandleVisible(bool visible) => _handleVisible = visible;
+
+    /// <summary>True if a SCREEN point is inside the drag handle's fixed top-center rect.</summary>
+    public bool HitHandle(POINT screenPt)
+    {
+        if (_disposed) return false;
+        GetWindowRect(_hwnd, out RECT w);
+        int winW = w.right - w.left;
+        int hx = w.left + (winW - HandleScreenW) / 2;
+        int hy = w.top + HandleTopMarginPx;
+        return screenPt.x >= hx && screenPt.x < hx + HandleScreenW
+            && screenPt.y >= hy && screenPt.y < hy + HandleScreenH;
+    }
+```
+
+- [ ] **Step 4: Draw the handle**
+
+In `PresentFrame`, replace the old grip draw line `if (!_locked && _hovered) DrawGrip(back, width, height);`
+with `if (_handleVisible && !_locked) DrawHandle(back, width, height);`. Add `DrawHandle`
+(mirrors the removed `DrawGrip`'s `ClearView` approach; the swap chain is
+`AlphaMode.Premultiplied`, so use premultiplied colors):
+
+```csharp
+    // Draw the drag handle (semi-opaque pill + move-cross) into the frame-res back buffer, sized
+    // from the current client->buffer scale so it lands at ~HandleScreenW×HandleScreenH on screen at
+    // the default transform. Premultiplied alpha: RGB is pre-scaled by A.
+    private void DrawHandle(ID3D11Texture2D back, int frameW, int frameH)
+    {
+        GetClientRect(_hwnd, out RECT rc);
+        int clientW = rc.right, clientH = rc.bottom;
+        if (clientW <= 0 || clientH <= 0) return;
+        float ux = frameW / (float)clientW, uy = frameH / (float)clientH; // frame px per screen px
+        int bw = (int)(HandleScreenW * ux), bh = (int)(HandleScreenH * uy);
+        if (bw <= 0 || bh <= 0) return;
+        int bx = (frameW - bw) / 2, by = (int)(HandleTopMarginPx * uy);
+        using var rtv = _device.CreateRenderTargetView(back);
+        // Pill bar: black @ 0.45 alpha, premultiplied -> (0,0,0,0.45).
+        _context1.ClearView(rtv, new Vortice.Mathematics.Color4(0f, 0f, 0f, 0.45f),
+            new[] { new Vortice.RawRect(bx, by, bx + bw, by + bh) });
+        // Move-cross: white @ 0.9 alpha, premultiplied -> (0.9,0.9,0.9,0.9).
+        int cx = bx + bw / 2, cy = by + bh / 2;
+        int arm = bh / 3, t = Math.Max(1, (int)(2 * ux));
+        var white = new Vortice.Mathematics.Color4(0.9f, 0.9f, 0.9f, 0.9f);
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - t, cy - arm, cx + t, cy + arm) });
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - arm, cy - t, cx + arm, cy + t) });
+    }
+```
+
+- [ ] **Step 5: Build (0 warnings)**
+
+Run: `dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj -t:Rebuild`
+Expected: `Build succeeded.` `0 Warning(s)` `0 Error(s)`. (If `_handleVisible` warns as
+unused, confirm `DrawHandle`'s gate reads it and `SetHandleVisible` writes it.)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/CameraOnScreen.App/Overlay/OverlayWindow.cs
+git commit -m "feat(overlay): replace BR resize grip with top-center drag handle"
+```
+
+---
+
+### Task 6: Hook-driven drag from the handle (OverlayMouseHook + MainWindow)
+
+**Files:**
+- Rename + modify: `src/CameraOnScreen.App/Overlay/MouseWheelHook.cs` → `OverlayMouseHook.cs`
+- Modify: `src/CameraOnScreen.App/MainWindow.xaml.cs`
+
+**Interfaces:**
+- Consumes: `OverlayWindow.HitHandle`, `OverlayWindow.SetHandleVisible`, `OverlayWindow.IsInteractive`,
+  `OverlayWindow.GetBounds`, `OverlayWindow.SetBounds` (Tasks 2 & 5); `OverlaySizer.Resize` (Task 1).
+- Produces: end-to-end handle drag + retained wheel resize. No new public surface beyond the
+  generalized hook.
+
+> No automated test (OS hook + windowing). Verified by build + the human visual gate (Step 5).
+
+- [ ] **Step 1: Generalize the hook**
+
+Rename the file/class to `OverlayMouseHook`. Surface left-button + move + wheel via one
+callback. Replace the class body with:
+
+```csharp
+using System;
+using System.Runtime.InteropServices;
+using static CameraOnScreen.App.Overlay.Interop;
+
+namespace CameraOnScreen.App.Overlay;
+
+internal enum MouseEventKind { Wheel, LeftDown, Move, LeftUp }
+
+/// <summary>
+/// Global low-level mouse hook installed on the UI thread (its callback runs on the UI thread).
+/// Surfaces wheel + left-button + move events to a single callback that returns true to SWALLOW the
+/// event (so the app under the cursor does not also receive it). The overlay is a no-focus topmost
+/// window whose video can sit on an MPO plane, so window hit-testing is unreliable; this hook sees
+/// input before the OS routes it, which is how drag-over-video works.
+/// </summary>
+internal sealed class OverlayMouseHook : IDisposable
+{
+    // (kind, screenPoint, wheelNotches) => handled. wheelNotches is 0 for non-wheel events.
+    private readonly Func<MouseEventKind, POINT, int, bool> _onMouse;
+    private readonly LowLevelMouseProc _proc;
+    private IntPtr _hook;
+    private bool _disposed;
+
+    public OverlayMouseHook(Func<MouseEventKind, POINT, int, bool> onMouse)
+    {
+        ArgumentNullException.ThrowIfNull(onMouse);
+        _onMouse = onMouse;
+        _proc = HookProc;
+        _hook = SetWindowsHookEx(WH_MOUSE_LL, _proc, GetModuleHandle(null), 0);
+        if (_hook == IntPtr.Zero)
+            throw new InvalidOperationException(
+                $"SetWindowsHookEx(WH_MOUSE_LL) failed with Win32 error {Marshal.GetLastWin32Error()}.");
+    }
+
+    private IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode == HC_ACTION)
+        {
+            var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+            switch ((int)wParam)
+            {
+                case 0x020A: // WM_MOUSEWHEEL
+                    int notches = (short)(data.mouseData >> 16) / WHEEL_DELTA;
+                    if (notches != 0 && _onMouse(MouseEventKind.Wheel, data.pt, notches)) return (IntPtr)1;
+                    break;
+                case 0x0201: // WM_LBUTTONDOWN
+                    if (_onMouse(MouseEventKind.LeftDown, data.pt, 0)) return (IntPtr)1;
+                    break;
+                case 0x0200: // WM_MOUSEMOVE
+                    if (_onMouse(MouseEventKind.Move, data.pt, 0)) return (IntPtr)1;
+                    break;
+                case 0x0202: // WM_LBUTTONUP
+                    if (_onMouse(MouseEventKind.LeftUp, data.pt, 0)) return (IntPtr)1;
+                    break;
+            }
+        }
+        return CallNextHookEx(_hook, nCode, wParam, lParam);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_hook != IntPtr.Zero) { UnhookWindowsHookEx(_hook); _hook = IntPtr.Zero; }
+        GC.SuppressFinalize(this);
+    }
+}
+```
+
+- [ ] **Step 2: MainWindow — fields**
+
+Rename the field to the new type and add drag state:
+
+```csharp
+    private Overlay.OverlayMouseHook? _mouseHook;
+    // Hook-driven drag state (all touched on the UI thread inside the hook callback).
+    private bool _dragging;
+    private Overlay.Interop.POINT _dragStart;   // screen point where the drag began
+    private int _dragOrigX, _dragOrigY;          // overlay top-left when the drag began
+```
+
+(Remove the old `private Overlay.MouseWheelHook? _wheelHook;` field.)
+
+- [ ] **Step 3: MainWindow — construct the hook + the OnMouse callback**
+
+Replace `_wheelHook = new Overlay.MouseWheelHook(OnWheelOverScreen);` with
+`_mouseHook = new Overlay.OverlayMouseHook(OnMouse);`. Replace the `OnWheelOverScreen` method
+with a single `OnMouse` that handles all kinds (keep `GetWorkArea` from Task 4 as-is):
+
+```csharp
+    // Runs on the UI thread for every hooked mouse event. Returns true to swallow (so the app under
+    // the cursor doesn't also get it). Wheel = resize; left-button on the handle = drag the overlay.
+    private bool OnMouse(Overlay.MouseEventKind kind, Overlay.Interop.POINT pt, int notches)
+    {
+        switch (kind)
+        {
+            case Overlay.MouseEventKind.Wheel:
+                if (!_overlay.IsInteractive) return false;
+                var (wx, wy, ww, wh) = _overlay.GetBounds();
+                bool inside = pt.x >= wx && pt.x < wx + ww && pt.y >= wy && pt.y < wy + wh;
+                if (!inside) return false;
+                var next = CameraOnScreen.Core.Overlay.OverlaySizer.Resize(
+                    new CameraOnScreen.Core.Overlay.Rect(wx, wy, ww, wh), notches, GetWorkArea(_overlay.Hwnd));
+                _overlay.SetBounds(next.X, next.Y, next.W, next.H);
+                _saveTimer?.Stop(); _saveTimer?.Start();
+                return true;
+
+            case Overlay.MouseEventKind.LeftDown:
+                if (_overlay.IsInteractive && _overlay.HitHandle(pt))
+                {
+                    _dragging = true;
+                    _dragStart = pt;
+                    (_dragOrigX, _dragOrigY, _, _) = _overlay.GetBounds();
+                    return true; // swallow: begin handle drag
+                }
+                return false;
+
+            case Overlay.MouseEventKind.Move:
+                if (_dragging)
+                {
+                    var (_, _, dw, dh) = _overlay.GetBounds();
+                    _overlay.SetBounds(_dragOrigX + (pt.x - _dragStart.x), _dragOrigY + (pt.y - _dragStart.y), dw, dh);
+                    return true;
+                }
+                // Handle visibility: show on hover over the overlay when interactive (hook-driven,
+                // because window mouse messages are unreliable over the MPO plane).
+                var b = _overlay.GetBounds();
+                bool over = _overlay.IsInteractive
+                    && pt.x >= b.x && pt.x < b.x + b.w && pt.y >= b.y && pt.y < b.y + b.h;
+                _overlay.SetHandleVisible(over);
+                return false;
+
+            case Overlay.MouseEventKind.LeftUp:
+                if (_dragging)
+                {
+                    _dragging = false;
+                    _saveTimer?.Stop(); _saveTimer?.Start(); // debounced persist of new position
+                    return true;
+                }
+                return false;
+        }
+        return false;
+    }
+```
+
+- [ ] **Step 4: MainWindow — teardown**
+
+In `OnWindowClosed`, replace `_wheelHook?.Dispose(); _wheelHook = null;` with
+`_mouseHook?.Dispose(); _mouseHook = null;` (same position — before the VM/overlay dispose).
+
+- [ ] **Step 5: Build, then human visual gate**
+
+Build: `dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj -t:Rebuild` → 0 warnings.
+
+Then run the app on the RTX 3090 and confirm by hand:
+- Hovering the overlay shows the **move-pill at the top-center**; it hides when the cursor leaves and when **Locked**/**Click-through**.
+- **Grab the pill and drag** — the overlay moves, **including when the overlay is large and the
+  pill is over your body/face** (the failing case before). Releasing keeps it in place; reopen
+  the app → position restored.
+- The bottom-right **free-resize is gone**; the overlay only resizes via the **wheel**.
+- Wheel-resize still works (hover + scroll), aspect-locked, interactive-only.
+- A normal click NOT on the pill does not move the overlay.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/CameraOnScreen.App/Overlay/OverlayMouseHook.cs src/CameraOnScreen.App/MainWindow.xaml.cs
+git rm src/CameraOnScreen.App/Overlay/MouseWheelHook.cs  # if the rename left the old file
+git commit -m "feat(overlay): hook-driven drag from the top-center handle"
+```

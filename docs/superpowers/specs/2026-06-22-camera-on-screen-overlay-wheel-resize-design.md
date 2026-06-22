@@ -133,3 +133,57 @@ test + monitor work area) → `OverlaySizer.Resize` → `OverlayWindow.SetBounds
   torn-down overlay.
 - **No focus theft:** `SetBounds` uses `SWP_NOACTIVATE | SWP_NOZORDER`; the overlay stays
   topmost and unfocused, preserving the clean-capture design.
+
+---
+
+## Addendum (2026-06-22): drag-handle redesign + remove BR resize
+
+**What the human gate found.** Wheel-resize works, but at larger sizes (the user hit it at
+~973×720) **dragging the overlay fails over the video region** — clicks on the body/face
+pass straight through to the app beneath, while clicks on uncovered window area still drag.
+It reproduces in raw passthrough (fully opaque image), so it is **not** an alpha/green-screen
+issue.
+
+**Root cause.** The overlay is `WS_EX_LAYERED` and its DirectComposition flip-model swap
+chain is **promoted to a hardware MPO (multiplane overlay) plane** at larger sizes on the RTX
+GPU (the same property CLAUDE.md notes makes GDI screenshots return black). When the video is
+on an MPO plane, DWM no longer has the per-pixel alpha it uses to hit-test the layered window
+over that region, so the OS routes the click through. MPO promotion is size/occlusion
+dependent → the "inconsistent, only at certain sizes" symptom. This is a **pre-existing**
+latent issue (any large size would trigger it) that wheel-resize merely made easy to reach.
+`WM_NCHITTEST`-based drag-anywhere is therefore fundamentally unreliable on the video.
+
+**Decision — stop relying on window hit-testing for drag; use the global hook + a visible
+handle.** The `WH_MOUSE_LL` hook already installed for the wheel sees mouse input **before**
+the OS routes it to a window, so it catches presses on the video region even when the window
+cannot. Two changes:
+
+1. **Remove the bottom-right resize grip** (the `HTBOTTOMRIGHT` hit-zone, `DrawGrip`,
+   `GripSize`) and **remove drag-anywhere** (`HTCAPTION`). The wheel is the only resize
+   mechanism; `WM_NCHITTEST` reverts to default (`HTCLIENT`). This also removes the
+   non-aspect-locked free resize the user disliked.
+2. **Add a visible drag handle, dragged via the hook.** A **move-icon pill at the top-center**
+   of the overlay, shown **on hover when unlocked** (hidden when Locked or Click-through, and
+   in clean-capture). Dragging is driven entirely by the low-level hook: left-button-down
+   inside the handle's screen rect (and `IsInteractive`) begins a drag; mouse-move calls
+   `SetBounds` to follow (size unchanged); button-up ends it and persists (debounced `Save`).
+   The hook **swallows** these events so the app beneath does not also receive them.
+
+**Handle geometry & rendering (v1).** The handle is a fixed **screen-pixel** size (≈110×28)
+centered on the overlay's top edge. Hit-testing uses the live window rect (fixed screen
+position, independent of zoom). The pill is drawn into the back buffer via `ClearView` (the
+same mechanism the old grip used), sized from the current client→buffer scale so it maps to
+the intended screen size at the default transform. **Known v1 caveat:** because it is drawn
+in the content back buffer, content **zoom > 1** shifts the drawn pill away from the fixed
+hit rect (mirror is fine — the pill is symmetric). Zoom defaults to 1.0; if zoom+handle
+alignment matters later, promote the handle to its own DComp visual. Tracked as a follow-up,
+not a v1 blocker.
+
+**Hook generalization.** `MouseWheelHook` becomes a general low-level mouse event source
+surfacing button-down / mouse-move / button-up **and** wheel to the host, each returning a
+"handled → swallow" bool. The drag state machine (offsets, in-progress flag) lives in
+`MainWindow` (UI-thread, where the hook callback runs), not in the hook.
+
+**Unchanged:** wheel-resize math (`OverlaySizer`), `SetBounds`/`IsInteractive`, persistence
+path, Lock/Click-through semantics, no shim/C-ABI/MVVM/config-schema change. Lock and
+Click-through both disable handle dragging via `IsInteractive`.
