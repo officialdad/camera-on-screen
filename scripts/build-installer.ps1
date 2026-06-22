@@ -33,9 +33,15 @@ function Resolve-Iscc {
     }
     $cmd = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    $default = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-    if (Test-Path -LiteralPath $default) { return $default }
-    throw "ISCC.exe not found (PATH or '$default'). Install Inno Setup 6: winget install JRSoftware.InnoSetup"
+    # Cover the usual Inno Setup 6 install spots, incl. winget's per-user location
+    # (%LOCALAPPDATA%\Programs) and the 64-bit Program Files dir.
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
+        (Join-Path $env:ProgramFiles        'Inno Setup 6\ISCC.exe'),
+        (Join-Path $env:LOCALAPPDATA        'Programs\Inno Setup 6\ISCC.exe')
+    )
+    foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
+    throw "ISCC.exe not found (PATH, Program Files, or $env:LOCALAPPDATA\Programs\Inno Setup 6). Install Inno Setup 6: winget install JRSoftware.InnoSetup"
 }
 
 function Assert-ShimHasEffects {
