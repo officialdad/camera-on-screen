@@ -24,6 +24,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     // Big enough for 1920x1080 BGRA; the test camera is 640x480. TryGetFrame writes the actual size.
     private readonly byte[] _frameBuf = new byte[1920 * 1080 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
+    private Overlay.MouseWheelHook? _wheelHook;
 
     // Default overlay geometry, used when the saved config has no usable (non-zero) bounds.
     private const int DefaultX = 200, DefaultY = 200, DefaultW = 320, DefaultH = 240;
@@ -74,6 +76,18 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         };
         _timer.Start();
 
+        // Debounced persist for wheel-resize: the wheel has no "gesture end" event (unlike
+        // WM_EXITSIZEMOVE), so coalesce rapid notches into a single Save() ~400ms after the last one.
+        _saveTimer = DispatcherQueue.CreateTimer();
+        _saveTimer.Interval = TimeSpan.FromMilliseconds(400);
+        _saveTimer.IsRepeating = false;
+        _saveTimer.Tick += (_, _) => Save();
+
+        // Global wheel hook: resize the overlay when the cursor is over it and it is interactive.
+        // The callback runs on the UI thread (the hook is installed here), so it touches the overlay
+        // directly. Returning true swallows the wheel so the app under the cursor doesn't scroll.
+        _wheelHook = new Overlay.MouseWheelHook(OnWheelOverScreen);
+
         // Probe effect availability OFF the UI thread (the real probe does a ~1s TensorRT model
         // load — running it in the ctor froze startup). Until it completes, EffectsAvailable is false
         // (toggles disabled) and the note shows "Checking effect availability…". `await` resumes on
@@ -98,6 +112,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // Stop the timer first so no WM_EXITSIZEMOVE-driven InteractionEnded can race with Save().
         _timer?.Stop();
         _timer = null;
+        // Unhook the global wheel hook and flush any pending debounced save before teardown, so no
+        // hook callback fires into a disposed overlay.
+        _wheelHook?.Dispose();
+        _wheelHook = null;
+        _saveTimer?.Stop();
+        _saveTimer = null;
         // Unsubscribe both event sources BEFORE saving so a late WM_EXITSIZEMOVE cannot trigger a
         // double-save while teardown is in progress.
         _overlay.InteractionEnded -= Save;
@@ -132,6 +152,38 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                     break;
             }
         });
+    }
+
+    // Called on the UI thread for every WM_MOUSEWHEEL. Resize only when the cursor is inside the
+    // overlay AND the overlay is interactive (not locked / not click-through). Returns true when we
+    // handled the wheel so MouseWheelHook swallows it.
+    private bool OnWheelOverScreen(Overlay.Interop.POINT pt, int notches)
+    {
+        if (!_overlay.IsInteractive) return false;
+
+        var (x, y, w, h) = _overlay.GetBounds();
+        bool inside = pt.x >= x && pt.x < x + w && pt.y >= y && pt.y < y + h;
+        if (!inside) return false;
+
+        var work = GetWorkArea(_overlay.Hwnd);
+        var next = CameraOnScreen.Core.Overlay.OverlaySizer.Resize(
+            new CameraOnScreen.Core.Overlay.Rect(x, y, w, h), notches, work);
+        _overlay.SetBounds(next.X, next.Y, next.W, next.H);
+
+        // Debounce the disk write: restart the one-shot timer on every notch.
+        _saveTimer?.Stop();
+        _saveTimer?.Start();
+        return true;
+    }
+
+    // Work area (monitor minus taskbar) of the monitor the overlay is on, as an OverlaySizer.Rect.
+    private static CameraOnScreen.Core.Overlay.Rect GetWorkArea(IntPtr hwnd)
+    {
+        IntPtr mon = Overlay.Interop.MonitorFromWindow(hwnd, Overlay.Interop.MONITOR_DEFAULTTONEAREST);
+        var mi = new Overlay.Interop.MONITORINFO { cbSize = Marshal.SizeOf<Overlay.Interop.MONITORINFO>() };
+        Overlay.Interop.GetMonitorInfo(mon, ref mi);
+        var r = mi.rcWork;
+        return new CameraOnScreen.Core.Overlay.Rect(r.left, r.top, r.right - r.left, r.bottom - r.top);
     }
 
     // Persist current VM state + live overlay geometry. Called on drag/resize END and on close —
