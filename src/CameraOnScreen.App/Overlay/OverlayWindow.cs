@@ -35,17 +35,19 @@ public sealed class OverlayWindow : IDisposable
     // Interaction state (Task 13).
     private bool _locked;     // when true: no drag/resize and no chrome (clean capture).
     private bool _clickThrough; // mirrors WS_EX_TRANSPARENT; gates wheel-resize (Task: wheel-resize).
-    private bool _hovered;    // pointer currently over the client area; gates chrome drawing.
-    private bool _trackingMouse; // a TrackMouseEvent leave request is outstanding.
+    private bool _handleVisible; // host (hook hover) toggles this; gates the drawn handle.
+
+    // Drag handle: fixed SCREEN-pixel size, centered on the overlay's top edge. Hit-testing uses
+    // the live window rect (fixed screen position, independent of zoom); the pill is DRAWN into the
+    // back buffer (see DrawHandle) so content zoom>1 shifts the drawn pill (v1 caveat) — mirror is
+    // fine (the pill is symmetric).
+    private const int HandleScreenW = 110, HandleScreenH = 28, HandleTopMarginPx = 6;
 
     // Presentation transform state (Bucket 2). Mirror flips horizontally about the window centre;
     // zoom (1.0–3.0) scales about the centre so the window edges crop the overflow = tighter framing.
     // Both fold into the single DComp visual transform in UpdateScale — the swap chain is untouched.
     private bool _mirror;
     private double _zoom = 1.0;
-
-    // Size of the resize grip hot-zone / drawn handle, in window client pixels.
-    private const int GripSize = 16;
 
     // Visibility state for ToggleVisible (Task 14). Starts true: the window is shown at startup.
     private bool _visible = true;
@@ -140,7 +142,7 @@ public sealed class OverlayWindow : IDisposable
 
     // ---- Task 13 public API ---------------------------------------------------------------
 
-    /// <summary>Lock disables drag/resize (WM_NCHITTEST → HTCLIENT) and hides chrome.</summary>
+    /// <summary>Lock disables drag/resize and hides chrome.</summary>
     public void SetLocked(bool locked) => _locked = locked;
 
     /// <summary>Toggle WS_EX_TRANSPARENT so mouse input passes through to windows beneath.</summary>
@@ -150,13 +152,11 @@ public sealed class OverlayWindow : IDisposable
         int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
         ex = on ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
         SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
-        // When click-through is enabled the window stops receiving WM_MOUSEMOVE/WM_MOUSELEAVE,
-        // so _hovered can latch true and keep the resize grip visible in recordings. Clear both
-        // flags now so no chrome is drawn while the overlay is click-through.
+        // When click-through is enabled, clear the handle so no chrome is drawn while the overlay
+        // is click-through.
         if (on)
         {
-            _hovered = false;
-            _trackingMouse = false;
+            _handleVisible = false;
         }
     }
 
@@ -204,6 +204,21 @@ public sealed class OverlayWindow : IDisposable
         return (r.left, r.top, r.right - r.left, r.bottom - r.top);
     }
 
+    /// <summary>Host toggles handle visibility (driven by the hook's hover detection).</summary>
+    public void SetHandleVisible(bool visible) => _handleVisible = visible;
+
+    /// <summary>True if a SCREEN point is inside the drag handle's fixed top-center rect.</summary>
+    internal bool HitHandle(POINT screenPt)
+    {
+        if (_disposed) return false;
+        GetWindowRect(_hwnd, out RECT w);
+        int winW = w.right - w.left;
+        int hx = w.left + (winW - HandleScreenW) / 2;
+        int hy = w.top + HandleTopMarginPx;
+        return screenPt.x >= hx && screenPt.x < hx + HandleScreenW
+            && screenPt.y >= hy && screenPt.y < hy + HandleScreenH;
+    }
+
     // ---- Window proc ----------------------------------------------------------------------
 
     private static IntPtr WndProcImpl(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -213,15 +228,6 @@ public sealed class OverlayWindow : IDisposable
         {
             switch (msg)
             {
-                case WM_NCHITTEST:
-                    return (IntPtr)self.OnHitTest(lParam);
-                case WM_MOUSEMOVE:
-                    self.OnMouseMove();
-                    break;
-                case WM_MOUSELEAVE:
-                    self._hovered = false;
-                    self._trackingMouse = false;
-                    break;
                 case WM_SIZE:
                     self.OnSize(LoWord(lParam), HiWord(lParam));
                     break;
@@ -237,40 +243,6 @@ public sealed class OverlayWindow : IDisposable
             }
         }
         return DefWindowProc(hwnd, msg, wParam, lParam);
-    }
-
-    // WM_NCHITTEST: lParam packs the SCREEN cursor point. Convert to client coords, then:
-    //  - locked        → HTCLIENT (no drag/resize)
-    //  - in BR grip     → HTBOTTOMRIGHT (window resize)
-    //  - elsewhere      → HTCAPTION (drag-anywhere)
-    private int OnHitTest(IntPtr lParam)
-    {
-        if (_locked) return HTCLIENT;
-
-        var pt = new POINT { x = LoWord(lParam), y = HiWord(lParam) };
-        ScreenToClient(_hwnd, ref pt);
-        GetClientRect(_hwnd, out RECT rc);
-
-        if (pt.x >= rc.right - GripSize && pt.y >= rc.bottom - GripSize)
-            return HTBOTTOMRIGHT;
-        return HTCAPTION;
-    }
-
-    // On the first move after entry, mark hovered and ask Windows for a WM_MOUSELEAVE.
-    private void OnMouseMove()
-    {
-        _hovered = true;
-        if (!_trackingMouse)
-        {
-            var tme = new TRACKMOUSEEVENT
-            {
-                cbSize = Marshal.SizeOf<TRACKMOUSEEVENT>(),
-                dwFlags = TME_LEAVE,
-                hwndTrack = _hwnd,
-                dwHoverTime = 0
-            };
-            _trackingMouse = TrackMouseEvent(ref tme);
-        }
     }
 
     // WM_SIZE: window size is decoupled from the frame-res back buffer. Scale the DComp visual so
@@ -348,26 +320,36 @@ public sealed class OverlayWindow : IDisposable
         using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
         _context.CopyResource(back, _frameTex); // valid: back buffer == frame size (see remarks)
 
-        // Clean-capture chrome: draw the resize grip ONLY when unlocked AND hovered. When locked or
-        // un-hovered, nothing is drawn so recordings stay clean. The grip is painted into the
-        // frame-res back buffer, so it scales with the content (acceptable for M2).
-        if (!_locked && _hovered)
-            DrawGrip(back, width, height);
+        // Clean-capture chrome: draw the drag handle ONLY when handle is visible AND unlocked.
+        // When locked or handle is hidden, nothing is drawn so recordings stay clean.
+        if (_handleVisible && !_locked)
+            DrawHandle(back, width, height);
 
         _swapChain.Present(1, PresentFlags.None);
     }
 
-    // Draw a subtle semi-opaque square in the bottom-right corner as a resize affordance. Sized in
-    // frame-res pixels (GripSize is in window pixels, but the content is DComp-scaled so a fixed
-    // frame-res box reads as the grip — pixel-perfect placement is not required for M2).
-    private void DrawGrip(ID3D11Texture2D back, int frameW, int frameH)
+    // Draw the drag handle (semi-opaque pill + move-cross) into the frame-res back buffer, sized
+    // from the current client->buffer scale so it lands at ~HandleScreenW×HandleScreenH on screen at
+    // the default transform. Premultiplied alpha: RGB is pre-scaled by A.
+    private void DrawHandle(ID3D11Texture2D back, int frameW, int frameH)
     {
-        int side = Math.Min(GripSize, Math.Min(frameW, frameH));
-        if (side <= 0) return;
+        GetClientRect(_hwnd, out RECT rc);
+        int clientW = rc.right, clientH = rc.bottom;
+        if (clientW <= 0 || clientH <= 0) return;
+        float ux = frameW / (float)clientW, uy = frameH / (float)clientH; // frame px per screen px
+        int bw = (int)(HandleScreenW * ux), bh = (int)(HandleScreenH * uy);
+        if (bw <= 0 || bh <= 0) return;
+        int bx = (frameW - bw) / 2, by = (int)(HandleTopMarginPx * uy);
         using var rtv = _device.CreateRenderTargetView(back);
-        // ClearView fills a sub-region (RawRect: left,top,right,bottom) of an RTV with a color.
-        var rect = new Vortice.RawRect(frameW - side, frameH - side, frameW, frameH);
-        _context1.ClearView(rtv, new Vortice.Mathematics.Color4(1f, 1f, 1f, 0.5f), new[] { rect });
+        // Pill bar: black @ 0.45 alpha, premultiplied -> (0,0,0,0.45).
+        _context1.ClearView(rtv, new Vortice.Mathematics.Color4(0f, 0f, 0f, 0.45f),
+            new[] { new Vortice.RawRect(bx, by, bx + bw, by + bh) });
+        // Move-cross: white @ 0.9 alpha, premultiplied -> (0.9,0.9,0.9,0.9).
+        int cx = bx + bw / 2, cy = by + bh / 2;
+        int arm = bh / 3, t = Math.Max(1, (int)(2 * ux));
+        var white = new Vortice.Mathematics.Color4(0.9f, 0.9f, 0.9f, 0.9f);
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - t, cy - arm, cx + t, cy + arm) });
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - arm, cy - t, cx + arm, cy + t) });
     }
 
     public void Dispose()
