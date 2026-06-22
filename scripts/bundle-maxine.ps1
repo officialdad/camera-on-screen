@@ -14,10 +14,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Copy-Required {
-    param([string]$Src, [string]$Dst, [string]$Name)
+    param([string]$Src, [string]$Dst, [string]$Name, [string]$DestName)
     $s = Join-Path $Src $Name
     if (-not (Test-Path -LiteralPath $s)) { throw "missing required file in '$Src': $Name" }
-    Copy-Item -LiteralPath $s -Destination $Dst -Force
+    $target = if ($DestName) { Join-Path $Dst $DestName } else { $Dst }
+    Copy-Item -LiteralPath $s -Destination $target -Force
 }
 function Copy-Glob {
     param([string]$Src, [string]$Dst, [string]$Glob)
@@ -42,10 +43,12 @@ Copy-Required $VfxRuntime $maxine $m.VfxEffectDll
 Copy-Required $ArRuntime  $maxine $m.ArEffectDll
 foreach ($g in $m.VfxModelGlobs) { Copy-Glob (Join-Path $VfxRuntime 'models') $mVfx $g }
 foreach ($g in $m.ArModelGlobs)  { Copy-Glob (Join-Path $ArRuntime  'models') $mAr  $g }
-foreach ($l in $m.License) {
-    $s = Join-Path $VfxRuntime $l
-    if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination $maxine -Force }
-}
+# License notices are REQUIRED, not best-effort (a shipped bundle must never lack them).
+# Both SDKs ship a same-named ThirdPartyLicenses.txt with DIFFERENT content (the VFX vs AR
+# OSS load-closures), so each is copied to a distinct name to avoid clobbering. The Maxine
+# EULA is identical across SDKs, so one copy (from VFX) covers the bundle.
+foreach ($k in $m.VfxLicense.Keys) { Copy-Required $VfxRuntime $maxine $k -DestName $m.VfxLicense[$k] }
+foreach ($k in $m.ArLicense.Keys)  { Copy-Required $ArRuntime  $maxine $k -DestName $m.ArLicense[$k] }
 
 $bytes = (Get-ChildItem -LiteralPath $maxine -Recurse -File | Measure-Object -Property Length -Sum).Sum
 Write-Host ("bundled -> {0}" -f $maxine)

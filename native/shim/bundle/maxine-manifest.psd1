@@ -44,9 +44,17 @@
         'faceland_*_86*.engine.trtpkg'
     )
 
-    # License notices that must travel with the redistributable.
-    License = @(
-        'NVIDIA Maxine EULA.pdf'
-        'ThirdPartyLicenses.txt'
-    )
+    # License notices that MUST travel with the redistributable (required copy — the bundler
+    # throws if any is missing). Maps source filename -> destination filename in maxine\.
+    # The Maxine EULA is byte-identical across SDKs (one VFX copy covers the bundle). Each
+    # SDK's ThirdPartyLicenses.txt has DIFFERENT content (its own OSS load-closure: VFX ~1.4 MB,
+    # AR ~466 KB incl. cufft/nppif/nvARPose deps), so both are carried under distinct names —
+    # copying only one would drop the other SDK's required third-party notices.
+    VfxLicense = @{
+        'NVIDIA Maxine EULA.pdf' = 'NVIDIA Maxine EULA.pdf'
+        'ThirdPartyLicenses.txt' = 'ThirdPartyLicenses-VFX.txt'
+    }
+    ArLicense = @{
+        'ThirdPartyLicenses.txt' = 'ThirdPartyLicenses-AR.txt'
+    }
 }

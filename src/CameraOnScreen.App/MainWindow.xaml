@@ -50,5 +50,11 @@
 
         <TextBlock Grid.Row="3"
                    Text="{x:Bind StatusLine, Mode=OneWay}"/>
+
+        <!-- Required NVIDIA Maxine attribution (SDK License Supplement §3.1). -->
+        <TextBlock Grid.Row="4" VerticalAlignment="Bottom"
+                   Text="{x:Bind MaxineAttribution}"
+                   Style="{ThemeResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
     </Grid>
 </Window>

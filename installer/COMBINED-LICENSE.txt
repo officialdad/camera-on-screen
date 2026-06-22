@@ -1,0 +1,67 @@
+CAMERA ON SCREEN — END-USER LICENSE
+====================================
+
+This installer contains two distinct bodies of software under DIFFERENT terms.
+By installing, you agree to both. Read both before continuing.
+
+
+PART 1 — Camera on Screen application (MIT License)
+---------------------------------------------------
+
+The Camera on Screen application itself (the overlay, control panel, and the
+native capture shim authored for this project) is licensed under the MIT
+License:
+
+    MIT License
+
+    Copyright (c) 2026 officialdad
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+
+PART 2 — Bundled NVIDIA Maxine SDK components (NOT under the MIT License)
+------------------------------------------------------------------------
+
+The AI green-screen and AI eye-contact features are powered by the NVIDIA
+Maxine Video Effects SDK and the NVIDIA Maxine AR SDK. This installer bundles
+those SDKs' runtime libraries, their CUDA / TensorRT / third-party dependency
+libraries, and their pre-built model files (installed under the "maxine"
+folder).
+
+These NVIDIA components are NOT covered by the MIT License above. They are
+licensed by NVIDIA Corporation under the NVIDIA Maxine SDK License Agreement
+and the third-party (open-source) licenses that accompany them. The full texts
+are installed with this product:
+
+    maxine\NVIDIA Maxine EULA.pdf        — the NVIDIA license
+    maxine\ThirdPartyLicenses-VFX.txt    — Video Effects SDK third-party notices
+    maxine\ThirdPartyLicenses-AR.txt     — AR SDK third-party notices
+    THIRD-PARTY-NOTICES.md               — summary of all of the above
+
+By installing and using this product you agree to the terms of the NVIDIA
+Maxine SDK License Agreement with respect to those bundled NVIDIA components,
+in addition to the MIT License that governs the Camera on Screen application.
+The NVIDIA components are licensed for use only on systems with NVIDIA GPUs;
+on other systems the application runs as a plain webcam overlay with the AI
+effects disabled.
+
+NVIDIA, Maxine, RTX, GeForce, TensorRT, and CUDA are trademarks and/or
+registered trademarks of NVIDIA Corporation. This product is an independent
+work and is not affiliated with, sponsored by, or endorsed by NVIDIA
+Corporation.
