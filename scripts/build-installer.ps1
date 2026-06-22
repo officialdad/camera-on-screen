@@ -79,7 +79,13 @@ if (-not $SkipShimBuild) {
 }
 
 # 2. Publish App, .NET self-contained (no runtime prereq on the target machine).
-if (Test-Path -LiteralPath $StagingDir) { Remove-Item -Recurse -Force -LiteralPath $StagingDir }
+if (Test-Path -LiteralPath $StagingDir) {
+    $existing = @(Get-ChildItem -LiteralPath $StagingDir -Force)
+    if ($existing.Count -gt 0 -and -not (Test-Path -LiteralPath (Join-Path $StagingDir 'CameraOnScreen.App.exe'))) {
+        throw "refusing to delete non-empty -StagingDir '$StagingDir': it does not look like a prior build stage (no CameraOnScreen.App.exe). Use an empty or dedicated directory."
+    }
+    Remove-Item -Recurse -Force -LiteralPath $StagingDir
+}
 New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null
 dotnet publish $appProj -c $Configuration -r win-x64 --self-contained true -o $StagingDir --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
@@ -92,6 +98,8 @@ Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
 if (-not (Test-Path -LiteralPath (Join-Path $StagingDir 'maxine'))) { throw "bundler did not produce maxine\ in $StagingDir" }
 
 # 5. Compile the installer.
+$stagedExe = Join-Path $StagingDir 'CameraOnScreen.App.exe'
+if (-not (Test-Path -LiteralPath $stagedExe)) { throw "staging is missing CameraOnScreen.App.exe — publish incomplete; refusing to package" }
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'dist') | Out-Null
 & $isccExe $iss "/DSourceDir=$StagingDir" "/DAppVersion=$Version"
 if ($LASTEXITCODE -ne 0) { throw "ISCC compile failed ($LASTEXITCODE)" }

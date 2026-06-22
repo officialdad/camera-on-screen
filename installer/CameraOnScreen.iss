@@ -58,6 +58,8 @@ var
   Key: String;
 begin
   Result := False;
+  // NOTE: Inno constant-expansion ({app} etc.) does NOT apply inside [Code] string
+  // literals, so the single '{' below is correct — do not change it to '{{'.
   Key := 'SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}';
   if RegGetSubkeyNames(HKLM, Key, Names) then
   begin

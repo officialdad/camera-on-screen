@@ -22,7 +22,7 @@ The installer is **unsigned**, so Windows SmartScreen may warn on first run: cli
 **More info → Run anyway**. Uninstalling removes the app but keeps your settings
 (`%LOCALAPPDATA%\CameraOnScreen\config.json`).
 
-> **AI effects in this build are for RTX **30-series (Ampere)** GPUs.** On other GPUs the
+> **AI effects in this build are for RTX 30-series (Ampere) GPUs.** On other GPUs the
 > app installs and runs as a plain webcam overlay with the effects disabled.
 
 ## What it is
