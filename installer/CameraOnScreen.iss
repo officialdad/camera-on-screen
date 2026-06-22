@@ -79,11 +79,8 @@ function InitializeSetup(): Boolean;
 begin
   Result := True;
   if not HasNvidiaGpu() then
-  begin
-    if MsgBox('No NVIDIA GPU was detected.' + #13#10 + #13#10 +
-              'The AI effects (green screen, eye contact) require an NVIDIA RTX GPU. ' +
-              'The app will still install and run as a plain webcam overlay.' + #13#10 + #13#10 +
-              'Continue anyway?', mbConfirmation, MB_YESNO) = IDNO then
-      Result := False;
-  end;
+    MsgBox('No NVIDIA GPU was detected.' + #13#10 + #13#10 +
+           'The AI effects (green screen, eye contact) require an NVIDIA RTX GPU. ' +
+           'The app will still install and run as a plain webcam overlay.',
+           mbInformation, MB_OK);
 end;
