@@ -44,14 +44,14 @@ Describe 'build-installer' {
     It 'throws a clear, actionable error when ISCC cannot be resolved' {
         { & $script:s -IsccPath 'X:\nope\ISCC.exe' -DryRun } | Should -Throw '*Inno Setup*'
     }
-    It 'dry-run prints the publish/bundle/compile plan stamped with the version' {
+    It 'dry-run prints the build/bundle/compile plan stamped with the version' {
         $dummy = Join-Path ([IO.Path]::GetTempPath()) ("iscc_" + [guid]::NewGuid() + ".exe")
         'x' | Set-Content -LiteralPath $dummy
         try {
             $stage = Join-Path ([IO.Path]::GetTempPath()) ("stg_" + [guid]::NewGuid())
             $out = & $script:s -Version '9.9.9' -IsccPath $dummy -StagingDir $stage -DryRun 6>&1 | Out-String
-            $out | Should -Match 'dotnet publish'
-            $out | Should -Match 'self-contained'
+            $out | Should -Match 'dotnet build'
+            $out | Should -Match 'SelfContained'
             $out | Should -Match 'bundle-maxine\.ps1'
             $out | Should -Match 'ISCC'
             $out | Should -Match '9\.9\.9'

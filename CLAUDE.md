@@ -83,12 +83,16 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 - **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, both effect DLLs, `models\vfx` + `models\ar`).
 - **Bundler** (`scripts/bundle-maxine.ps1` + `native/shim/bundle/maxine-manifest.psd1`): copies the **minimal verified load-closure** (the manifest's DLL allow-list was produced by `native/shim/smoke/trace_closure.cpp`, which loads both effects and enumerates loaded modules) into `<output>\maxine\` (~1.28 GB, Ampere only). Co-version enforced physically: shared DLLs from the VFX runtime, AR-only DLLs (`cufft64_11`, `nppif64_12`) from the AR runtime. `trace_closure` re-run against the produced bundle (`COS_*` unset → both effects load) is the verify gate. End-user need: an **RTX GPU + recent driver**; no NVIDIA account or SDK download (the redistributable runtime is bundled).
 - **Installer** (`scripts/bundle-maxine.ps1` consumer): `scripts/build-installer.ps1`
-  publishes the App **.NET-self-contained**, export-verifies the deployed shim, runs the
+  builds the App **.NET-self-contained**, export-verifies the deployed shim, runs the
   bundler, then compiles `installer/CameraOnScreen.iss` with Inno Setup 6 →
   `dist/CameraOnScreen-Setup-<ver>-x64.exe` (per-user, unsigned, x64). Effects are
   **Ampere-only** this build; non-RTX installs run as a plain overlay. Build the shim SDK
   config **last** before running (deploy-the-right-shim). `-DryRun` prints the plan with no
-  SDK/RTX/Inno needed.
+  SDK/RTX/Inno needed. **Stage via `dotnet build -p:SelfContained=true` — NOT `dotnet
+  publish`** (cost a debug cycle): for this unpackaged WinUI 3 app, `publish` silently drops
+  the app PRI + compiled XAML (`CameraOnScreen.App.pri`, `App.xbf`, `MainWindow.xbf`), so the
+  packaged exe dies at launch with `XamlParseException 0x802B000A` at `MainWindow.InitializeComponent`.
+  `build -p:SelfContained=true` bundles the .NET runtime *and* keeps the XAML resources.
 
 ## CI/CD
 

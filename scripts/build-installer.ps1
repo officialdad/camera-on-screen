@@ -68,7 +68,7 @@ $isccExe = Resolve-Iscc -Explicit $IsccPath
 if ($DryRun) {
     Write-Host "DRY RUN — installer build plan (version $Version):"
     Write-Host "  1. MSBuild $shimProj /p:Configuration=$Configuration /p:Platform=x64   (SkipShimBuild=$SkipShimBuild)"
-    Write-Host "  2. dotnet publish $appProj -c $Configuration -r win-x64 --self-contained true -o $StagingDir"
+    Write-Host "  2. dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir"
     Write-Host "  3. export-verify $StagingDir\CameraOnScreen.Shim.dll (GreenScreen + GazeRedirection, not stub)"
     Write-Host "  4. bundle-maxine.ps1 -OutDir $StagingDir (VfxRuntime=$VfxRuntime ArRuntime=$ArRuntime)"
     Write-Host "  5. ISCC '$isccExe' '$iss' /DSourceDir=$StagingDir /DAppVersion=$Version"
@@ -83,7 +83,11 @@ if (-not $SkipShimBuild) {
     if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
 }
 
-# 2. Publish App, .NET self-contained (no runtime prereq on the target machine).
+# 2. Build App, .NET self-contained, into the staging dir.
+#    Use `dotnet build` (NOT `dotnet publish`): for this unpackaged WinUI 3 app, publish drops
+#    the app PRI + compiled XAML (CameraOnScreen.App.pri / App.xbf / MainWindow.xbf), so the
+#    published exe dies at startup with XamlParseException 0x802B000A. `build -p:SelfContained=true`
+#    bundles the .NET runtime AND keeps the XAML resources — the repo's proven run path.
 if (Test-Path -LiteralPath $StagingDir) {
     $existing = @(Get-ChildItem -LiteralPath $StagingDir -Force)
     if ($existing.Count -gt 0 -and -not (Test-Path -LiteralPath (Join-Path $StagingDir 'CameraOnScreen.App.exe'))) {
@@ -92,8 +96,8 @@ if (Test-Path -LiteralPath $StagingDir) {
     Remove-Item -Recurse -Force -LiteralPath $StagingDir
 }
 New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null
-dotnet publish $appProj -c $Configuration -r win-x64 --self-contained true -o $StagingDir --nologo
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
+dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir --nologo
+if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)" }
 
 # 3. Export-verify the deployed shim BEFORE packaging.
 Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
