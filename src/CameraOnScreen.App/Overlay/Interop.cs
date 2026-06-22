@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace CameraOnScreen.App.Overlay;
 
-internal static class Interop
+public static class Interop
 {
     public const int WS_POPUP = unchecked((int)0x80000000);
     public const int WS_EX_LAYERED = 0x00080000;
@@ -89,4 +89,34 @@ internal static class Interop
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     [DllImport("kernel32.dll")] public static extern IntPtr GetModuleHandle(string? name);
+
+    // ---- Low-level mouse hook (wheel-over-overlay resize) ------------------------------------
+    // The overlay is SW_SHOWNOACTIVATE (never focused), so WM_MOUSEWHEEL never reaches its wndproc
+    // — Windows routes the wheel to the FOCUSED window. A WH_MOUSE_LL hook sees every mouse event
+    // globally before routing, so we use it to detect wheel-over-overlay and (optionally) swallow it.
+    public const int WH_MOUSE_LL = 14;
+    public const int HC_ACTION = 0;
+    public const uint WM_MOUSEWHEEL = 0x020A;
+    public const int WHEEL_DELTA = 120;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;          // screen coordinates of the cursor
+        public uint mouseData;    // for WM_MOUSEWHEEL: HIWORD is the signed wheel delta
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 }
