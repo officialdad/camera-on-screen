@@ -165,6 +165,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         switch (kind)
         {
             case Overlay.MouseEventKind.Wheel:
+                if (_dragging) return true; // ignore+swallow wheel while a handle drag is in progress (avoids origin snap)
                 if (!_overlay.IsInteractive) return false;
                 var (wx, wy, ww, wh) = _overlay.GetBounds();
                 bool inside = pt.x >= wx && pt.x < wx + ww && pt.y >= wy && pt.y < wy + wh;

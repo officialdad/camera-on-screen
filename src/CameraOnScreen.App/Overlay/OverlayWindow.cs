@@ -14,7 +14,7 @@ public sealed class OverlayWindow : IDisposable
     private readonly IntPtr _hwnd;
     private readonly ID3D11Device _device;
     private readonly ID3D11DeviceContext _context;
-    private readonly ID3D11DeviceContext1 _context1; // ClearView (sub-region fill) lives here.
+    private readonly ID3D11DeviceContext1 _context1; // ClearView (sub-region fill, used for the drag handle) lives here.
     private readonly IDXGISwapChain1 _swapChain;
     private readonly IDCompositionDevice _dcomp;
     private readonly IDCompositionTarget _target;
@@ -97,7 +97,7 @@ public sealed class OverlayWindow : IDisposable
 
         D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
             null!, out _device!, out _context!).CheckError();
-        // ClearView (sub-region RTV fill, used for the resize grip) is on ID3D11DeviceContext1.
+        // ClearView (sub-region RTV fill, used for the drag handle) is on ID3D11DeviceContext1.
         _context1 = _context.QueryInterface<ID3D11DeviceContext1>();
 
         using var dxgi = _device.QueryInterface<IDXGIDevice>();
@@ -122,7 +122,7 @@ public sealed class OverlayWindow : IDisposable
         _dcomp.Commit();
 
         // Route the static proc to this instance LAST, after all DComp fields are initialised,
-        // so any early WM_SIZE/WM_MOUSEMOVE that arrives before construction is complete cannot
+        // so any early WM_SIZE that arrives before construction is complete cannot
         // route into WndProcImpl before _visual/_dcomp exist (single-overlay design).
         _instance = this;
     }
@@ -275,10 +275,11 @@ public sealed class OverlayWindow : IDisposable
     /// camera's native frame resolution: the first real frame (re)sizes the back buffer to the frame
     /// once, and from then on CopyResource(back, frameTex) is always a valid same-size copy.
     ///
-    /// USER RESIZE (Task 13) does NOT change the swap chain. Dragging the bottom-right grip resizes
-    /// only the HWND; WM_SIZE then applies a DirectComposition visual SCALE transform that stretches
-    /// the frame-res content to fill the window. So window size and swap-chain size are decoupled and
-    /// the 1:1 CopyResource remains valid at any window size — see <see cref="UpdateScale"/>.
+    /// USER RESIZE (wheel) and MOVE (top-center drag handle) do NOT change the swap chain. Wheel
+    /// resize changes only the HWND size; WM_SIZE then applies a DirectComposition visual SCALE
+    /// transform that stretches the frame-res content to fill the window. So window size and
+    /// swap-chain size are decoupled and the 1:1 CopyResource remains valid at any window size —
+    /// see <see cref="UpdateScale"/>.
     /// </remarks>
     public void PresentFrame(byte[] bgra, int width, int height)
     {

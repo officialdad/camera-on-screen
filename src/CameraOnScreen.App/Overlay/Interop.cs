@@ -25,44 +25,20 @@ internal static class Interop
 
     public delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    // Window messages handled by the overlay proc (Task 13).
-    public const uint WM_MOVE = 0x0003;
+    // Window messages handled by the overlay proc.
     public const uint WM_SIZE = 0x0005;
-    public const uint WM_NCHITTEST = 0x0084;
-    public const uint WM_MOUSEMOVE = 0x0200;
-    public const uint WM_MOUSELEAVE = 0x02A3;
-    // WM_EXITSIZEMOVE fires ONCE when the user finishes a drag/resize (Task 14): the cue to
-    // persist geometry without thrashing the disk on every live WM_MOVE/WM_SIZE pixel update.
+    // WM_EXITSIZEMOVE fires ONCE when the user finishes a drag/resize: the cue to
+    // persist geometry without thrashing the disk on every live WM_SIZE pixel update.
     public const uint WM_EXITSIZEMOVE = 0x0232;
-    // WM_HOTKEY (Task 14): RegisterHotKey targets the overlay HWND, so the hotkey message arrives
+    // WM_HOTKEY: RegisterHotKey targets the overlay HWND, so the hotkey message arrives
     // at this proc; wParam carries the registration id.
     public const uint WM_HOTKEY = 0x0312;
-
-    // WM_NCHITTEST return codes: HTCLIENT (no drag), HTCAPTION (drag-anywhere),
-    // HTBOTTOMRIGHT (bottom-right resize grip).
-    public const int HTCLIENT = 1;
-    public const int HTCAPTION = 2;
-    public const int HTBOTTOMRIGHT = 17;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int left, top, right, bottom; }
 
-    // TrackMouseEvent flags + struct: request a WM_MOUSELEAVE once the pointer exits the window.
-    public const uint TME_LEAVE = 0x00000002;
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct TRACKMOUSEEVENT
-    {
-        public int cbSize;
-        public uint dwFlags;
-        public IntPtr hwndTrack;
-        public uint dwHoverTime;
-    }
-
-    [DllImport("user32.dll")] public static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT lpEventTrack);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int x, y; }
@@ -84,8 +60,7 @@ internal static class Interop
     public const int GWL_EXSTYLE = -20;
     public const int SW_HIDE = 0;
     public const int SW_SHOWNOACTIVATE = 4;
-    // SetWindowPos flags: keep current position/Z-order/activation, only change size.
-    public const uint SWP_NOMOVE = 0x0002;
+    // SetWindowPos flags: keep current Z-order/activation, only change position+size.
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     [DllImport("kernel32.dll")] public static extern IntPtr GetModuleHandle(string? name);
