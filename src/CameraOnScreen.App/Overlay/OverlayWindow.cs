@@ -34,6 +34,7 @@ public sealed class OverlayWindow : IDisposable
 
     // Interaction state (Task 13).
     private bool _locked;     // when true: no drag/resize and no chrome (clean capture).
+    private bool _clickThrough; // mirrors WS_EX_TRANSPARENT; gates wheel-resize (Task: wheel-resize).
     private bool _hovered;    // pointer currently over the client area; gates chrome drawing.
     private bool _trackingMouse; // a TrackMouseEvent leave request is outstanding.
 
@@ -145,6 +146,7 @@ public sealed class OverlayWindow : IDisposable
     /// <summary>Toggle WS_EX_TRANSPARENT so mouse input passes through to windows beneath.</summary>
     public void SetClickThrough(bool on)
     {
+        _clickThrough = on;
         int ex = GetWindowLong(_hwnd, GWL_EXSTYLE);
         ex = on ? (ex | WS_EX_TRANSPARENT) : (ex & ~WS_EX_TRANSPARENT);
         SetWindowLong(_hwnd, GWL_EXSTYLE, ex);
@@ -175,6 +177,24 @@ public sealed class OverlayWindow : IDisposable
         _zoom = zoom;
         GetClientRect(_hwnd, out RECT rc);
         UpdateScale(rc.right - rc.left, rc.bottom - rc.top);
+    }
+
+    /// <summary>
+    /// True only when the overlay accepts size gestures: not locked and not click-through.
+    /// Wheel-resize is gated on this (Lock freezes the overlay for clean capture; click-through
+    /// means the overlay takes no pointer input by design).
+    /// </summary>
+    public bool IsInteractive => !_locked && !_clickThrough;
+
+    /// <summary>
+    /// Move+resize the overlay window. Uses SWP_NOACTIVATE | SWP_NOZORDER so the overlay never
+    /// steals focus and stays topmost. The resulting WM_SIZE routes to UpdateScale, which
+    /// re-stretches the frame-res content to the new window size — no extra redraw needed.
+    /// </summary>
+    public void SetBounds(int x, int y, int w, int h)
+    {
+        if (_disposed) return;
+        SetWindowPos(_hwnd, IntPtr.Zero, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
     }
 
     /// <summary>Current window rectangle (screen coords) as (x, y, width, height).</summary>
