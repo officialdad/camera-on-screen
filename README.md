@@ -76,9 +76,11 @@ build, and Core unit tests, all with warnings treated as errors. See
 
 ## Status
 
-M1–M4 (Core, overlay passthrough, AI Green Screen, AI Eye Contact) and M5 part 1
-(app-relative SDK discovery) are complete. Next: the M5 ship-time work —
-runtime/model bundler, installer, multi-GPU models, license packaging.
+M1–M5 complete: Core, overlay passthrough, AI Green Screen, AI Eye Contact,
+app-relative SDK discovery, the runtime/model **bundler**, and the **installer**
+(a per-user Inno Setup `.exe`, ~0.59 GB) — all verified on an RTX 3090. Next:
+multi-GPU models (Ampere only today), full license review, and a tag-triggered
+release workflow.
 
 ## License
 
