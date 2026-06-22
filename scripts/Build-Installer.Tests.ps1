@@ -30,6 +30,20 @@ Describe 'installer-iss' {
         $script:text | Should -Match 'mbInformation'
         $script:text | Should -Match 'MB_OK'
     }
+    It 'presents a combined end-user license, not MIT-only (NVIDIA Maxine flow-down, §1.2(v))' {
+        # The license page the user accepts must cover the bundled NVIDIA Maxine components,
+        # whose redistribution terms require end-user terms consistent with NVIDIA's license.
+        $script:text | Should -Match 'LicenseFile=COMBINED-LICENSE\.txt'
+        $script:text | Should -Not -Match 'LicenseFile=\.\.\\LICENSE\b'
+        $combined = Join-Path $PSScriptRoot '..\installer\COMBINED-LICENSE.txt'
+        Test-Path $combined | Should -BeTrue
+        $ctext = Get-Content -LiteralPath $combined -Raw
+        $ctext | Should -Match 'MIT'
+        $ctext | Should -Match 'NVIDIA Maxine'
+    }
+    It 'ships the third-party notices into the install directory' {
+        $script:text | Should -Match 'THIRD-PARTY-NOTICES\.md'
+    }
 }
 
 Describe 'build-installer' {

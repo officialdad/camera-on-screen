@@ -26,7 +26,10 @@ SolidCompression=yes
 OutputDir=..\dist
 OutputBaseFilename=CameraOnScreen-Setup-{#AppVersion}-x64
 WizardStyle=modern
-LicenseFile=..\LICENSE
+; Combined end-user license: the app's MIT terms PLUS the NVIDIA Maxine SDK license
+; flow-down for the bundled runtime/models (Maxine SDK License §1.2(v) — end-user terms
+; must be consistent with NVIDIA's). NOT the bare MIT LICENSE, which covers our code only.
+LicenseFile=COMBINED-LICENSE.txt
 UninstallDisplayIcon={app}\CameraOnScreen.App.exe
 UninstallDisplayName=Camera on Screen
 
@@ -38,6 +41,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Ship the consolidated third-party notices into the install dir (repo-root file, path
+; relative to this .iss). The per-SDK NVIDIA notice texts already ride inside {#SourceDir}\maxine\.
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Camera on Screen"; Filename: "{app}\CameraOnScreen.App.exe"

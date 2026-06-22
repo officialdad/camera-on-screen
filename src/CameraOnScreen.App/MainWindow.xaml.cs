@@ -249,6 +249,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     public string StatusLine =>
         Vm.IsRunning ? $"Running — {Vm.Fps:F0} fps" : "Stopped";
 
+    // Required NVIDIA Maxine SDK attribution (Supplement §3.1), shown in the panel footer.
+    public string MaxineAttribution => CameraOnScreen.Core.AppInfo.MaxineAttribution;
+
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsRunning) or nameof(MainViewModel.Fps))
