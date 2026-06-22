@@ -31,3 +31,31 @@ Describe 'installer-iss' {
         $script:text | Should -Match 'MB_OK'
     }
 }
+
+Describe 'build-installer' {
+    BeforeAll { $script:s = Join-Path $PSScriptRoot 'build-installer.ps1' }
+
+    It 'exposes the documented parameters' {
+        $p = (Get-Command $script:s).Parameters.Keys
+        foreach ($name in 'Version','Configuration','StagingDir','VfxRuntime','ArRuntime','IsccPath','SkipShimBuild','DryRun') {
+            $p | Should -Contain $name
+        }
+    }
+    It 'throws a clear, actionable error when ISCC cannot be resolved' {
+        { & $script:s -IsccPath 'X:\nope\ISCC.exe' -DryRun } | Should -Throw '*Inno Setup*'
+    }
+    It 'dry-run prints the publish/bundle/compile plan stamped with the version' {
+        $dummy = Join-Path ([IO.Path]::GetTempPath()) ("iscc_" + [guid]::NewGuid() + ".exe")
+        'x' | Set-Content -LiteralPath $dummy
+        try {
+            $stage = Join-Path ([IO.Path]::GetTempPath()) ("stg_" + [guid]::NewGuid())
+            $out = & $script:s -Version '9.9.9' -IsccPath $dummy -StagingDir $stage -DryRun 6>&1 | Out-String
+            $out | Should -Match 'dotnet publish'
+            $out | Should -Match 'self-contained'
+            $out | Should -Match 'bundle-maxine\.ps1'
+            $out | Should -Match 'ISCC'
+            $out | Should -Match '9\.9\.9'
+        }
+        finally { Remove-Item -LiteralPath $dummy -Force -ErrorAction SilentlyContinue }
+    }
+}
