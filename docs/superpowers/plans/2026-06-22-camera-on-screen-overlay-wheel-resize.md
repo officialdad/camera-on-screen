@@ -535,7 +535,6 @@ git commit -m "feat(overlay): wire wheel-resize hook + debounced persist in Main
 - **Thread safety:** the hook is installed on the UI thread and its callback runs there, so `OnWheelOverScreen` may touch `_overlay` and the dispatcher timer directly — no marshalling needed.
 - **Persistence reuses the existing path:** `Save()` already reads live geometry via `_overlay.GetBounds()` and writes `Overlay.Width/Height`; the only new piece is the debounce timer that calls it after the wheel settles.
 - **Do not** change the swap chain, `UpdateScale`, Zoom, or Mirror — `SetBounds` triggers `WM_SIZE` → `UpdateScale`, which already re-stretches content to the new size.
-```
 
 ---
 
