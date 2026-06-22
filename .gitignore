@@ -1,5 +1,6 @@
 [Bb]in/
 [Oo]bj/
+dist/
 *.user
 .vs/
 *.suo

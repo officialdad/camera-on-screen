@@ -1,0 +1,70 @@
+name: release
+
+# Tag-triggered release: build the installer on the self-hosted RTX runner, verify the bundled
+# Maxine runtime actually loads, then publish the installer as a GitHub release. Mirrors ci.yml's
+# runner + throw-on-nonzero-exit conventions; the heavy lifting lives in the checked-in scripts
+# (build-installer.ps1 + verify-bundle.ps1) so this workflow stays a thin orchestrator.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Never cancel a release mid-publish (unlike ci.yml, which cancels superseded runs).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create the GitHub release + upload the installer asset
+
+jobs:
+  release:
+    name: Build installer + publish release
+    runs-on: [self-hosted, windows, rtx]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $version = $tag -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.+].*)?$') {
+            throw "tag '$tag' is not a vMAJOR.MINOR.PATCH release tag"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "release version: $version"
+
+      - name: Build installer (shim SDK config -> self-contained app -> export-verify -> bundle -> ISCC)
+        shell: pwsh
+        run: |
+          ./scripts/build-installer.ps1 -Version '${{ steps.ver.outputs.version }}'
+          if ($LASTEXITCODE -ne 0) { throw "build-installer failed ($LASTEXITCODE)" }
+
+      - name: Runtime verify gate (both effects load from the bundled maxine\, COS_* unset)
+        shell: pwsh
+        run: |
+          ./scripts/verify-bundle.ps1
+          if ($LASTEXITCODE -ne 0) { throw "bundle verify failed ($LASTEXITCODE)" }
+
+      - name: Locate installer artifact
+        id: art
+        shell: pwsh
+        run: |
+          $exe = "dist/CameraOnScreen-Setup-${{ steps.ver.outputs.version }}-x64.exe"
+          if (-not (Test-Path $exe)) { throw "installer not found: $exe" }
+          "path=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host ("installer: {0} ({1:N0} bytes)" -f $exe, (Get-Item $exe).Length)
+
+      - name: Create GitHub release + upload installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' '${{ steps.art.outputs.path }}' `
+            --title 'Camera on Screen ${{ steps.ver.outputs.version }}' `
+            --verify-tag `
+            --notes 'Automated release. Ampere (RTX 30-series) build; the AI effects require an NVIDIA RTX GPU and non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime is governed by the NVIDIA Maxine SDK License — see THIRD-PARTY-NOTICES.md.'
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }

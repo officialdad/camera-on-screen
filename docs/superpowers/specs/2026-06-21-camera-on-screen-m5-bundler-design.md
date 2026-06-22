@@ -194,5 +194,11 @@ sanity-check against, not a contract.
    AR 0.8.7 both ship `nvonnxparser_10.dll`, so a generic path may be feasible; to investigate
    in that spec).
 3. **Full license review** — read + comply with the Maxine EULA + bundled-model licenses
-   before public release (this spec only carries the notice files).
+   before public release (this spec only carries the notice files). **DONE — see
+   `2026-06-22-camera-on-screen-m5-license-compliance.md` (issue #3).** The bundler now
+   carries BOTH SDKs' third-party notices under distinct names as a required copy; the
+   manifest's `License` array was replaced by `VfxLicense`/`ArLicense` source→dest maps.
 4. **A tag-triggered `release.yml`** consuming the bundler output (deferred to the installer).
+   **DONE (issue #4):** `.github/workflows/release.yml` on tag `v*` runs `build-installer.ps1`
+   then `verify-bundle.ps1` (compiles + runs `bundle_probe` against the produced `maxine\`,
+   `COS_*` unset) and uploads the installer as a GitHub release.
