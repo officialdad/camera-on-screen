@@ -28,8 +28,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private Overlay.OverlayMouseHook? _mouseHook;
     // Hook-driven drag state (all touched on the UI thread inside the hook callback).
     private bool _dragging;
-    private Overlay.Interop.POINT _dragStart;   // screen point where the drag began
-    private int _dragOrigX, _dragOrigY;          // overlay top-left when the drag began
+    // Cursor-minus-origin offset captured at drag start. The drag MOVE is driven by the frame-pump
+    // timer (polling GetCursorPos), NOT by hook move events — calling SetBounds inside a WM_MOUSEMOVE
+    // hook makes the window-move emit synthesized moves that re-enter the hook = a feedback loop that
+    // pins the overlay (confirmed via instrumentation). Polling on the timer decouples it.
+    private int _dragGrabDX, _dragGrabDY;
 
     // Default overlay geometry, used when the saved config has no usable (non-zero) bounds.
     private const int DefaultX = 200, DefaultY = 200, DefaultW = 320, DefaultH = 240;
@@ -76,6 +79,13 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (Vm.IsRunning && Vm.ShimRef.TryGetFrame(_frameBuf, out int w, out int h) && w > 0)
                 _overlay.PresentFrame(_frameBuf, w, h);
+            // Handle drag is polled here (not in the mouse hook) to avoid a synthesized-move feedback
+            // loop: follow the live cursor at the captured grab offset, preserving the current size.
+            if (_dragging && Overlay.Interop.GetCursorPos(out var cur))
+            {
+                var (_, _, ow, oh) = _overlay.GetBounds();
+                _overlay.SetBounds(cur.x - _dragGrabDX, cur.y - _dragGrabDY, ow, oh);
+            }
             Vm.PollStatusTick();
         };
         _timer.Start();
@@ -180,19 +190,16 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 if (_overlay.IsInteractive && _overlay.HitHandle(pt))
                 {
                     _dragging = true;
-                    _dragStart = pt;
-                    (_dragOrigX, _dragOrigY, _, _) = _overlay.GetBounds();
-                    return true; // swallow: begin handle drag
+                    var (ox, oy, _, _) = _overlay.GetBounds();
+                    _dragGrabDX = pt.x - ox; _dragGrabDY = pt.y - oy;
+                    return true; // swallow: begin handle drag (the frame-pump timer performs the move)
                 }
                 return false;
 
             case Overlay.MouseEventKind.Move:
-                if (_dragging)
-                {
-                    var (_, _, dw, dh) = _overlay.GetBounds();
-                    _overlay.SetBounds(_dragOrigX + (pt.x - _dragStart.x), _dragOrigY + (pt.y - _dragStart.y), dw, dh);
-                    return true;
-                }
+                // Drag move is timer-driven; do NOT SetBounds in the hook (feedback loop). Just let
+                // the cursor move freely (return false). When not dragging, drive handle visibility.
+                if (_dragging) return false;
                 // Handle visibility: show on hover over the overlay when interactive (hook-driven,
                 // because window mouse messages are unreliable over the MPO plane).
                 var b = _overlay.GetBounds();

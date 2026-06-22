@@ -187,3 +187,20 @@ surfacing button-down / mouse-move / button-up **and** wheel to the host, each r
 **Unchanged:** wheel-resize math (`OverlaySizer`), `SetBounds`/`IsInteractive`, persistence
 path, Lock/Click-through semantics, no shim/C-ABI/MVVM/config-schema change. Lock and
 Click-through both disable handle dragging via `IsInteractive`.
+
+### As-built (revised during the human gate)
+
+Two deviations from the above, found while validating on the RTX 3090:
+
+- **Handle is a small "+" crosshair at the overlay CENTER**, not a top-center pill (user
+  preference: smaller, no background box, centered). Hit area is a generous fixed 44×44 screen
+  px (centered via the live window rect, zoom-independent); the crosshair glyph (~12 px, 0.45
+  alpha) is drawn into the back buffer (the zoom>1 caveat above still applies).
+- **Drag MOVE is polled on the 30 Hz frame-pump timer via `GetCursorPos`, not driven by the
+  hook's `WM_MOUSEMOVE`.** Calling `SetBounds` inside the low-level mouse-move hook moves the
+  window under the cursor, which makes the OS emit synthesized mouse-moves that re-enter the
+  hook → a feedback loop that floods at ~800 Hz and pins the overlay (it jitters ±1 px instead
+  of following the cursor; confirmed via instrumentation). The hook now only **starts** the
+  drag (left-down on the handle, capturing the cursor→origin offset) and **ends** it
+  (left-up); the timer does `SetBounds(GetCursorPos − offset, same size)` each tick. The hook
+  still swallows the down/up so the app beneath never sees the click.

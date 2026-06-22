@@ -86,6 +86,11 @@ internal static class Interop
 
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
+    // Current cursor position in SCREEN pixels. Used to drive handle-drag from the frame-pump timer
+    // (polling) instead of from the hook's move events — moving the window inside a WM_MOUSEMOVE hook
+    // creates a synthesized-move feedback loop, so the drag is decoupled onto the timer.
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
 

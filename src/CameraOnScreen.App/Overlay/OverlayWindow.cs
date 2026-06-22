@@ -37,11 +37,12 @@ public sealed class OverlayWindow : IDisposable
     private bool _clickThrough; // mirrors WS_EX_TRANSPARENT; gates wheel-resize (Task: wheel-resize).
     private bool _handleVisible; // host (hook hover) toggles this; gates the drawn handle.
 
-    // Drag handle: fixed SCREEN-pixel size, centered on the overlay's top edge. Hit-testing uses
-    // the live window rect (fixed screen position, independent of zoom); the pill is DRAWN into the
-    // back buffer (see DrawHandle) so content zoom>1 shifts the drawn pill (v1 caveat) — mirror is
-    // fine (the pill is symmetric).
-    private const int HandleScreenW = 110, HandleScreenH = 28, HandleTopMarginPx = 6;
+    // Drag handle: a small "+" crosshair at the overlay CENTER. The HIT area (fixed SCREEN pixels,
+    // generous so it's easy to grab) is centered via the live window rect (zoom-independent); the
+    // crosshair is DRAWN into the back buffer (see DrawHandle), so content zoom>1 shifts the drawn
+    // glyph vs the fixed hit rect (v1 caveat) — mirror is fine (the glyph is symmetric).
+    private const int HandleHitW = 44, HandleHitH = 44;       // hit-test square, screen px (generous grab)
+    private const int CrossArmPx = 6, CrossThickPx = 2;       // visible "+" half-arm + thickness, screen px
 
     // Presentation transform state (Bucket 2). Mirror flips horizontally about the window centre;
     // zoom (1.0–3.0) scales about the centre so the window edges crop the overflow = tighter framing.
@@ -207,16 +208,16 @@ public sealed class OverlayWindow : IDisposable
     /// <summary>Host toggles handle visibility (driven by the hook's hover detection).</summary>
     public void SetHandleVisible(bool visible) => _handleVisible = visible;
 
-    /// <summary>True if a SCREEN point is inside the drag handle's fixed top-center rect.</summary>
+    /// <summary>True if a SCREEN point is inside the drag handle's fixed centered hit rect.</summary>
     internal bool HitHandle(POINT screenPt)
     {
         if (_disposed) return false;
         GetWindowRect(_hwnd, out RECT w);
-        int winW = w.right - w.left;
-        int hx = w.left + (winW - HandleScreenW) / 2;
-        int hy = w.top + HandleTopMarginPx;
-        return screenPt.x >= hx && screenPt.x < hx + HandleScreenW
-            && screenPt.y >= hy && screenPt.y < hy + HandleScreenH;
+        int winW = w.right - w.left, winH = w.bottom - w.top;
+        int hx = w.left + (winW - HandleHitW) / 2;
+        int hy = w.top + (winH - HandleHitH) / 2;
+        return screenPt.x >= hx && screenPt.x < hx + HandleHitW
+            && screenPt.y >= hy && screenPt.y < hy + HandleHitH;
     }
 
     // ---- Window proc ----------------------------------------------------------------------
@@ -338,19 +339,15 @@ public sealed class OverlayWindow : IDisposable
         int clientW = rc.right, clientH = rc.bottom;
         if (clientW <= 0 || clientH <= 0) return;
         float ux = frameW / (float)clientW, uy = frameH / (float)clientH; // frame px per screen px
-        int bw = (int)(HandleScreenW * ux), bh = (int)(HandleScreenH * uy);
-        if (bw <= 0 || bh <= 0) return;
-        int bx = (frameW - bw) / 2, by = (int)(HandleTopMarginPx * uy);
+        int cx = frameW / 2, cy = frameH / 2;                             // overlay centre, back-buffer px
+        int armX = Math.Max(2, (int)(CrossArmPx * ux)), armY = Math.Max(2, (int)(CrossArmPx * uy));
+        int tX = Math.Max(1, (int)(CrossThickPx * ux)), tY = Math.Max(1, (int)(CrossThickPx * uy));
         using var rtv = _device.CreateRenderTargetView(back);
-        // Pill bar: black @ 0.45 alpha, premultiplied -> (0,0,0,0.45).
-        _context1.ClearView(rtv, new Vortice.Mathematics.Color4(0f, 0f, 0f, 0.45f),
-            new[] { new Vortice.RawRect(bx, by, bx + bw, by + bh) });
-        // Move-cross: white @ 0.9 alpha, premultiplied -> (0.9,0.9,0.9,0.9).
-        int cx = bx + bw / 2, cy = by + bh / 2;
-        int arm = bh / 3, t = Math.Max(1, (int)(2 * ux));
-        var white = new Vortice.Mathematics.Color4(0.9f, 0.9f, 0.9f, 0.9f);
-        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - t, cy - arm, cx + t, cy + arm) });
-        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - arm, cy - t, cx + arm, cy + t) });
+        // White "+" crosshair @ 0.45 alpha, premultiplied -> (0.45,0.45,0.45,0.45). No background box.
+        var white = new Vortice.Mathematics.Color4(0.45f, 0.45f, 0.45f, 0.45f);
+        // Vertical bar (half-width tX, half-height armY) + horizontal bar (half-width armX, half-height tY).
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - tX, cy - armY, cx + tX, cy + armY) });
+        _context1.ClearView(rtv, white, new[] { new Vortice.RawRect(cx - armX, cy - tY, cx + armX, cy + tY) });
     }
 
     public void Dispose()
