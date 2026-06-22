@@ -14,6 +14,8 @@ Design intent lives in `docs/superpowers/specs/`; task plans in `docs/superpower
 - Because of that, the App is built **unpackaged + self-contained via NuGet only** (`WindowsPackageType=None`, `WindowsAppSDKSelfContained=true`, no `Package.appxmanifest`).
 - The C++ `native/shim/shim.vcxproj` is **deliberately NOT in `CameraOnScreen.sln`** — a C++ project breaks `dotnet build`/`dotnet test` (the SDK MSBuild lacks C++ targets). Build it separately first; the App copies the produced DLL via a `<None>` item in its csproj.
 - Builds and tests must be **pristine (0 warnings)** — warnings are treated as findings (CI enforces `/warnaserror` + `TreatWarningsAsErrors`).
+- **Inno Setup 6** (`ISCC.exe`) is required to build the installer (issue #1):
+  `winget install JRSoftware.InnoSetup`. Not needed for normal build/test.
 
 ## Build & test
 
@@ -80,6 +82,13 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 - **VFX** green screen (`nvvfxgreenscreen`) and **AR** eye contact (gaze) are separate NVIDIA products. No import `.lib` — link via the SDKs' proxy stubs (`nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`, `nvARProxy.cpp`) compiled into the shim. Models are prebuilt TensorRT engines for compute capability **86** (RTX 3090) — arch-locked.
 - **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, both effect DLLs, `models\vfx` + `models\ar`).
 - **Bundler** (`scripts/bundle-maxine.ps1` + `native/shim/bundle/maxine-manifest.psd1`): copies the **minimal verified load-closure** (the manifest's DLL allow-list was produced by `native/shim/smoke/trace_closure.cpp`, which loads both effects and enumerates loaded modules) into `<output>\maxine\` (~1.28 GB, Ampere only). Co-version enforced physically: shared DLLs from the VFX runtime, AR-only DLLs (`cufft64_11`, `nppif64_12`) from the AR runtime. `trace_closure` re-run against the produced bundle (`COS_*` unset → both effects load) is the verify gate. End-user need: an **RTX GPU + recent driver**; no NVIDIA account or SDK download (the redistributable runtime is bundled).
+- **Installer** (`scripts/bundle-maxine.ps1` consumer): `scripts/build-installer.ps1`
+  publishes the App **.NET-self-contained**, export-verifies the deployed shim, runs the
+  bundler, then compiles `installer/CameraOnScreen.iss` with Inno Setup 6 →
+  `dist/CameraOnScreen-Setup-<ver>-x64.exe` (per-user, unsigned, x64). Effects are
+  **Ampere-only** this build; non-RTX installs run as a plain overlay. Build the shim SDK
+  config **last** before running (deploy-the-right-shim). `-DryRun` prints the plan with no
+  SDK/RTX/Inno needed.
 
 ## CI/CD
 
