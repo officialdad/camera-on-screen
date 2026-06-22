@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace CameraOnScreen.App.Overlay;
 
-public static class Interop
+internal static class Interop
 {
     public const int WS_POPUP = unchecked((int)0x80000000);
     public const int WS_EX_LAYERED = 0x00080000;

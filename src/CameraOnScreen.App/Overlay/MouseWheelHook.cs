@@ -11,7 +11,7 @@ namespace CameraOnScreen.App.Overlay;
 /// signed notch count (one WHEEL_DELTA = one notch) and returns true to SWALLOW the wheel event
 /// (so the app under the cursor does not also scroll).
 /// </summary>
-public sealed class MouseWheelHook : IDisposable
+internal sealed class MouseWheelHook : IDisposable
 {
     private readonly Func<POINT, int, bool> _onWheel;
     private readonly LowLevelMouseProc _proc; // keep the delegate alive for the hook's lifetime
@@ -20,6 +20,7 @@ public sealed class MouseWheelHook : IDisposable
 
     public MouseWheelHook(Func<POINT, int, bool> onWheel)
     {
+        ArgumentNullException.ThrowIfNull(onWheel);
         _onWheel = onWheel;
         _proc = HookProc;
         // hMod = the .exe module handle; dwThreadId = 0 => global hook.
