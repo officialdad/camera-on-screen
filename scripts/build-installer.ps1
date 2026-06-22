@@ -42,8 +42,11 @@ function Resolve-Iscc {
 function Assert-ShimHasEffects {
     param([string]$Dll)
     if (-not (Test-Path -LiteralPath $Dll)) { throw "shim DLL missing in staging: $Dll" }
-    $dumpbin = (Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC" -Directory |
-        Sort-Object Name -Descending | Select-Object -First 1).FullName + '\bin\Hostx64\x64\dumpbin.exe'
+    $msvcRoot = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC"
+    $dumpbin = if (Test-Path $msvcRoot) {
+        $ver = Get-ChildItem $msvcRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+        if ($ver) { Join-Path $ver.FullName 'bin\Hostx64\x64\dumpbin.exe' } else { '' }
+    } else { '' }
     $exports = if (Test-Path $dumpbin) { & $dumpbin /exports $Dll | Out-String } else { '' }
     $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($Dll))
     $hasGS   = $exports -match 'GreenScreen'    -or $strings -match 'GreenScreen'
