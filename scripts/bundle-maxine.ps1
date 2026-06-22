@@ -1,4 +1,3 @@
-#Requires -Version 7
 <#
 .SYNOPSIS
   Copy the minimal co-versioned Maxine runtime into <OutDir>\maxine\ per the manifest.

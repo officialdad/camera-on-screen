@@ -1,4 +1,3 @@
-#Requires -Version 7
 <#
 .SYNOPSIS
   Build the distributable installer: publish the .NET-self-contained App, bundle the Maxine
