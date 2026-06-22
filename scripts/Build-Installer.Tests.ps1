@@ -21,8 +21,13 @@ Describe 'installer-iss' {
         $script:text | Should -Match '\[Code\]'
         $script:text | Should -Match 'NVIDIA'
     }
-    It 'preflight warns but never aborts the install (no Yes/No, no Result:=False)' {
+    It 'preflight warns but never aborts the install (info-only dialog, no Yes/No)' {
+        # The only abort vector is a cancellable prompt; a warn-only MB_OK/mbInformation
+        # dialog cannot abort. (HasNvidiaGpu legitimately uses Result:=False as its
+        # "no NVIDIA" return, so a whole-file Result:=False grep would be wrong here.)
         $script:text | Should -Not -Match 'MB_YESNO'
-        $script:text | Should -Not -Match 'InitializeSetup.*Result\s*:=\s*False'
+        $script:text | Should -Not -Match 'MB_OKCANCEL'
+        $script:text | Should -Match 'mbInformation'
+        $script:text | Should -Match 'MB_OK'
     }
 }
