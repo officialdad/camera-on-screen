@@ -181,7 +181,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     {
         IntPtr mon = Overlay.Interop.MonitorFromWindow(hwnd, Overlay.Interop.MONITOR_DEFAULTTONEAREST);
         var mi = new Overlay.Interop.MONITORINFO { cbSize = Marshal.SizeOf<Overlay.Interop.MONITORINFO>() };
-        Overlay.Interop.GetMonitorInfo(mon, ref mi);
+        if (!Overlay.Interop.GetMonitorInfo(mon, ref mi))
+            // GetMonitorInfo failure (unreachable for a valid HWND) -> un-clamped fallback, never a 0x0 collapse.
+            return new CameraOnScreen.Core.Overlay.Rect(0, 0, int.MaxValue, int.MaxValue);
         var r = mi.rcWork;
         return new CameraOnScreen.Core.Overlay.Rect(r.left, r.top, r.right - r.left, r.bottom - r.top);
     }
