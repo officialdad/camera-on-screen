@@ -37,17 +37,21 @@ API returned 403 for the current account — repo-level is the fallback).
   --scope machine` → `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`). A per-user winget
   install lands in the interactive user's `%LOCALAPPDATA%`, which the `NETWORK SERVICE`
   runner cannot read — so it must be machine-scope.
-- **Maxine stage sources** (multi-GPU migration, VFX 1.2.0.0 + AR 1.1.1.0). `release.yml`
-  runs `scripts/assemble-maxine-stage.ps1` which reads the build SDK trees
-  (`COS_VFX_SDK_DIR` / `COS_AR_SDK_DIR`) plus a new **`COS_AR_FEATURE_LIBS`** dir holding the
-  four AR per-feature lib packages (`<root>\<name>\<name>\{bin,license}` for
-  `nvargazeredirection` / `nvarfaceboxdetection` / `nvarlandmarkdetection` /
-  `nvarfaceexpressions`), all reachable by `NETWORK SERVICE` (NOT under `C:\Users\<you>\…`).
-- **NGC API key** as repo secret **`NGC_CLI_API_KEY`** — the assemble step fetches the
-  multi-arch engines (`scripts/fetch-maxine-engines.ps1`) from NGC. (Pre-seed the engines into
-  the stage + `-SkipEngineFetch` for an air-gapped runner.) The old `COS_VFX_RUNTIME_DIR` /
-  `COS_AR_RUNTIME_DIR` flat-runtime dirs are **no longer used by the bundler** (it now prunes the
-  assembled stage); keep them only if you still run the app directly on the runner.
+- **Pre-built Maxine stage** (multi-GPU migration, VFX 1.2.0.0 + AR 1.1.1.0). The stage is
+  version-pinned and does NOT change between app releases, so assemble it **once** and point
+  **`COS_MAXINE_STAGE`** at it (reachable by `NETWORK SERVICE`, NOT under `C:\Users\<you>\…`).
+  `release.yml` only checks it exists and prunes it — no per-release NGC download.
+
+  One-time assembly (re-run only on an SDK bump), where the NGC key is needed:
+  ```powershell
+  $env:NGC_CLI_API_KEY = 'nvapi-...'   # only here, only once; not a CI secret
+  scripts\assemble-maxine-stage.ps1 -OutStage C:\actions-runner\_sdk\maxine-stage `
+    -VfxSdk $env:COS_VFX_SDK_DIR -ArSdk $env:COS_AR_SDK_DIR `
+    -ArFeatureLibs C:\actions-runner\_sdk\ar-feature-libs   # the four nvAR* per-feature lib pkgs
+  # then set COS_MAXINE_STAGE = C:\actions-runner\_sdk\maxine-stage (machine env) + restart the runner
+  ```
+  The old `COS_VFX_RUNTIME_DIR` / `COS_AR_RUNTIME_DIR` flat-runtime dirs are **no longer used by the
+  bundler** (it prunes the stage); keep them only if you run the app directly on the runner.
 
 ## Required persistent environment variables
 
@@ -57,14 +61,12 @@ Set these as **machine/User** env vars (so the runner service sees them):
 |----------|---------|
 | `COS_VFX_SDK_DIR` | VFX SDK source (headers + proxy) for the build — green screen |
 | `COS_AR_SDK_DIR`  | AR SDK source clone (nvar/include + nvARProxy.cpp) for the build — eye contact |
-| `COS_AR_FEATURE_LIBS` | Root of the four AR per-feature lib packages (gaze + deps) — `release.yml`'s stage-assembly step; not needed for build+test |
-| `COS_VFX_RUNTIME_DIR` | Optional: assembled co-versioned stage if you run the app directly on the runner — no longer used by the bundler |
+| `COS_MAXINE_STAGE` | Pre-built co-versioned Maxine stage (assembled once, above) — `release.yml`'s bundler prunes it |
 
-Plus the repo secret **`NGC_CLI_API_KEY`** for the release engine fetch. See the repo
-`CLAUDE.md` "Build & test" and the CO-VERSION gotcha for the exact SDK versions (now VFX
-1.2.0.0 + AR 1.1.1.0 / TRT 10.9). The build+test CI job needs only `COS_VFX_SDK_DIR` and
-`COS_AR_SDK_DIR`; `release.yml` additionally needs `COS_AR_FEATURE_LIBS`, the NGC secret, and
-Inno Setup.
+See the repo `CLAUDE.md` "Build & test" and the CO-VERSION gotcha for the exact SDK versions
+(now VFX 1.2.0.0 + AR 1.1.1.0 / TRT 10.9). The build+test CI job needs only `COS_VFX_SDK_DIR`
+and `COS_AR_SDK_DIR`; `release.yml` additionally needs `COS_MAXINE_STAGE` (pre-built) + Inno
+Setup. The NGC key is used only at one-time stage assembly, **not** in CI.
 
 ## Why the export-verify step exists
 
