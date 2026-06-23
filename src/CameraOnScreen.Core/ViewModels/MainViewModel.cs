@@ -66,7 +66,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private bool artifactReductionEnabled;
     [ObservableProperty] private bool superResEnabled;
-    [ObservableProperty] private int superResScaleIndex; // 0=off, 1=1.5x, 2=2x
+    [ObservableProperty] private int superResScaleIndex; // 0=1.5x, 1=2x
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
@@ -82,9 +82,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
 
-    // SuperResScaleIndex 0/1/2 -> shim scale 0/15/20.
-    private static int ScaleFromIndex(int i) => i switch { 1 => 15, 2 => 20, _ => 0 };
-    private static int IndexFromScale(int s) => s switch { 15 => 1, 20 => 2, _ => 0 };
+    // SuperResScaleIndex 0/1 -> shim scale 15/20 (1.5x / 2x). On/off is the SuperResEnabled toggle.
+    private static int ScaleFromIndex(int i) => i switch { 1 => 20, _ => 15 };
+    private static int IndexFromScale(int s) => s switch { 20 => 1, _ => 0 };
 
     public void LoadFrom(AppConfig config)
     {

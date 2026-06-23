@@ -262,7 +262,7 @@ public class MainViewModelTests
 
         vm.ArtifactReductionEnabled = true;
         vm.SuperResEnabled = true;
-        vm.SuperResScaleIndex = 2; // 2x
+        vm.SuperResScaleIndex = 1; // 2x
 
         var p = vm.BuildParams();
         Assert.True(p.ArtifactReductionEnabled);
@@ -276,7 +276,7 @@ public class MainViewModelTests
         var shim = new FakeShim();
         var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
         {
-            ArtifactReductionEnabled = true, SuperResEnabled = true, SuperResScaleIndex = 1
+            ArtifactReductionEnabled = true, SuperResEnabled = true, SuperResScaleIndex = 0
         };
         var cfg = vm.ToAppConfig(0, 0, 320, 240);
         Assert.True(cfg.Effects.ArtifactReductionEnabled);
@@ -286,7 +286,8 @@ public class MainViewModelTests
         var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
         vm2.LoadFrom(cfg);
         Assert.True(vm2.ArtifactReductionEnabled);
-        Assert.Equal(1, vm2.SuperResScaleIndex);
+        Assert.True(vm2.SuperResEnabled);
+        Assert.Equal(0, vm2.SuperResScaleIndex);
     }
 
     private sealed class ControllableFpsShim : INativeShim

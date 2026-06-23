@@ -39,7 +39,6 @@
             <ComboBox Header="Super-res scale"
                       IsEnabled="{x:Bind Vm.SuperResEnabled, Mode=OneWay}"
                       SelectedIndex="{x:Bind Vm.SuperResScaleIndex, Mode=TwoWay}">
-                <ComboBoxItem Content="Off"/>
                 <ComboBoxItem Content="1.5x"/>
                 <ComboBoxItem Content="2x"/>
             </ComboBox>
