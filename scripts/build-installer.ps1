@@ -64,6 +64,18 @@ function Assert-ShimHasEffects {
     if ($isStub)       { throw "deployed shim is the passthrough STUB ('not built in' present)" }
 }
 
+# One-time timing split so the next release run shows where the ~7 min goes (shim vs dotnet vs
+# ISCC). Stopwatch, NOT Measure-Command — the latter swallows the child build stdout we need in CI.
+$script:Timings = [ordered]@{}
+function Invoke-Timed {
+    param([string]$Label, [scriptblock]$Block)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    & $Block
+    $sw.Stop()
+    $script:Timings[$Label] = $sw.Elapsed.TotalSeconds
+    Write-Host ("[timing] {0}: {1:N1}s" -f $Label, $sw.Elapsed.TotalSeconds) -ForegroundColor DarkCyan
+}
+
 $isccExe = Resolve-Iscc -Explicit $IsccPath
 
 if ($DryRun) {
@@ -79,9 +91,11 @@ if ($DryRun) {
 
 # 1. Native shim, SDK config, LAST (deploy-the-right-shim gotcha).
 if (-not $SkipShimBuild) {
-    $msbuild = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-    & $msbuild $shimProj /p:Configuration=$Configuration /p:Platform=x64 /warnaserror /nologo
-    if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
+    Invoke-Timed 'shim-build' {
+        $msbuild = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+        & $msbuild $shimProj /p:Configuration=$Configuration /p:Platform=x64 /warnaserror /nologo
+        if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
+    }
 }
 
 # 2. Build App, .NET self-contained, into the staging dir.
@@ -97,24 +111,30 @@ if (Test-Path -LiteralPath $StagingDir) {
     Remove-Item -Recurse -Force -LiteralPath $StagingDir
 }
 New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null
-dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir --nologo
-if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)" }
+Invoke-Timed 'dotnet-build' {
+    dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)" }
+}
 
 # 3. Export-verify the deployed shim BEFORE packaging.
 Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
 
 # 4. Bundle the Maxine runtime into <staging>\maxine\ by pruning the pre-assembled stage.
 if (-not $MaxineStage) { throw "no -MaxineStage (or `$env:COS_MAXINE_STAGE) — assemble one first with scripts/assemble-maxine-stage.ps1" }
-& $bundler -OutDir $StagingDir -MaxineStage $MaxineStage
+Invoke-Timed 'bundle-maxine' { & $bundler -OutDir $StagingDir -MaxineStage $MaxineStage }
 if (-not (Test-Path -LiteralPath (Join-Path $StagingDir 'maxine'))) { throw "bundler did not produce maxine\ in $StagingDir" }
 
 # 5. Compile the installer.
 $stagedExe = Join-Path $StagingDir 'CameraOnScreen.App.exe'
 if (-not (Test-Path -LiteralPath $stagedExe)) { throw "staging is missing CameraOnScreen.App.exe — publish incomplete; refusing to package" }
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'dist') | Out-Null
-& $isccExe $iss "/DSourceDir=$StagingDir" "/DAppVersion=$Version"
-if ($LASTEXITCODE -ne 0) { throw "ISCC compile failed ($LASTEXITCODE)" }
+Invoke-Timed 'iscc-compile' {
+    & $isccExe $iss "/DSourceDir=$StagingDir" "/DAppVersion=$Version"
+    if ($LASTEXITCODE -ne 0) { throw "ISCC compile failed ($LASTEXITCODE)" }
+}
 
 $size = (Get-Item -LiteralPath $output).Length
 Write-Host ("installer -> {0}" -f $output)
 Write-Host ("  size : {0:N0} bytes  ({1:N2} GB)" -f $size, ($size / 1GB))
+Write-Host "--- timing split ---"
+foreach ($k in $script:Timings.Keys) { Write-Host ("  {0,-14} {1,6:N1}s" -f $k, $script:Timings[$k]) }

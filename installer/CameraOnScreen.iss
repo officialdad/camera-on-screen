@@ -41,7 +41,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; TensorRT engine packages (.trtpkg) are already-compressed blobs — running them through the
+; solid lzma2/ultra64 block burns minutes of compile time for ~0 size win. Ship them with
+; nocompression. This entry MUST precede the catch-all (Inno uses the first matching rule).
+Source: "{#SourceDir}\maxine\models\*"; DestDir: "{app}\maxine\models"; Flags: nocompression recursesubdirs createallsubdirs ignoreversion
+; Excludes the engines from the catch-all so they aren't packed a second time (compressed).
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "*.trtpkg"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; Ship the consolidated third-party notices into the install dir (repo-root file, path
 ; relative to this .iss). The per-SDK NVIDIA notice texts already ride inside {#SourceDir}\maxine\.
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
