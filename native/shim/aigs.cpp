@@ -14,66 +14,7 @@
 #include "nvVideoEffects.h"
 #include "nvVFXGreenScreen.h" // defines NVVFX_FX_GREEN_SCREEN "GreenScreen"
 #include "paths.h"
-
-// The proxy stub (nvVideoEffectsProxy.cpp) declares this as extern; we define it here.
-// When non-null it points at the dir that holds NVVideoEffects.dll, which the proxy
-// passes to SetDllDirectory before LoadLibrary.
-// (Defined in Task 1 — NOT redefined here.)
-char* g_nvVFXSDKPath = nullptr;
-// Note: NVCVImage.dll resolves via the search path the VFX proxy's SetDllDirectory sets;
-// nvCVImageProxy.cpp has no g_nvCVImageSDKPath global, so none is defined here.
-
-namespace {
-// Resolves "<COS_VFX_SDK_DIR>\bin" (DLLs) and "<COS_VFX_SDK_DIR>\bin\models" once.
-// Returns false if the env var is unset/empty. Stores results in out-params so
-// callers can keep them alive as needed.
-bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err) {
-    char buf[1024] = {0};
-    // Prefer COS_VFX_RUNTIME_DIR — a FLAT runtime layout (DLLs in <root>, models in
-    // <root>\models). This pins the green-screen VFX runtime to the AR-matched 0.7.6 SDK so
-    // both Maxine SDKs load the SAME TensorRT 10.4 / CUDA 12.1 runtime (co-versioned — a
-    // mismatch makes NvVFX_Load fail with "no kernel image"). Fall back to COS_VFX_SDK_DIR
-    // (legacy full-SDK tree: DLLs in <root>\bin, models in <root>\bin\models).
-    DWORD n = GetEnvironmentVariableA("COS_VFX_RUNTIME_DIR", buf, sizeof(buf));
-    if (n > 0 && n < sizeof(buf)) {
-        std::string root(buf, n);
-        if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
-        binDir   = root;
-        modelDir = root + "\\models";
-        return true;
-    }
-    n = GetEnvironmentVariableA("COS_VFX_SDK_DIR", buf, sizeof(buf));
-    if (n > 0 && n < sizeof(buf)) {
-        std::string root(buf, n);
-        if (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
-        binDir   = root + "\\bin";
-        modelDir = root + "\\bin\\models";
-        return true;
-    }
-    // Ship default: runtime bundled beside the app at <shimDir>\maxine (shared co-versioned
-    // root; green-screen models in models\vfx).
-    std::string appDir = ShimModuleDir();
-    if (!appDir.empty()) {
-        std::string maxine = appDir + "\\maxine";
-        if (DirExists(maxine)) {
-            binDir   = maxine;
-            modelDir = maxine + "\\models\\vfx";
-            return true;
-        }
-    }
-    err = "VFX runtime not found: set COS_VFX_RUNTIME_DIR or bundle maxine\\ beside the app";
-    return false;
-}
-
-// Points the VFX proxy global at the bin dir so NVVideoEffects.dll is found.
-// NVCVImage.dll resolves from the same search path that VFX proxy sets.
-// Idempotent; s_bin must outlive every Maxine call.
-void PointProxiesAt(const std::string& binDir) {
-    static std::string s_bin;
-    s_bin = binDir;
-    g_nvVFXSDKPath = const_cast<char*>(s_bin.c_str());
-}
-} // namespace
+#include "vfx_paths.h"
 
 // Real per-effect state, hidden behind the opaque impl_ pointer.
 struct AigsImpl {
@@ -95,8 +36,8 @@ Aigs::~Aigs() { Stop(); }
 
 bool Aigs::Probe(std::string& detail) {
     std::string binDir, modelDir, err;
-    if (!ResolveSdkPaths(binDir, modelDir, err)) { detail = err; return false; }
-    PointProxiesAt(binDir);
+    if (!vfx::ResolveSdkPaths(binDir, modelDir, err)) { detail = err; return false; }
+    vfx::PointProxiesAt(binDir);
 
     // Probe uses the SDK's default CUDA stream (no explicit CudaStreamCreate); sufficient for a load-only check.
     NvVFX_Handle eff = nullptr;
@@ -128,10 +69,10 @@ bool Aigs::Start() {
     if (!impl) { lastError_ = "out of memory"; return false; }
 
     std::string binDir, err;
-    if (!ResolveSdkPaths(binDir, impl->modelDir, err)) {
+    if (!vfx::ResolveSdkPaths(binDir, impl->modelDir, err)) {
         lastError_ = err; delete impl; return false;
     }
-    PointProxiesAt(binDir);
+    vfx::PointProxiesAt(binDir);
 
     if (NvVFX_CudaStreamCreate(&impl->stream) != NVCV_SUCCESS) {
         lastError_ = "NvVFX_CudaStreamCreate failed"; delete impl; return false;
