@@ -45,8 +45,12 @@
     # Model engines, copied from the stage's models\{vfx,ar}. Broad per-effect globs so the bundle
     # ships whatever arches are staged (sm75/86/89/100) -- arch selection happens at fetch time
     # (scripts/fetch-maxine-engines.ps1 -Arches). VFX -> models\vfx, AR -> models\ar.
+    # Green-screen MODE is hardcoded to 0 in aigs.cpp (Probe + Start) -> only the m0 engines
+    # (m0 + its m0_1_4_8 batch variant) ever load. Shipping m1/m2/m3 was ~73 MB/arch of dead
+    # weight (~290 MB across the 4 arches). Widen this glob back to 'AIGS_*' if a quality-mode
+    # selector is ever exposed in the UI -> shim.
     VfxModelGlobs = @(
-        'AIGS_*.engine.trtpkg'
+        'AIGS_*_m0*.engine.trtpkg'
     )
     ArModelGlobs = @(
         'gazeredir_*.engine.trtpkg'
