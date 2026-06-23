@@ -220,13 +220,54 @@ bool CreateReader(const std::string& symbolicLink, IMFSourceReader*& outReader,
     SafeRelease(source);
     if (FAILED(hr) || !reader) return false;
 
-    // Request RGB32 output on the first video stream.
+    // Pick the camera's best native type up front: HIGHEST frame rate, then highest
+    // resolution, capped at 1080p (the overlay downscales; _frameBuf is sized for 4K).
+    // Without this MF picks the camera's *default* native type, which on common webcams
+    // (e.g. Logitech Brio 100) is a ~15fps mode rather than the MJPG 1080p30 path — so
+    // the live overlay is choppy at half the camera's real capability. fps dominates the
+    // score; resolution is only the tiebreaker.
+    UINT32 bestW = 0, bestH = 0, bestNum = 0, bestDen = 1;
+    double bestScore = -1.0;
+    for (DWORD i = 0; ; ++i) {
+        IMFMediaType* nt = nullptr;
+        if (FAILED(reader->GetNativeMediaType(
+                static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), i, &nt))) break;
+        UINT32 w = 0, h = 0, num = 0, den = 0;
+        if (SUCCEEDED(MFGetAttributeSize(nt, MF_MT_FRAME_SIZE, &w, &h)) &&
+            SUCCEEDED(MFGetAttributeRatio(nt, MF_MT_FRAME_RATE, &num, &den)) &&
+            w > 0 && h > 0 && den > 0 && w <= 1920 && h <= 1080) {
+            const double fps = static_cast<double>(num) / den;
+            const double score = fps * 1e8 + static_cast<double>(w) * h; // fps wins, res breaks ties
+            if (score > bestScore) {
+                bestScore = score; bestW = w; bestH = h; bestNum = num; bestDen = den;
+            }
+        }
+        SafeRelease(nt);
+    }
+
+    // Request RGB32 output on the first video stream. When a best native type was found,
+    // pin the output to its frame size + rate so MF selects that (high-fps) native path
+    // and converts it; if MF rejects the constrained request, retry unconstrained
+    // (previous behavior — MF picks the default).
     IMFMediaType* outType = nullptr;
     if (FAILED(MFCreateMediaType(&outType))) { SafeRelease(reader); return false; }
     outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     outType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (bestScore >= 0.0) {
+        MFSetAttributeSize(outType, MF_MT_FRAME_SIZE, bestW, bestH);
+        MFSetAttributeRatio(outType, MF_MT_FRAME_RATE, bestNum, bestDen);
+    }
     hr = reader->SetCurrentMediaType(
         static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, outType);
+    if (FAILED(hr) && bestScore >= 0.0) {
+        // Constrained request rejected — fall back to letting MF choose the native type.
+        SafeRelease(outType);
+        if (FAILED(MFCreateMediaType(&outType))) { SafeRelease(reader); return false; }
+        outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        outType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        hr = reader->SetCurrentMediaType(
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, outType);
+    }
     SafeRelease(outType);
     if (FAILED(hr)) { SafeRelease(reader); return false; }
 
