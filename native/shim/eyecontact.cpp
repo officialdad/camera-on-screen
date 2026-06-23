@@ -13,6 +13,14 @@
 #include "nvAR_defs.h"
 #include "paths.h"
 
+// AR 1.1.1.0 moved per-feature IDs into per-feature headers and dropped the NvAR_Feature_*
+// macros from nvAR_defs.h (NvAR_FeatureID is a const char*). Define the literal if absent so
+// the shim builds against both 0.8.7 (macro present -> no-op) and 1.1.1.0.
+// ponytail: literal over pulling nvARGazeRedirection.h, which only ships in the 1.1.1.0 feature lib.
+#ifndef NvAR_Feature_GazeRedirection
+#define NvAR_Feature_GazeRedirection "GazeRedirection"
+#endif
+
 // The AR proxy stub (nvARProxy.cpp) declares this extern; define it here. When non-null it
 // is SetDllDirectory'd before LoadLibrary(nvARPose.dll). When null the proxy auto-falls back
 // to "%ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK\".
