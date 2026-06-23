@@ -9,8 +9,15 @@
 #include "nvCVStatus.h"
 #include "nvCVImage.h"
 #include "nvVideoEffects.h"
-#include "nvVFXArtifactReduction.h" // defines NVVFX_FX_ARTIFACT_REDUCTION "ArtifactReduction"
 #include "vfx_paths.h"
+
+// VFX 1.2.0.0 ships the artifact-reduction selector only in its per-feature header
+// (installed from NGC). Define the documented literal if absent — mirrors how
+// eyecontact.cpp guards the gaze selector. NVIDIA VideoFX selector "ArtifactReduction"
+// matches the nvvfxartifactreduction NGC feature name.
+#ifndef NVVFX_FX_ARTIFACT_REDUCTION
+#define NVVFX_FX_ARTIFACT_REDUCTION "ArtifactReduction"
+#endif
 
 struct ArImpl {
     NvVFX_Handle effect = nullptr;

@@ -5,7 +5,6 @@
 //   $env:COS_VFX_SDK_DIR = "C:\path\to\VideoFX"
 //   cl /EHsc /std:c++17 ^
 //      /I "%COS_VFX_SDK_DIR%\nvvfx\include" ^
-//      /I "%COS_VFX_SDK_DIR%\features\nvvfxartifactreduction\include" ^
 //      /DCOS_HAS_MAXINE ^
 //      native\shim\smoke\effects_smoke.cpp ^
 //      native\shim\artifactreduction.cpp ^
