@@ -76,7 +76,7 @@
   <ItemDefinitionGroup Condition="'$(CosVfxSdkDir)' != ''">
     <ClCompile>
       <PreprocessorDefinitions>COS_HAS_MAXINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(CosVfxSdkDir)\nvvfx\include;$(CosVfxSdkDir)\features\nvvfxgreenscreen\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(CosVfxSdkDir)\nvvfx\include;$(CosVfxSdkDir)\features\nvvfxgreenscreen\include;$(CosVfxSdkDir)\features\nvvfxartifactreduction\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
 
@@ -91,6 +91,7 @@
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
+    <ClCompile Include="artifactreduction.cpp" />
     <ClCompile Include="eyecontact.cpp" />
     <ClCompile Include="paths.cpp" />
     <ClCompile Include="vfx_paths.cpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
+    <ClInclude Include="artifactreduction.h" />
     <ClInclude Include="eyecontact.h" />
     <ClInclude Include="paths.h" />
     <ClInclude Include="vfx_paths.h" />
