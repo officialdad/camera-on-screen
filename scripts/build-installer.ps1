@@ -9,8 +9,9 @@ param(
     [string]$Version = '0.0.0-dev',
     [string]$Configuration = 'Release',
     [string]$StagingDir,
-    [string]$VfxRuntime = $env:COS_VFX_RUNTIME_DIR,
-    [string]$ArRuntime  = $env:COS_AR_RUNTIME_DIR,
+    # Pre-assembled co-versioned Maxine stage (scripts/assemble-maxine-stage.ps1). The bundler
+    # prunes it into <staging>\maxine\. Defaults to $env:COS_MAXINE_STAGE.
+    [string]$MaxineStage = $env:COS_MAXINE_STAGE,
     [string]$IsccPath,
     [switch]$SkipShimBuild,
     [switch]$DryRun
@@ -70,7 +71,7 @@ if ($DryRun) {
     Write-Host "  1. MSBuild $shimProj /p:Configuration=$Configuration /p:Platform=x64   (SkipShimBuild=$SkipShimBuild)"
     Write-Host "  2. dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir"
     Write-Host "  3. export-verify $StagingDir\CameraOnScreen.Shim.dll (GreenScreen + GazeRedirection, not stub)"
-    Write-Host "  4. bundle-maxine.ps1 -OutDir $StagingDir (VfxRuntime=$VfxRuntime ArRuntime=$ArRuntime)"
+    Write-Host "  4. bundle-maxine.ps1 -OutDir $StagingDir -MaxineStage $MaxineStage"
     Write-Host "  5. ISCC '$isccExe' '$iss' /DSourceDir=$StagingDir /DAppVersion=$Version"
     Write-Host "  -> $output"
     return
@@ -102,14 +103,9 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet build failed ($LASTEXITCODE)" }
 # 3. Export-verify the deployed shim BEFORE packaging.
 Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
 
-# 4. Bundle the Maxine runtime into <staging>\maxine\.
-#    Only forward a runtime path when set, so empty values fall through to bundle-maxine's
-#    own defaults (esp. its %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK fallback) — passing
-#    an empty -ArRuntime here would otherwise override that default and fail.
-$bundlerArgs = @{ OutDir = $StagingDir }
-if ($VfxRuntime) { $bundlerArgs['VfxRuntime'] = $VfxRuntime }
-if ($ArRuntime)  { $bundlerArgs['ArRuntime']  = $ArRuntime }
-& $bundler @bundlerArgs
+# 4. Bundle the Maxine runtime into <staging>\maxine\ by pruning the pre-assembled stage.
+if (-not $MaxineStage) { throw "no -MaxineStage (or `$env:COS_MAXINE_STAGE) — assemble one first with scripts/assemble-maxine-stage.ps1" }
+& $bundler -OutDir $StagingDir -MaxineStage $MaxineStage
 if (-not (Test-Path -LiteralPath (Join-Path $StagingDir 'maxine'))) { throw "bundler did not produce maxine\ in $StagingDir" }
 
 # 5. Compile the installer.

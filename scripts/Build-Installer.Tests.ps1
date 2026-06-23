@@ -51,7 +51,7 @@ Describe 'build-installer' {
 
     It 'exposes the documented parameters' {
         $p = (Get-Command $script:s).Parameters.Keys
-        foreach ($name in 'Version','Configuration','StagingDir','VfxRuntime','ArRuntime','IsccPath','SkipShimBuild','DryRun') {
+        foreach ($name in 'Version','Configuration','StagingDir','MaxineStage','IsccPath','SkipShimBuild','DryRun') {
             $p | Should -Contain $name
         }
     }

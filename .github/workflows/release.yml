@@ -45,10 +45,25 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "release version: $version"
 
+      # Assemble the co-versioned Maxine stage (VFX 1.2.0.0 + AR 1.1.1.0 DLLs + 2025 license set +
+      # NGC-fetched multi-arch engines sm75/86/89/100). COS_VFX_SDK_DIR/COS_AR_SDK_DIR come from the
+      # runner .env; COS_AR_FEATURE_LIBS points at the four per-feature lib packages; the NGC key is
+      # a repo secret. Pre-seed the stage + set -SkipEngineFetch on an air-gapped runner instead.
+      - name: Assemble Maxine stage (multi-GPU engines, co-versioned)
+        id: stage
+        shell: pwsh
+        env:
+          NGC_CLI_API_KEY: ${{ secrets.NGC_CLI_API_KEY }}
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "maxine-stage-${{ steps.ver.outputs.version }}"
+          ./scripts/assemble-maxine-stage.ps1 -OutStage $stage -ArFeatureLibs $env:COS_AR_FEATURE_LIBS
+          if ($LASTEXITCODE -ne 0) { throw "assemble-maxine-stage failed ($LASTEXITCODE)" }
+          "stage=$stage" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Build installer (shim SDK config -> self-contained app -> export-verify -> bundle -> ISCC)
         shell: pwsh
         run: |
-          ./scripts/build-installer.ps1 -Version '${{ steps.ver.outputs.version }}'
+          ./scripts/build-installer.ps1 -Version '${{ steps.ver.outputs.version }}' -MaxineStage '${{ steps.stage.outputs.stage }}'
           if ($LASTEXITCODE -ne 0) { throw "build-installer failed ($LASTEXITCODE)" }
 
       - name: Runtime verify gate (both effects load from the bundled maxine\, COS_* unset)
@@ -74,5 +89,5 @@ jobs:
           gh release create '${{ github.ref_name }}' '${{ steps.art.outputs.path }}' `
             --title 'Camera on Screen ${{ steps.ver.outputs.version }}' `
             --verify-tag `
-            --notes 'Automated release. Ampere (RTX 30-series) build; the AI effects require an NVIDIA RTX GPU and non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime is governed by the NVIDIA Maxine SDK License — see THIRD-PARTY-NOTICES.md.'
+            --notes 'Automated release. Multi-GPU build (Turing/Ampere/Ada/Blackwell engines bundled); verified on Ampere (sm86), other RTX arches are best-effort and grey out gracefully if an engine fails to load. AI effects require an NVIDIA RTX GPU; non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
