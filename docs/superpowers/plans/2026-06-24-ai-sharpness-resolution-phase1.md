@@ -211,16 +211,17 @@ git commit -m "feat(shim): real measured fps in cos_get_status (replaces 30.0 st
 
 ---
 
-## Task 2: Shared VFX path resolver
+## Task 2: Shared VFX path resolver (single source of truth)
 
-Extract the VFX SDK path + proxy-pointer logic so the two new effects reuse it. `aigs.cpp` keeps its own copy untouched (do not destabilize working green screen). `g_nvVFXSDKPath` stays **defined** in `aigs.cpp`; this module `extern`s and writes it.
+Extract the VFX SDK path + proxy-pointer logic into one module that **green screen, Artifact Reduction, and Super Resolution all use**. `g_nvVFXSDKPath` ownership **moves into `vfx_paths.cpp`**; `aigs.cpp` drops its private copies and calls the shared helpers. This is the fully-DRY choice (user decision) — it edits the proven green-screen path, so it carries a **green-screen re-verify gate**.
 
 **Files:**
 - Create: `native/shim/vfx_paths.h`, `native/shim/vfx_paths.cpp`
-- Modify: `native/shim/shim.vcxproj`
+- Modify: `native/shim/aigs.cpp` (use shared helpers; remove its private `ResolveSdkPaths`/`PointProxiesAt` + its `g_nvVFXSDKPath` definition), `native/shim/shim.vcxproj`
+- Verify (human gate): green screen still loads + mattes after the refactor.
 
 **Interfaces:**
-- Produces: `namespace vfx { bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err); void PointProxiesAt(const std::string& binDir); }`
+- Produces: `namespace vfx { bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err); void PointProxiesAt(const std::string& binDir); }`. `g_nvVFXSDKPath` is now **defined** in `vfx_paths.cpp` (was `aigs.cpp`).
 
 - [ ] **Step 1: Create `native/shim/vfx_paths.h`**
 
@@ -228,19 +229,19 @@ Extract the VFX SDK path + proxy-pointer logic so the two new effects reuse it. 
 #pragma once
 #include <string>
 
-// Shared VFX-SDK runtime discovery for the VFX-based effects (Artifact Reduction,
-// Super Resolution). Mirrors the resolver in aigs.cpp; kept separate so the proven
-// green-screen path is not touched. Model subdir is models\vfx in the bundled layout.
+// Shared VFX-SDK runtime discovery for ALL VFX effects (Green Screen, Artifact
+// Reduction, Super Resolution). Single source of truth — aigs.cpp uses these too.
+// Model subdir is models\vfx in the bundled layout.
 namespace vfx {
 // Fills binDir (holds NVVideoEffects.dll) and modelDir. Order: COS_VFX_RUNTIME_DIR
 // (flat) -> COS_VFX_SDK_DIR (legacy \bin) -> <shimDir>\maxine (bundled). false if none.
 bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err);
-// Points the VFX proxy global (g_nvVFXSDKPath, defined in aigs.cpp) at binDir.
+// Points the VFX proxy global (g_nvVFXSDKPath, defined in vfx_paths.cpp) at binDir.
 void PointProxiesAt(const std::string& binDir);
 }
 ```
 
-- [ ] **Step 2: Create `native/shim/vfx_paths.cpp`** (logic copied verbatim from `aigs.cpp` ResolveSdkPaths/PointProxiesAt)
+- [ ] **Step 2: Create `native/shim/vfx_paths.cpp`** (owns `g_nvVFXSDKPath`; logic moved from `aigs.cpp`)
 
 ```cpp
 #include "vfx_paths.h"
@@ -248,8 +249,10 @@ void PointProxiesAt(const std::string& binDir);
 #include <windows.h>
 #include "paths.h"
 
-// Defined in aigs.cpp; the VFX proxy reads it before LoadLibrary.
-extern char* g_nvVFXSDKPath;
+// The proxy stub (nvVideoEffectsProxy.cpp) declares this extern; we own the single
+// definition here (moved out of aigs.cpp). Non-null => dir holding NVVideoEffects.dll,
+// which the proxy passes to SetDllDirectory before LoadLibrary.
+char* g_nvVFXSDKPath = nullptr;
 
 namespace vfx {
 bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err) {
@@ -288,7 +291,33 @@ void PointProxiesAt(const std::string&) {}
 #endif
 ```
 
-- [ ] **Step 3: Add to `native/shim/shim.vcxproj`**
+- [ ] **Step 3: Refactor `native/shim/aigs.cpp` to use the shared module**
+
+In the `COS_HAS_MAXINE` block:
+1. Add `#include "vfx_paths.h"` next to the other includes.
+2. **Delete** the `g_nvVFXSDKPath` definition (the `char* g_nvVFXSDKPath = nullptr;` line and its comment) — it now lives in `vfx_paths.cpp`.
+3. **Delete** the anonymous-namespace `ResolveSdkPaths(...)` and `PointProxiesAt(...)` functions (the whole `namespace { ... }` block that defines them, lines ~26–76).
+4. In `Aigs::Probe`, replace the resolver call:
+
+```cpp
+    std::string binDir, modelDir, err;
+    if (!vfx::ResolveSdkPaths(binDir, modelDir, err)) { detail = err; return false; }
+    vfx::PointProxiesAt(binDir);
+```
+
+5. In `Aigs::Start`, replace likewise:
+
+```cpp
+    std::string binDir, err;
+    if (!vfx::ResolveSdkPaths(binDir, impl->modelDir, err)) {
+        lastError_ = err; delete impl; return false;
+    }
+    vfx::PointProxiesAt(binDir);
+```
+
+(Both call sites already use these exact local variable names; only the function namespace changes from the file-local helpers to `vfx::`.)
+
+- [ ] **Step 4: Add to `native/shim/shim.vcxproj`**
 
 Inside the `<ItemGroup>` that holds the other `<ClCompile>` entries (e.g. `aigs.cpp`), add:
 
@@ -296,16 +325,18 @@ Inside the `<ItemGroup>` that holds the other `<ClCompile>` entries (e.g. `aigs.
     <ClCompile Include="vfx_paths.cpp" />
 ```
 
-- [ ] **Step 4: Build the shim (clean)**
+- [ ] **Step 5: Build the shim (SDK config) — clean, single `g_nvVFXSDKPath` definition**
 
-Run the shim build command. Expected: 0 warnings (file compiles; not yet referenced — that is fine).
+Run the shim build with `COS_VFX_SDK_DIR` set. Expected: 0 warnings, links cleanly (exactly one definition of `g_nvVFXSDKPath` — a duplicate-symbol linker error here means the old definition was not removed from `aigs.cpp`).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add native/shim/vfx_paths.h native/shim/vfx_paths.cpp native/shim/shim.vcxproj
-git commit -m "feat(shim): shared VFX SDK path resolver for new effects"
+git add native/shim/vfx_paths.h native/shim/vfx_paths.cpp native/shim/aigs.cpp native/shim/shim.vcxproj
+git commit -m "refactor(shim): shared VFX SDK path resolver (green screen + new effects)"
 ```
+
+> **Human gate (after build):** run the app with green screen ON and confirm the matte still works — this task edited the proven green-screen load path. Tasks 3–4 reuse `vfx::` so a green-screen regression here would surface everywhere.
 
 ---
 
