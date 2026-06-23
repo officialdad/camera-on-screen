@@ -1,6 +1,8 @@
 #include "capture.h"
 #include "aigs.h"
 #include "eyecontact.h"
+#include "artifactreduction.h"
+#include "superres.h"
 
 #include <atomic>
 #include <chrono>
@@ -47,6 +49,17 @@ struct CaptureState {
     std::atomic<bool>     eyeContactActive{false};  // set by worker
     std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
     std::string           ecError;                   // guarded by ecErrMtx
+
+    std::atomic<bool>     artifactReductionEnabled{false};
+    std::atomic<bool>     artifactReductionActive{false};
+    std::mutex            arErrMtx;            // leaf lock
+    std::string           arError;
+
+    std::atomic<bool>     superResEnabled{false};
+    std::atomic<int>      superResScale{20};   // 15 or 20
+    std::atomic<bool>     superResActive{false};
+    std::mutex            srErrMtx;            // leaf lock
+    std::string           srError;
 
     std::atomic<uint64_t> framesProduced{0}; // bumped by worker after each published frame
     FpsCounter            fpsCounter;         // read only by MeasuredFps (status-poll thread)
@@ -261,6 +274,8 @@ void Capture::WorkerLoop() {
     // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
     Aigs aigs;
     EyeContact eyeContact;
+    ArtifactReduction artifactReduction;
+    SuperRes superRes;
 
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
@@ -301,7 +316,31 @@ void Capture::WorkerLoop() {
 
         if (sample) {
             if (CopyFrame(sample, width, height, stride, scratch)) {
-                // Eye Contact runs first, on the raw frame (needs real eyes/landmarks).
+                // Artifact Reduction runs FIRST so the AI effects downstream get a clean frame.
+                const bool arWant = g_state.artifactReductionEnabled.load(std::memory_order_acquire);
+                if (arWant && !artifactReduction.IsReady()) {
+                    if (!artifactReduction.Start()) {
+                        std::lock_guard<std::mutex> e(g_state.arErrMtx);
+                        const std::string& ne = artifactReduction.LastError();
+                        if (g_state.arError != ne) g_state.arError = ne;
+                    }
+                } else if (!arWant && artifactReduction.IsReady()) {
+                    artifactReduction.Stop();
+                    std::lock_guard<std::mutex> e(g_state.arErrMtx);
+                    if (!g_state.arError.empty()) g_state.arError.clear();
+                }
+                bool arApplied = false;
+                if (arWant && artifactReduction.IsReady()) {
+                    arApplied = artifactReduction.ProcessFrame(scratch.data(), width, height);
+                    std::lock_guard<std::mutex> e(g_state.arErrMtx);
+                    if (!arApplied) {
+                        const std::string& ne = artifactReduction.LastError();
+                        if (g_state.arError != ne) g_state.arError = ne;
+                    } else if (!g_state.arError.empty()) { g_state.arError.clear(); }
+                }
+                g_state.artifactReductionActive.store(arApplied, std::memory_order_release);
+
+                // Eye Contact runs second, on the (AR-cleaned) raw frame (needs real eyes/landmarks).
                 const bool ecWant = g_state.eyeContactEnabled.load(std::memory_order_acquire);
                 if (ecWant && !eyeContact.IsReady()) {
                     if (!eyeContact.Start()) {
@@ -360,12 +399,43 @@ void Capture::WorkerLoop() {
                 }
                 g_state.greenScreenActive.store(applied, std::memory_order_release);
 
-                std::lock_guard<std::mutex> lock(g_state.mtx);
-                g_state.frame.swap(scratch);
-                g_state.width = width;
-                g_state.height = height;
-                g_state.hasNewFrame = true;
-                g_state.framesProduced.fetch_add(1, std::memory_order_release);
+                // Super Resolution runs LAST; it changes the frame dimensions.
+                const bool srWant = g_state.superResEnabled.load(std::memory_order_acquire);
+                const int  srScale = g_state.superResScale.load(std::memory_order_acquire);
+                if (srWant && !superRes.IsReady()) {
+                    if (!superRes.Start(srScale)) {
+                        std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                        const std::string& ne = superRes.LastError();
+                        if (g_state.srError != ne) g_state.srError = ne;
+                    }
+                } else if (!srWant && superRes.IsReady()) {
+                    superRes.Stop();
+                    std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                    if (!g_state.srError.empty()) g_state.srError.clear();
+                }
+
+                int pubW = width, pubH = height;
+                std::vector<uint8_t> srOut;
+                bool srApplied = false;
+                if (srWant && superRes.IsReady()) {
+                    srApplied = superRes.ProcessFrame(scratch.data(), width, height, srOut, pubW, pubH);
+                    std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                    if (!srApplied) {
+                        const std::string& ne = superRes.LastError();
+                        if (g_state.srError != ne) g_state.srError = ne;
+                    } else if (!g_state.srError.empty()) { g_state.srError.clear(); }
+                }
+                g_state.superResActive.store(srApplied, std::memory_order_release);
+
+                {
+                    std::lock_guard<std::mutex> lock(g_state.mtx);
+                    if (srApplied) g_state.frame.swap(srOut);
+                    else           g_state.frame.swap(scratch);
+                    g_state.width = pubW;
+                    g_state.height = pubH;
+                    g_state.hasNewFrame = true;
+                    g_state.framesProduced.fetch_add(1, std::memory_order_release);
+                }
             }
             SafeRelease(sample);
         } else {
@@ -375,7 +445,9 @@ void Capture::WorkerLoop() {
         }
     }
 
-    // Tear down Eye Contact and AIGS before releasing the reader (thread-affinity requirement).
+    // Tear down all effects before releasing the reader (thread-affinity requirement).
+    superRes.Stop();
+    artifactReduction.Stop();
     eyeContact.Stop();
     aigs.Stop();
     SafeRelease(reader);
@@ -422,6 +494,10 @@ void Capture::Stop() {
         std::lock_guard<std::mutex> e(g_state.ecErrMtx);
         g_state.ecError.clear();
     }
+    g_state.artifactReductionActive.store(false, std::memory_order_release);
+    { std::lock_guard<std::mutex> e(g_state.arErrMtx); g_state.arError.clear(); }
+    g_state.superResActive.store(false, std::memory_order_release);
+    { std::lock_guard<std::mutex> e(g_state.srErrMtx); g_state.srError.clear(); }
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
@@ -463,6 +539,26 @@ bool Capture::EyeContactActive() const {
 std::string Capture::EyeContactError() const {
     std::lock_guard<std::mutex> e(g_state.ecErrMtx);
     return g_state.ecError;
+}
+
+void Capture::SetArtifactReduction(bool enabled) {
+    g_state.artifactReductionEnabled.store(enabled, std::memory_order_release);
+}
+bool Capture::ArtifactReductionActive() const {
+    return g_state.artifactReductionActive.load(std::memory_order_acquire);
+}
+std::string Capture::ArtifactReductionError() const {
+    std::lock_guard<std::mutex> e(g_state.arErrMtx); return g_state.arError;
+}
+void Capture::SetSuperRes(bool enabled, int scaleX10) {
+    g_state.superResScale.store(scaleX10 == 15 ? 15 : 20, std::memory_order_release);
+    g_state.superResEnabled.store(enabled, std::memory_order_release);
+}
+bool Capture::SuperResActive() const {
+    return g_state.superResActive.load(std::memory_order_acquire);
+}
+std::string Capture::SuperResError() const {
+    std::lock_guard<std::mutex> e(g_state.srErrMtx); return g_state.srError;
 }
 
 Capture::~Capture() {
