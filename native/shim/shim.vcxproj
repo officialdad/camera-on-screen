@@ -93,6 +93,7 @@
     <ClCompile Include="aigs.cpp" />
     <ClCompile Include="artifactreduction.cpp" />
     <ClCompile Include="eyecontact.cpp" />
+    <ClCompile Include="superres.cpp" />
     <ClCompile Include="paths.cpp" />
     <ClCompile Include="vfx_paths.cpp" />
   </ItemGroup>
@@ -119,6 +120,7 @@
     <ClInclude Include="aigs.h" />
     <ClInclude Include="artifactreduction.h" />
     <ClInclude Include="eyecontact.h" />
+    <ClInclude Include="superres.h" />
     <ClInclude Include="paths.h" />
     <ClInclude Include="vfx_paths.h" />
   </ItemGroup>
