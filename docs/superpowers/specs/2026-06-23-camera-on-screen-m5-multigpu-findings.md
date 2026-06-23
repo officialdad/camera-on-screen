@@ -326,3 +326,22 @@ Updated next action (replaces the old blocker as the gate):
 No shipped runtime, bundler, manifest, or C-ABI change this session — investigation only. The
 Ampere-only installer remains the shippable build; non-RTX / non-Ampere already runs as a plain
 overlay with effects gated off (by design, no crash).
+
+## ADDENDUM 6 2026-06-23 — manifest + bundler + license WIRED & GATE-verified (sm86)
+
+Updates addendum 5's "deferred" note: the packaging core is now done on branch `feat/m5-multigpu-ar111`.
+- `maxine-manifest.psd1` rewritten for the new pair (flat 19-DLL allow-list from trace_closure +
+  dispatcher/feature DLLs; broad multi-arch model globs; `LicenseFiles` = the 6 required notices).
+- `bundle-maxine.ps1` rewritten to **prune + licensify a pre-assembled co-versioned stage**
+  (`-MaxineStage`), dropping the old two-runtime-root sourcing (co-version is enforced at stage
+  assembly; the bundler only prunes to the verified closure). `Bundle-Maxine.Tests.ps1` (6 tests)
+  green. Producing a real bundle from the multi-arch stage then `trace_closure` on it → both effects
+  load, EXIT=0, all 4 arches + 6 license files present (1.59 GB).
+- License compliance re-reviewed for the 2025 framework — see the license-compliance spec addendum.
+
+**Still deferred (pipeline flag-day + gates):** `build-installer.ps1` / `release.yml` /
+`Build-Installer.Tests.ps1` still call the old `-VfxRuntime/-ArRuntime` interface and need (a) a
+stage-assembly step (copy VFX/AR DLLs + feature DLLs + `fetch-maxine-engines.ps1` + license files
+into a stage) and (b) switching to `-MaxineStage`; CLAUDE.md CO-VERSION note flip to VFX 1.2.0.0 +
+AR 1.1.1.0 / TRT 10.9; runner `.env` new SDK paths. Gates unchanged: final legal sign-off + non-Ampere
+HW per-arch verify (3090 = sm86 only).

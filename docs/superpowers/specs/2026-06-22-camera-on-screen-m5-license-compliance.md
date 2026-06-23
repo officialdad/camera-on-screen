@@ -100,3 +100,41 @@ The legal **redistribution grant is cleared** (Maxine SDK License 1 Apr 2021,
 forum-corroborated as the governing doc). Recommend confirming the §3.1 string
 with NVIDIA support before the public release (#4), but the bundle ships
 compliant in good faith today.
+
+## ADDENDUM 2026-06-23 — NEW LICENSE FRAMEWORK for the migrated pair (VFX 1.2.0.0 + AR 1.1.1.0)
+
+The multi-GPU migration (issue #2) re-bases onto VFX 1.2.0.0 + AR 1.1.1.0 (TRT 10.9). These SDKs
+**replace the 2021 Maxine SDK License** above with a 2025 framework, so the §3.1 clearance does NOT
+transfer — the redistribution basis was re-reviewed against the actual shipped license PDFs:
+
+### Governing documents (all carried in the bundle; bundler throws if any is missing)
+- **NVIDIA Software License Agreement (v. May 5, 2025)** + **AI Product-Specific Terms (v. May 5,
+  2025)** — govern the runtime DLLs / SDK binaries.
+- **NVIDIA Open Model License (24 Oct 2025)** — governs the green-screen (AIGS) model engines (VFX).
+- **NVIDIA Community Model License (v. Apr 15, 2025)** — governs the gaze / face-box / landmark
+  model engines (AR).
+- **ThirdPartyLicenses.txt** ×2 (VFX + AR OSS load-closures, incl. OpenSSL/`libcrypto`) — carried as
+  `ThirdPartyLicenses-{VFX,AR}.txt`.
+
+### Redistribution basis (for THIS product: RTX desktop overlay, single user)
+- **Model engines — Community Model License §1.2** grants distribute "with a copy of this Agreement".
+  Its production-NIM requirement is **waived by exception (i)**: a model *designated for NVIDIA RTX /
+  GeForce RTX GPUs* used on a PC/workstation with such a GPU and **not** in a commercial kiosk/server
+  serving multiple users. Camera-on-Screen is exactly that (RTX-only, runs locally, one user) → no
+  AI Enterprise subscription, no charge. **Requirement honoured:** the agreement copy ships; engines
+  are bit-for-bit unmodified so no notices are stripped (§2.1.3) and no "modified files" notice is due.
+- **Runtime DLLs — Product-Specific Terms §1.1.3** permit distribution as part of a Customer Product;
+  §1.7.1 "NVIDIA Works Notice" applies only to *source* of derivative samples/models (we ship
+  unmodified binaries → n/a); §8.16 limits CUDA/TensorRT to NVIDIA platforms (RTX-only, satisfied).
+- **§8.17 prohibits emotion recognition** — the AR FaceExpressions feature (DLL + engine) is therefore
+  **deliberately excluded** from the bundle (also absent from the gaze load closure).
+
+### Wiring (done this session, branch `feat/m5-multigpu-ar111`, GATE-verified sm86)
+- `native/shim/bundle/maxine-manifest.psd1` — `LicenseFiles` lists the 6 files above.
+- `scripts/bundle-maxine.ps1` — copies them as a **required** set from the assembled stage; `Bundle-Maxine.Tests.ps1` covers the missing-license throw.
+- Bundle verified license-complete + both effects load (`trace_closure` EXIT=0).
+
+### Residual gate (human/legal, NOT engineering)
+Redistribution above is read in good faith from the shipped PDFs for the RTX-desktop/single-user case.
+The Community Model License "designated for RTX/GeForce RTX GPUs" determination for the specific gaze
+model, and final sign-off, are the owner's/legal's call before public release of the new-pair build.
