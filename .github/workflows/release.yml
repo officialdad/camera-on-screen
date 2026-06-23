@@ -82,8 +82,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # --generate-notes auto-builds a "What's Changed" changelog from the PRs/commits since
+          # the previous tag (GitHub Release Notes API). --notes is PREPENDED above it as a fixed
+          # header carrying the RTX requirement + Maxine license attribution the changelog can't
+          # know. `n = newline (kept on one logical line so the YAML `run: |` indent can't break a
+          # here-string terminator). Optional grouping/exclusions can live in .github/release.yml.
+          $header = "AI effects require an NVIDIA RTX GPU; non-RTX installs run as a plain webcam overlay. Multi-GPU build (Turing/Ampere/Ada/Blackwell engines bundled) — verified on Ampere (sm86); other RTX arches are best-effort and grey out gracefully if an engine fails to load.`n`nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md."
           gh release create '${{ github.ref_name }}' '${{ steps.art.outputs.path }}' `
             --title 'Camera on Screen ${{ steps.ver.outputs.version }}' `
             --verify-tag `
-            --notes 'Automated release. Multi-GPU build (Turing/Ampere/Ada/Blackwell engines bundled); verified on Ampere (sm86), other RTX arches are best-effort and grey out gracefully if an engine fails to load. AI effects require an NVIDIA RTX GPU; non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
+            --generate-notes `
+            --notes $header
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
