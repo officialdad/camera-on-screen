@@ -23,6 +23,9 @@ typedef struct {
     int    eye_contact_enabled;
     double eye_contact_sensitivity;
     double eye_contact_look_away_range;
+    int    artifact_reduction_enabled;
+    int    super_res_enabled;
+    int    super_res_scale;           // 0=off, 15=1.5x, 20=2x
 } CosParams;
 
 typedef struct {
@@ -30,6 +33,8 @@ typedef struct {
     char detail[256];            // green-screen status/error (UTF-8, NUL-terminated)
     int  eye_contact_available;  // 1 if Maxine GazeRedirection can run, else 0
     char ec_detail[256];         // eye-contact status/error (UTF-8, NUL-terminated)
+    int  artifact_reduction_available; // 1 if Maxine ArtifactReduction can run
+    int  super_res_available;          // 1 if Maxine SuperRes can run
 } CosCaps;
 
 COS_API int  cos_init(void* d3d11_device);
