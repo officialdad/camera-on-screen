@@ -17,8 +17,11 @@ NVIDIA Maxine AI. Two distinct user-visible wins:
 2. **More effective resolution** — AI-upscale the source so the overlay stays sharp when shown
    large, not just at widget size.
 
-The overlay display size **varies** (small widget ↔ near-fullscreen), so the design must hold up
-at any scale: clean + sharpen at the source for small sizes, real upscaled detail for large sizes.
+The overlay display size **varies** (small widget ↔ near-fullscreen). Phase 1 cleans compression
+artifacts (helps all sizes) and adds AI-upscaled detail (helps large sizes, where there is little
+or no downscale). The remaining **small-size softness** — bilinear minification in the present path
+— is a separate present-path redesign and is **deferred** (see §2 and §11), not solved by the
+Maxine effects here.
 
 ## 2. Scope
 
@@ -27,13 +30,16 @@ at any scale: clean + sharpen at the source for small sizes, real upscaled detai
   artifacts, in-place at source resolution, no dimension change.
 - **Super Resolution** (Maxine VFX `NVVFX_FX_SUPER_RES`) — AI upscale, off / 1.5× / 2×, writes a
   larger output buffer.
-- **Mipmapped downscale** in the overlay present path — fixes bilinear-minification softness when
-  the overlay is shown smaller than the source. Independent of Maxine; ships first.
 - **Real fps counter** — replace the hardcoded `cos_get_status` `30.0` stub with a measured value
   so the user can see each effect's cost.
 - Independent on/off toggles per effect; capability gating; live-param push; JSON persistence.
 
 **Out of scope:**
+- **Present-path minification fix (deferred — see §11).** The small-size bilinear-minification
+  softness needs a present-path redesign (window-sized back buffer + mipped shader scale), which
+  collides with load-bearing invariants (pinned-to-frame-res back buffer, mirror/zoom in the DComp
+  transform, the MPO hit-test gotcha). Separated from the Maxine effects to keep Phase 1 low-risk.
+  To be filed as its own issue if pursued.
 - **fps interpolation (Phase 2)** — NVIDIA Optical Flow FRUC, separate SDK, co-version risk.
   GitHub issue #13. Gated on a standalone co-version smoke test before any integration.
 - **Automatic GPU-budget management** — no scheduler, no mutual exclusion, no auto-drop. The user
@@ -115,9 +121,10 @@ Both `shim.h` (C) and `PInvokeShim` (`[StructLayout(Sequential)]` mirror) change
 
 - **`CosParams`** — add `int artifactReductionEnabled`, `int superResEnabled`, `int superResScale`
   (`0` = off, else factor ×10: `15` = 1.5×, `20` = 2×).
-- **`CosCaps`** — add `int artifactReductionAvailable`, `int superResAvailable` gates. Update the
-  documented struct size (currently two `int` gates + `char detail[512]` = 520 bytes; each new gate
-  adds 4 bytes — keep the comment and the C#-side size in sync).
+- **`CosCaps`** — add `int artifactReductionAvailable`, `int superResAvailable` gates. The struct
+  grows from two `int` gates + `char detail[512]` = **520 bytes** to **four** `int` gates +
+  `detail[512]` = **528 bytes**; update the size comment in `shim.h` and the `[StructLayout]` C#
+  mirror together.
 - **`cos_query_capabilities`** — extend the probe to create + load each new effect, exactly as it
   already does for green screen and gaze, and set the new gates from the result.
 
@@ -144,18 +151,30 @@ Replace the hardcoded `30.0` in `cos_get_status`:
 - **XAML** — two toggles + a Super Res factor combo, bound `Mode=OneWay` to the availability gates
   (greyed until the deferred probe lands). The status line shows the now-real fps.
 
-## 11. Mip downscale (present path — ships first, standalone)
+## 11. Present-path minification softness (DEFERRED — not built in Phase 1)
 
-Replace the `CopyResource` blit in `OverlayWindow.PresentFrame` (`OverlayWindow.cs:328`) with a
-textured fullscreen-quad draw:
-- frame texture created with `D3D11_RESOURCE_MISC_GENERATE_MIPS`,
-- `GenerateMips()` after upload,
-- draw a fullscreen quad into the back buffer with a **trilinear** sampler.
+Recorded here so the analysis is not lost; this is **out of scope** for Phase 1 (§2).
 
-Mip/trilinear minification averages source texels properly → sharp at any shrink ratio, fixing the
-bilinear-undersampling softness. Independent of the Maxine work; lands first and is independently
-valuable. (Upscale magnification blur at large sizes is what Super Res addresses — the two are
-complementary.)
+**Root cause (confirmed in code):** the back buffer is pinned to the **frame** resolution
+(`PresentFrame` — `CopyResource(back, _frameTex)` is 1:1, `_frameTex` is `MipLevels = 1`), and the
+frame-res → window scaling is done by the **DComp visual transform** (`UpdateScale` → `SetTransform`),
+which samples **bilinear** with no mip control. A 1080p → ~480px widget downscale therefore
+undersamples → softness/aliasing.
+
+**Why it is not a drop-in blit swap:** putting mips on `_frameTex` and drawing a quad into the
+*current* frame-res back buffer changes nothing — DComp still does the final minification afterward
+and ignores our mips. A correct fix requires moving the scale into our own D3D draw:
+- back buffer becomes **window-sized** (drops the pinned-to-frame-res / `CopyResource` 1:1 invariant),
+- draw a fullscreen quad sampling a **mipped** `_frameTex` (`GENERATE_MIPS` + `GenerateMips()`) with
+  a **trilinear** sampler,
+- DComp transform becomes **identity**, and **mirror + center-zoom** move out of the DComp
+  `Matrix3x2` into the quad's transform,
+- re-verify `WS_EX_NOREDIRECTIONBITMAP` clean capture and the size-dependent **MPO hit-test** gotcha
+  still hold with a window-sized back buffer.
+
+This touches load-bearing present-path invariants, so it is its own milestone. Note: Super Res does
+**not** substitute for it — the upscaled detail is also thrown away by the DComp bilinear downscale
+at small sizes.
 
 ## 12. Bundler / installer
 
@@ -188,15 +207,12 @@ the UI note + CLAUDE.md. No scheduler, no mutual exclusion (YAGNI).
 
 Each step is independently shippable and independently valuable:
 
-1. **Mip downscale** (present path) — standalone sharpness win, no Maxine dependency.
-2. **Real fps counter** — needed to tune everything after.
-3. **Artifact Reduction** — clean source, no dimension change (low risk).
-4. **Super Resolution** + 4K `_frameBuf` pre-size — the dimension-change step, landed last.
+1. **Real fps counter** — needed to tune everything after.
+2. **Artifact Reduction** — clean source, no dimension change (low risk).
+3. **Super Resolution** + 4K `_frameBuf` pre-size — the dimension-change step, landed last.
 
 ## 16. Open questions / verify-at-impl
 
 - Exact VFX 1.2.0.0 feature-DLL filenames + property keys for SuperRes / ArtifactReduction.
 - Whether Super Res mode 1 (compressed) or mode 0 looks better on this webcam's MJPG output —
   decide visually during the human gate.
-- Confirm trilinear-quad present path keeps the `WS_EX_NOREDIRECTIONBITMAP` clean-capture behavior
-  (it should — still a DComp flip-model swap chain, only the blit changes).
