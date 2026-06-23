@@ -25,6 +25,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 OutputDir=..\dist
 OutputBaseFilename=CameraOnScreen-Setup-{#AppVersion}-x64
+SetupIconFile=..\cos.ico
 WizardStyle=modern
 ; Combined end-user license: the app's MIT terms PLUS the NVIDIA Maxine SDK license
 ; flow-down for the bundled runtime/models (Maxine SDK License §1.2(v) — end-user terms
