@@ -62,7 +62,7 @@ bool ArtifactReduction::Start() {
     vfx::PointProxiesAt(binDir);
     if (NvVFX_CudaStreamCreate(&impl->stream) != NVCV_SUCCESS) { lastError_ = "CudaStreamCreate failed"; delete impl; return false; }
     if (NvVFX_CreateEffect(NVVFX_FX_ARTIFACT_REDUCTION, &impl->effect) != NVCV_SUCCESS || !impl->effect) {
-        lastError_ = "CreateEffect failed"; delete impl; return false;
+        lastError_ = "CreateEffect failed"; NvVFX_CudaStreamDestroy(impl->stream); delete impl; return false;
     }
     NvVFX_SetString(impl->effect, NVVFX_MODEL_DIRECTORY, impl->modelDir.c_str());
     NvVFX_SetCudaStream(impl->effect, NVVFX_CUDA_STREAM, impl->stream);

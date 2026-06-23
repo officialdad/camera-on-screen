@@ -69,7 +69,7 @@ bool SuperRes::Start(int scaleX10) {
     vfx::PointProxiesAt(binDir);
     if (NvVFX_CudaStreamCreate(&impl->stream) != NVCV_SUCCESS) { lastError_ = "CudaStreamCreate failed"; delete impl; return false; }
     if (NvVFX_CreateEffect(NVVFX_FX_SUPER_RES, &impl->effect) != NVCV_SUCCESS || !impl->effect) {
-        lastError_ = "CreateEffect failed"; delete impl; return false;
+        lastError_ = "CreateEffect failed"; NvVFX_CudaStreamDestroy(impl->stream); delete impl; return false;
     }
     NvVFX_SetString(impl->effect, NVVFX_MODEL_DIRECTORY, impl->modelDir.c_str());
     NvVFX_SetCudaStream(impl->effect, NVVFX_CUDA_STREAM, impl->stream);
@@ -144,7 +144,7 @@ bool SuperRes::ProcessFrame(const uint8_t* bgra, int w, int h, std::vector<uint8
             prow[x * 4 + 0] = drow[x * 3 + 0]; // B
             prow[x * 4 + 1] = drow[x * 3 + 1]; // G
             prow[x * 4 + 2] = drow[x * 3 + 2]; // R
-            prow[x * 4 + 3] = 0xFF;             // A = opaque (fresh upscaled buffer)
+            // Alpha already 0xFF from the out.assign() pre-fill (opaque upscaled buffer).
         }
     }
     outW = ow; outH = oh;
