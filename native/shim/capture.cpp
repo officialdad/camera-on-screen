@@ -3,8 +3,10 @@
 #include "eyecontact.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
+#include "fps_counter.h"
 
 #include <windows.h>
 #include <mfapi.h>
@@ -45,6 +47,9 @@ struct CaptureState {
     std::atomic<bool>     eyeContactActive{false};  // set by worker
     std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
     std::string           ecError;                   // guarded by ecErrMtx
+
+    std::atomic<uint64_t> framesProduced{0}; // bumped by worker after each published frame
+    FpsCounter            fpsCounter;         // read only by MeasuredFps (status-poll thread)
 };
 
 // Module-level singleton state. Capture is used as a single global instance by the
@@ -360,6 +365,7 @@ void Capture::WorkerLoop() {
                 g_state.width = width;
                 g_state.height = height;
                 g_state.hasNewFrame = true;
+                g_state.framesProduced.fetch_add(1, std::memory_order_release);
             }
             SafeRelease(sample);
         } else {
@@ -390,6 +396,8 @@ bool Capture::Start(const std::string& symbolicLink) {
         g_state.width = 0;
         g_state.height = 0;
         g_state.hasNewFrame = false;
+        g_state.framesProduced.store(0, std::memory_order_release);
+        g_state.fpsCounter.Reset();
     }
     g_state.stopRequested.store(false, std::memory_order_release);
     g_state.worker = std::thread(&Capture::WorkerLoop, this);
@@ -510,4 +518,12 @@ std::vector<CameraDesc> Capture::Enumerate() {
 
     if (devices) CoTaskMemFree(devices);
     return result;
+}
+
+double Capture::MeasuredFps() const {
+    using clock = std::chrono::steady_clock;
+    const double nowSec =
+        std::chrono::duration<double>(clock::now().time_since_epoch()).count();
+    const uint64_t frames = g_state.framesProduced.load(std::memory_order_acquire);
+    return g_state.fpsCounter.Sample(nowSec, frames);
 }

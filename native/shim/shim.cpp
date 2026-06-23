@@ -73,7 +73,7 @@ COS_API void cos_get_status(CosStatus* out) {
     if (!out) return;
     std::memset(out, 0, sizeof(*out));
     out->running = g_running ? 1 : 0;
-    out->fps = g_running ? 30.0 : 0.0; // still a stub count (documented)
+    out->fps = g_running ? g_capture.MeasuredFps() : 0.0;
     out->green_screen_active = g_capture.GreenScreenActive() ? 1 : 0;
     out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
     std::string err = g_capture.GreenScreenError();
