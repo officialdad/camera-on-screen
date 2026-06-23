@@ -42,6 +42,10 @@ public:
     bool EyeContactActive() const;        // true only while gaze redirection is transforming frames
     std::string EyeContactError() const;  // empty when none
 
+    // Measured frames-per-second over a rolling window (status polling). Thread-safe to
+    // call from the single status-poll thread; 0 until the first interval elapses.
+    double MeasuredFps() const;
+
 private:
     void WorkerLoop();
 };
