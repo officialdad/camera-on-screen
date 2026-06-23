@@ -25,10 +25,10 @@ The native shim must be built **before** the App (the App copies `native/shim/x6
 # 1. Native shim — Build Tools MSBuild, from PowerShell (Git Bash mangles MSBuild /p: switches).
 #    Set COS_VFX_SDK_DIR (green screen) + COS_AR_SDK_DIR (eye contact) to enable both Maxine
 #    effects. WITHOUT a var, the corresponding effect builds a CI-safe passthrough STUB.
-#    Build compiles against the VFX 1.2.0.0 headers/proxy (NvVFX ABI is stable); only the
-#    RUNTIME must be the co-versioned 0.7.6 (see CO-VERSION below).
-$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"        # VFX source (build)
-$env:COS_AR_SDK_DIR  = "C:\dev\Maxine-AR-SDK"  # AR source clone (build)
+#    Build compiles against the VFX 1.2.0.0 + AR 1.1.1.0 headers/proxy; the co-versioned RUNTIME
+#    pair is VFX 1.2.0.0 + AR 1.1.1.0 / TRT 10.9 (see CO-VERSION below).
+$env:COS_VFX_SDK_DIR = "C:\dev\VideoFX"            # VFX 1.2.0.0 source (build)
+$env:COS_AR_SDK_DIR  = "C:\dev\Maxine-AR-SDK"      # AR 1.1.1.0 source clone (build)
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64
 # Output (x64 only): native/shim/x64/Debug/CameraOnScreen.Shim.dll
@@ -40,11 +40,11 @@ dotnet build src/CameraOnScreen.App/CameraOnScreen.App.csproj -t:Rebuild
 dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj
 
 # Run with effects (M4+). Runtime resolution, first hit wins:
-#   COS_VFX_RUNTIME_DIR (dev override) -> VFX 0.7.6 runtime (flat: DLLs in root, models in \models)
+#   COS_VFX_RUNTIME_DIR (dev override) -> VFX 1.2.0.0 runtime (flat: DLLs in root, models in \models)
 #   COS_AR_RUNTIME_DIR / %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK (AR)
 #   <app>\maxine\ (bundled, beside the exe — no env vars needed; see Bundler)
 # Without any -> raw passthrough, effects disabled (no crash).
-$env:COS_VFX_RUNTIME_DIR = "C:\dev\VideoFX-0.7.6"
+$env:COS_VFX_RUNTIME_DIR = "C:\dev\maxine-stage"  # assembled co-versioned stage (assemble-maxine-stage.ps1)
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 
@@ -52,7 +52,7 @@ src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScre
 
 **DEPLOY THE RIGHT SHIM (cost a full debugging cycle).** The SDK build (`COS_HAS_MAXINE*`) and the CI stub (`/p:CosVfxSdkDir= /p:CosArSdkDir=`) write the **same** DLL path; whichever built **last** is what App `-t:Rebuild` deploys. Always build the SDK config **last** before running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL: `grep -a GreenScreen` **and** `grep -a GazeRedirection` present, `grep -a "not built in"` absent.
 
-**CO-VERSION (M4, cost a full cycle).** The Maxine **VFX** (green screen, `NvVFX_*`) and **AR** (eye contact / gaze, `NvAR_*`) SDKs each bundle an exact, pinned CUDA + TensorRT runtime. Two different TRT/CUDA runtimes **cannot coexist** in one process — same DLL names (`nvinfer_10.dll`, `cudart64_12.dll`, `NVCVImage.dll`), first `LoadLibrary` wins, loser's `NvVFX_Load`/`NvAR_Load` fails with `cudaErrorNoKernelImageForDevice`. The verified pair is **VFX 0.7.6 + AR 0.8.7** — both ship **TensorRT 10.4.0.26 / CUDA 12.1** (byte-identical `nvinfer_10.dll`/`cudart64_12.dll`). Do **not** mix VFX 1.2.0.0 (TRT 10.9) with AR 0.8.7 (TRT 10.4). Build compiles against 1.2.0.0 headers (ABI stable); only the **runtime** must be the matched 0.7.6.
+**CO-VERSION (M4/M5, cost a full cycle).** The Maxine **VFX** (green screen, `NvVFX_*`) and **AR** (eye contact / gaze, `NvAR_*`) SDKs each bundle an exact, pinned CUDA + TensorRT runtime. Two different TRT/CUDA runtimes **cannot coexist** in one process — same DLL names (`nvinfer_10.dll`, `cudart64_12.dll`, `NVCVImage.dll`), first `LoadLibrary` wins, loser's `NvVFX_Load`/`NvAR_Load` fails with `cudaErrorNoKernelImageForDevice`. The verified pair is **VFX 1.2.0.0 + AR 1.1.1.0** — both ship **TensorRT 10.9 / CUDA 12.x** (`nvinfer_10.dll`/`cudart64_12.dll` byte-identical in body, re-signed). Migrated from the prior **VFX 0.7.6 + AR 0.8.7 / TRT 10.4** pair for multi-GPU model coverage (issue #2). Both SDKs now use a **dispatcher + per-feature-DLL** model: `NVVideoEffects.dll`/`nvARPose.dll` are dispatchers; the real effects are `nvVFXGreenScreen.dll` and the AR feature DLLs (`nvARGazeRedirection`/`nvARFaceBoxDetection`/`nvARLandmarkDetection`) — all must sit beside the dispatcher in the flat `maxine\`. `nvARFaceExpressions` is excluded (not in the gaze closure; emotion recognition disallowed by AI Product-Specific Terms §8.17). AR 1.1.1.0 dropped the `NvAR_Feature_*` macros from `nvAR_defs.h` — `eyecontact.cpp` defines the `"GazeRedirection"` literal if absent.
 
 ## Architecture — contracts that span files
 
@@ -78,16 +78,16 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 - **Capture threading:** a worker thread fills a mutex-guarded frame buffer; `Start`/`Stop` are serialized by a *separate* lifecycle mutex (so `join()` never blocks `LatestFrame`). Never call into the worker-thread-local Maxine objects from the UI thread — toggle via the atomic flag only.
 - **`MainViewModel.Dispose()` must dispose the shim** (`cos_shutdown` → joins the capture worker), else the global `std::thread` is destroyed joinable at process exit → `std::terminate`/debug abort dialog.
 
-## Maxine SDKs (not in repo; redistribution governed by NVIDIA EULA)
+## Maxine SDKs (not in repo; redistribution governed by the 2025 NVIDIA Software License + Open/Community Model Licenses)
 
-- **VFX** green screen (`nvvfxgreenscreen`) and **AR** eye contact (gaze) are separate NVIDIA products. No import `.lib` — link via the SDKs' proxy stubs (`nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`, `nvARProxy.cpp`) compiled into the shim. Models are prebuilt TensorRT engines for compute capability **86** (RTX 3090) — arch-locked.
-- **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, both effect DLLs, `models\vfx` + `models\ar`).
-- **Bundler** (`scripts/bundle-maxine.ps1` + `native/shim/bundle/maxine-manifest.psd1`): copies the **minimal verified load-closure** (the manifest's DLL allow-list was produced by `native/shim/smoke/trace_closure.cpp`, which loads both effects and enumerates loaded modules) into `<output>\maxine\` (~1.28 GB, Ampere only). Co-version enforced physically: shared DLLs from the VFX runtime, AR-only DLLs (`cufft64_11`, `nppif64_12`) from the AR runtime. `trace_closure` re-run against the produced bundle (`COS_*` unset → both effects load) is the verify gate. End-user need: an **RTX GPU + recent driver**; no NVIDIA account or SDK download (the redistributable runtime is bundled).
-- **Installer** (`scripts/bundle-maxine.ps1` consumer): `scripts/build-installer.ps1`
-  builds the App **.NET-self-contained**, export-verifies the deployed shim, runs the
-  bundler, then compiles `installer/CameraOnScreen.iss` with Inno Setup 6 →
-  `dist/CameraOnScreen-Setup-<ver>-x64.exe` (per-user, unsigned, x64). Effects are
-  **Ampere-only** this build; non-RTX installs run as a plain overlay. Build the shim SDK
+- **VFX** green screen (`nvvfxgreenscreen`) and **AR** eye contact (gaze) are separate NVIDIA products. No import `.lib` — link via the SDKs' proxy stubs (`nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`, `nvARProxy.cpp`) compiled into the shim. Models are prebuilt per-arch TensorRT engines; the bundle ships **sm75/86/89/100** (Turing/Ampere/Ada/Blackwell) — fetched from NGC by arch. **sm86 is the only arch verified on real silicon (RTX 3090); the others ship best-effort and grey out gracefully if an engine fails to deserialize.**
+- **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, dispatcher + feature DLLs, `models\vfx` + `models\ar`).
+- **Stage + Bundler.** Two steps now (dispatcher + per-feature-DLL SDK layout): (1) `scripts/assemble-maxine-stage.ps1` curates a co-versioned flat **stage** from the VFX 1.2.0.0 + AR 1.1.1.0 SDK trees (shared DLLs from VFX; AR dispatcher + 3 gaze feature DLLs from AR; the 6 license files; multi-arch engines via `scripts/fetch-maxine-engines.ps1`, NGC key). (2) `scripts/bundle-maxine.ps1 -OutDir X -MaxineStage <stage>` PRUNES the stage to the manifest's verified load-closure (`native/shim/bundle/maxine-manifest.psd1`; the 19-DLL `Dlls` list was produced by `native/shim/smoke/trace_closure.cpp`) + model globs + required `LicenseFiles`, into `<output>\maxine\`. Co-version is enforced at stage assembly, not by the bundler. `trace_closure`/`bundle_probe` re-run against the produced bundle (`COS_*` unset → both effects load) is the verify gate. End-user need: an **RTX GPU + recent driver**; no NVIDIA account or SDK download.
+- **Installer** (`scripts/bundle-maxine.ps1` consumer): `scripts/build-installer.ps1 -MaxineStage <stage>`
+  builds the App **.NET-self-contained**, export-verifies the deployed shim, prunes the stage
+  into `<staging>\maxine\`, then compiles `installer/CameraOnScreen.iss` with Inno Setup 6 →
+  `dist/CameraOnScreen-Setup-<ver>-x64.exe` (per-user, unsigned, x64). Multi-GPU bundle
+  (sm86-verified, others best-effort); non-RTX installs run as a plain overlay. Build the shim SDK
   config **last** before running (deploy-the-right-shim). `-DryRun` prints the plan with no
   SDK/RTX/Inno needed. **Stage via `dotnet build -p:SelfContained=true` — NOT `dotnet
   publish`** (cost a debug cycle): for this unpackaged WinUI 3 app, `publish` silently drops
@@ -101,4 +101,4 @@ Public repo `github.com/officialdad/camera-on-screen` (MIT + `THIRD-PARTY-NOTICE
 
 ## Status
 
-M1–M5 complete: Core, App + overlay, AI green screen, QoL (overlay mirror/zoom, green-screen expand/feather, panel right-size), AI eye contact (gaze redirection), app-relative SDK discovery, the runtime **bundler**, and the **installer** (`scripts/build-installer.ps1` → Inno Setup `.exe`). All user-verified on an RTX 3090 — the installer was installed + launched from the Start Menu with both effects working (0.59 GB installer, issue #1). **License compliance** (#3) is cleared: the bundled Maxine runtime is redistributable at no charge under the NVIDIA Maxine SDK License (notices/EULA flow-down/§3.1 attribution all wired; see `docs/superpowers/specs/2026-06-22-camera-on-screen-m5-license-compliance.md`). **Release pipeline** (#4) is done: `release.yml` on tag `v*`. Remaining: **multi-GPU models** (#2 — compute 86 only today; Turing models fetchable from NGC via `VideoFX\features\install_feature.ps1 -gpu 75` but co-version-trapped vs the shipped 0.7.6 runtime).
+M1–M5 complete: Core, App + overlay, AI green screen, QoL (overlay mirror/zoom, green-screen expand/feather, panel right-size), AI eye contact (gaze redirection), app-relative SDK discovery, the runtime **bundler**, and the **installer** (`scripts/build-installer.ps1` → Inno Setup `.exe`). All user-verified on an RTX 3090 — the installer was installed + launched from the Start Menu with both effects working (0.59 GB installer, issue #1). **Release pipeline** (#4) is done: `release.yml` on tag `v*`. **Multi-GPU** (#2) migrated to VFX 1.2.0.0 + AR 1.1.1.0 / TRT 10.9 (branch `feat/m5-multigpu-ar111`): source builds clean, sm75/86/89/100 engines bundled, new stage+bundler+license wiring GATE-verified on **sm86** (`trace_closure` EXIT=0). **License compliance re-reviewed for the 2025 framework** (Software License Agreement + Product-Specific Terms for DLLs; Open Model License for green-screen engines; Community Model License §1.2(i) RTX-desktop/single-user exception for gaze/face engines — see `docs/superpowers/specs/2026-06-22-camera-on-screen-m5-license-compliance.md` addendum). The earlier #3 clearance (2021 Maxine EULA) applied to the old pair. **Remaining gates (NOT engineering):** final legal sign-off + per-arch verify on real Turing/Ada/Blackwell silicon (3090 = sm86 only; non-Ampere ships best-effort).

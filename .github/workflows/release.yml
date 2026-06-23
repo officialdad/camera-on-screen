@@ -45,6 +45,17 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "release version: $version"
 
+      # The Maxine stage is version-pinned (VFX 1.2.0.0 + AR 1.1.1.0) and does NOT change between
+      # app releases, so it is assembled ONCE out-of-band (scripts/assemble-maxine-stage.ps1, which
+      # is the only step needing the NGC key) and kept on the runner at $env:COS_MAXINE_STAGE. The
+      # release just prunes it -- no per-release NGC re-download.
+      - name: Check Maxine stage is present
+        shell: pwsh
+        run: |
+          if (-not $env:COS_MAXINE_STAGE -or -not (Test-Path $env:COS_MAXINE_STAGE)) {
+            throw "COS_MAXINE_STAGE not set/found on the runner. Build it once: scripts/assemble-maxine-stage.ps1 (see docs/ci/self-hosted-runner.md)."
+          }
+
       - name: Build installer (shim SDK config -> self-contained app -> export-verify -> bundle -> ISCC)
         shell: pwsh
         run: |
@@ -74,5 +85,5 @@ jobs:
           gh release create '${{ github.ref_name }}' '${{ steps.art.outputs.path }}' `
             --title 'Camera on Screen ${{ steps.ver.outputs.version }}' `
             --verify-tag `
-            --notes 'Automated release. Ampere (RTX 30-series) build; the AI effects require an NVIDIA RTX GPU and non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime is governed by the NVIDIA Maxine SDK License — see THIRD-PARTY-NOTICES.md.'
+            --notes 'Automated release. Multi-GPU build (Turing/Ampere/Ada/Blackwell engines bundled); verified on Ampere (sm86), other RTX arches are best-effort and grey out gracefully if an engine fails to load. AI effects require an NVIDIA RTX GPU; non-RTX installs run as a plain webcam overlay. Bundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
