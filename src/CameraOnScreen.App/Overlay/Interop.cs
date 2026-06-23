@@ -61,7 +61,8 @@ internal static class Interop
     public const int SW_HIDE = 0;
     public const int SW_SHOWNOACTIVATE = 4;
     // SetWindowPos flags: keep current Z-order/activation, only change position+size.
-    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOMOVE     = 0x0002;
+    public const uint SWP_NOZORDER   = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     [DllImport("kernel32.dll")] public static extern IntPtr GetModuleHandle(string? name);
 

@@ -293,9 +293,14 @@ public sealed class OverlayWindow : IDisposable
         {
             _swapChain.ResizeBuffers(0, (uint)width, (uint)height, Format.Unknown, SwapChainFlags.None);
             _bufW = width; _bufH = height;
-            // Re-establish the scale for the current window size against the new frame size.
+            // Snap the window width to preserve the camera's native aspect ratio at the current height.
+            // Prevents the video from appearing squished when the window's stored W/H doesn't match
+            // the camera's native W/H (e.g. saved 320×240 4:3 config vs a 16:9 camera).
             GetClientRect(_hwnd, out RECT rc);
-            UpdateScale(rc.right - rc.left, rc.bottom - rc.top);
+            int snapH = rc.bottom - rc.top;
+            int snapW = (int)Math.Round(snapH * (double)width / height);
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, snapW, snapH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            UpdateScale(snapW, snapH);
         }
 
         // (Re)create the CPU-writable upload texture when the frame size changes.
