@@ -9,12 +9,11 @@ class FpsCounter {
 public:
     double Sample(double nowSec, uint64_t totalFrames) {
         if (!started_) { started_ = true; lastSec_ = nowSec; lastFrames_ = totalFrames; return fps_; }
-        const double dt      = nowSec      - lastSec_;
-        const auto   dframes = totalFrames - lastFrames_;
-        lastSec_    = nowSec;       // always advance baseline so next window starts here
+        const double dt = nowSec - lastSec_;
+        if (dt < kMinInterval) return fps_;     // too soon: keep last estimate, baseline unchanged
+        fps_ = static_cast<double>(totalFrames - lastFrames_) / dt;
+        lastSec_ = nowSec;
         lastFrames_ = totalFrames;
-        if (dt < kMinInterval) return fps_;     // too soon: keep the last estimate
-        fps_ = static_cast<double>(dframes) / dt;
         return fps_;
     }
     void Reset() { started_ = false; fps_ = 0.0; lastSec_ = 0.0; lastFrames_ = 0; }
