@@ -35,8 +35,10 @@ removal) and **AI Eye Contact** effects run in real time.
 Uninstall from **Settings → Apps** as usual. Your preferences are kept at
 `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 
-> The AI effects in this build are tuned for **RTX 30-series (Ampere)** GPUs. On
-> other GPUs the app still installs and runs as a plain webcam overlay.
+> The AI effects ship with models for **RTX 20/30/40-series and Blackwell**
+> GPUs, but are only verified on **RTX 30-series (Ampere)** so far — other RTX
+> architectures load best-effort. On non-RTX hardware the app still installs and
+> runs as a plain webcam overlay.
 
 ## Using it
 
@@ -82,8 +84,8 @@ repository — download them from <https://developer.nvidia.com/maxine> and poin
 the build at them. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 The two SDKs each pin an exact CUDA + TensorRT runtime and **cannot mix** in one
-process. Use a co-versioned pair — verified: **VFX 0.7.6 + AR 0.8.7** (shared
-TensorRT 10.4 / CUDA 12.1).
+process. Use a co-versioned pair — verified: **VFX 1.2.0.0 + AR 1.1.1.0** (shared
+TensorRT 10.9 / CUDA 12.x).
 
 ## Build
 
@@ -111,10 +113,10 @@ runtime env vars needed to actually run the effects, see
 
 ## CI / Release
 
-Every PR and push to `main` is gated by GitHub Actions on a **self-hosted RTX
-runner** — full co-versioned Maxine build, a stale-stub export verify, the App
-build, and Core unit tests, all with warnings treated as errors. A second
-workflow builds the installer and publishes a GitHub release on a `v*` tag. See
+Every PR is gated by GitHub Actions on a **self-hosted RTX runner** — full
+co-versioned Maxine build, a stale-stub export verify, the App build, and Core
+unit tests, all with warnings treated as errors. A second workflow builds the
+installer and publishes a GitHub release on a `v*` tag. See
 [`docs/ci/self-hosted-runner.md`](docs/ci/self-hosted-runner.md).
 
 ## Status
@@ -122,5 +124,6 @@ workflow builds the installer and publishes a GitHub release on a `v*` tag. See
 M1–M5 complete: Core, overlay passthrough, AI Green Screen, AI Eye Contact,
 app-relative SDK discovery, the runtime/model **bundler**, the **installer** (a
 per-user Inno Setup `.exe`), license compliance, and the tag-triggered release
-pipeline — all verified on an RTX 3090. Remaining: multi-GPU models (Ampere
-only today).
+pipeline — all verified on an RTX 3090. The multi-GPU model bundle (RTX
+20/30/40-series + Blackwell, sm75/86/89/100) ships too, verified on Ampere
+(sm86); other architectures are best-effort pending verification on real silicon.
