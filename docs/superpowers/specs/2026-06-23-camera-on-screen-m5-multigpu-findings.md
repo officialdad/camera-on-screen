@@ -101,6 +101,60 @@ The only path to a universal installer:
    Turing/Ada/Blackwell silicon; the 3090 cannot test them. Ships best-effort until each card
    is available.
 
+## ADDENDUM 4 2026-06-23 — SOURCE MIGRATION DONE + RE-VERIFIED on the 3090 (branch `feat/m5-multigpu-ar111`)
+
+Resumed on the dev box. The AR 1.1.1.0 SDK + 4 gaze feature libs + the assembled flat
+`maxine\` from the prior session **survive** in the session scratchpad (`...\0e31f3ae-...\
+scratchpad\ar111\` + `\probe\`) — no NGC re-download needed for the sm86 path. Verified live:
+
+1. **Shim source forward-compat (committed `5111c29`).** `eyecontact.cpp` now guards the gaze
+   feature ID: `#ifndef NvAR_Feature_GazeRedirection #define ... "GazeRedirection" #endif` —
+   no-op on AR 0.8.7 (macro present), defines the literal on AR 1.1.1.0 (macro dropped). No
+   other source delta needed.
+2. **Full shim build GREEN** against **VFX 1.2.0.0 + AR 1.1.1.0** headers/proxies
+   (`CosVfxSdkDir=…\VideoFX`, `CosArSdkDir=…\ar111\sdk\ARSDK`). `aigs.cpp` + `eyecontact.cpp`
+   compiled clean — confirms there are NO other AR 1.1.1.0 API deltas in the real shim build
+   (prior sessions only compiled the `bundle_probe` path). `dumpbin /exports`: all 9 `cos_*`
+   exports; `GreenScreen` **and** `GazeRedirection` strings present; `not built in` absent.
+3. **`bundle_probe` EXIT=0** re-run on the 3090 (COS_* unset, beside-exe `maxine\`):
+   `VFX AVAILABLE` + `AR AVAILABLE`. Co-version war re-won live with the new pair.
+4. **`trace_closure` minimal closure = 19 modules** (both effects Start=1, GATE EXIT=0). The
+   new pair's closure is SMALLER than the shipped 0.7.6/0.8.7 one — `cufft*`, `cublas*`,
+   `curand`, `nvvpi2`, `nvrtc*`, `nvinfer_plugin`, `nppicc`, and **`nvARFaceExpressions.dll`**
+   are NOT loaded (same synthetic-gray-frame method that produced the old list — so AR 1.1.1.0
+   gaze genuinely dropped the FFT/cublas deps). Real-webcam-face verify remains the same human
+   gate the original M5 bundler relied on.
+
+### Manifest source map (ground truth for the bundler rewrite — all 19 locatable, reproducible)
+
+Shared (co-version rule = take from **VFX 1.2.0.0 `bin\`**): `cudart64_12`, `libcrypto-3-x64`,
+`nppc64_12`, `nppial64_12`, `nppidei64_12`, `nppif64_12`, `nppig64_12`, `nppim64_12`,
+`nppist64_12`, `nppitc64_12`, `NVCVImage`, `nvinfer_10`, `nvonnxparser_10`. **No AR-only shared
+DLLs** in the closure (was `cufft64_11`+`nppif64_12` on 0.8.7).
+- VFX effect: `NVVideoEffects.dll` (dispatcher, `VideoFX\bin`) + `nvVFXGreenScreen.dll` (feature,
+  `VideoFX\features\nvvfxgreenscreen\bin`).
+- AR effect: `nvARPose.dll` (dispatcher, `ARSDK\bin`) + `nvARGazeRedirection.dll` +
+  `nvARFaceBoxDetection.dll` + `nvARLandmarkDetection.dll` (feature libs, each
+  `ar111\libs2\<name>\<name>\bin`). `nvARFaceExpressions.dll` NOT needed (not in closure).
+
+### Remaining to ship the universal installer (unchanged gates; bundler deferred ON PURPOSE)
+
+The bundler/manifest rewrite is **deliberately bundled with the NGC multi-arch fetch**, not done
+sm86-only: its #2 payoff (more GPUs) can't be GATE-tested without the `_75/_89/_100` engines, and
+rewriting for sm86-only would churn `build-installer.ps1` / `release.yml` / `verify-bundle.ps1` /
+tests for zero new coverage. When picked up (recipe below is fully de-risked):
+1. **NGC key** → fetch `_75/_86/_89/_100` engines for `nvvfxgreenscreen` + `nvargazeredirection`
+   + `nvarfaceboxdetection` + `nvarlandmarkdetection` (NOT faceexpressions). (Two external gates
+   remain: this key, and non-Ampere silicon for per-arch deserialize verify — 3090 = sm86 only.)
+2. **Manifest** → the source map above; effect model = dispatcher + feature DLLs; engine globs to
+   1.1.1.0 names; arch globs `_{75,86,89,100}` made **best-effort** (don't throw on a missing
+   arch so the bundle builds with whatever engines are present).
+3. **Bundler** → copy the feature DLLs (new), source shared DLLs from VFX `bin\`, AR features
+   from the feature-lib packages; GATE with `trace_closure` against the produced `maxine\`.
+4. **CLAUDE.md** → flip CO-VERSION to VFX 1.2.0.0 + AR 1.1.1.0 / TRT 10.9 **at the same time the
+   release pipeline migrates** (not before — the shipped build is still 0.7.6/0.8.7 until then).
+5. **Per-arch HW verify** — best-effort beyond sm86.
+
 ## ADDENDUM 3 2026-06-23 — IN-PROCESS PROOF: both effects load together on TRT 10.9 (sm86)
 
 Built `bundle_probe` against **VFX 1.2.0.0 + AR 1.1.1.0** headers/proxies, assembled a flat
