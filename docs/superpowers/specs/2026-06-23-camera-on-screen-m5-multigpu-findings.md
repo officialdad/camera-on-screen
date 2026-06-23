@@ -101,6 +101,49 @@ The only path to a universal installer:
    Turing/Ada/Blackwell silicon; the 3090 cannot test them. Ships best-effort until each card
    is available.
 
+## ADDENDUM 5 2026-06-23 — MULTI-ARCH ENGINES FETCHED + a NEW license gate found
+
+NGC key supplied (in-process only, not stored — owner rotating). Probe live: all 4 models serve
+Windows engines for **sm75/86/89/100** at the target versions (GS `nvvfxgreenscreen` 1.2.0.0;
+AR `nvargazeredirection` / `nvarfaceboxdetection` / `nvarlandmarkdetection` 1.1.1.0; 100 =
+Blackwell/sm120 on Windows).
+
+- **All `_75/_89/_100` engines fetched + sha256-verified** into the assembled
+  `…\scratchpad\probe\maxine\models\{vfx,ar}` (45 files total across the 4 arches; faceexpressions
+  NOT fetched — not in the gaze load closure). The assembled bundle is now multi-arch; sm86
+  `bundle_probe` + `trace_closure` GATE still EXIT=0 (extra-arch engines are inert — Maxine selects
+  by the arch suffix). sm75/89/100 cannot be deserialize-verified here (3090 = sm86 only).
+- **New reusable tool `scripts/fetch-maxine-engines.ps1`** — the bundler's NGC fetch step,
+  standalone + sha-verified + `-DryRun`, auth mirrors `probe-ngc-maxine.ps1`. (Gotcha baked into a
+  comment: PowerShell vars are case-insensitive — a local `$h` silently clobbers a `$hdr`/`$H`
+  headers var; cost one failed batch.)
+
+### 🚩 NEW HARD GATE — license framework changed (re-opens #3 for the new pair)
+
+The migrated SDKs ship a **different license set** than the 2021 Maxine SDK License that #3 cleared
+(`docs/superpowers/specs/2026-06-22-camera-on-screen-m5-license-compliance.md`):
+- VFX 1.2.0.0 `license\`: `NVIDIA-Software-License-Agreement-2025.05.05.pdf`,
+  `product-specific-terms-for-nvidia-ai-products-2025.05.05.pdf`,
+  `NVIDIA-Open-Model-License-Agreements-24-10-2025.pdf`.
+- AR 1.1.1.0 `license\`: the Software License Agreement + product-specific terms (same 2025 pair).
+- The **gaze feature lib** carries `NVIDIA-Models-Community-License-2025-04-15.pdf`.
+- **No** `NVIDIA Maxine EULA.pdf` and **no** `ThirdPartyLicenses.txt` (which the current bundler
+  treats as required-to-redistribute files).
+
+The #3 redistribution clearance does NOT transfer — redistribution rights under the 2025 Software
+License + the **Community Model License** (community model licenses often differ on redistribution)
+must be re-reviewed before any new-pair bundle ships. This is a human/legal gate, on top of the
+non-Ampere HW gate.
+
+### Why the packaging rewrite is NOT landed this session (atomic flag-day)
+
+The manifest (`maxine-manifest.psd1`) AND `bundle-maxine.ps1` are both consumed by the LIVE release
+pipeline (`build-installer.ps1` → `release.yml` → `verify-bundle.ps1`). Editing either flips the
+shippable build to the new pair before the pipeline, license, and runner `.env` (new SDK paths) are
+all migrated — i.e. it would break the current Ampere release for zero new coverage. So the
+manifest/bundler/CLAUDE-flip land ATOMICALLY once the license gate clears, using the de-risked
+recipe in addendum 4 + the source map there + `fetch-maxine-engines.ps1` for the engine step.
+
 ## ADDENDUM 4 2026-06-23 — SOURCE MIGRATION DONE + RE-VERIFIED on the 3090 (branch `feat/m5-multigpu-ar111`)
 
 Resumed on the dev box. The AR 1.1.1.0 SDK + 4 gaze feature libs + the assembled flat
