@@ -3,8 +3,10 @@
 #include "eyecontact.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
+#include "fps_counter.h"
 
 #include <windows.h>
 #include <mfapi.h>
@@ -45,6 +47,9 @@ struct CaptureState {
     std::atomic<bool>     eyeContactActive{false};  // set by worker
     std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
     std::string           ecError;                   // guarded by ecErrMtx
+
+    std::atomic<uint64_t> framesProduced{0}; // bumped by worker after each published frame
+    FpsCounter            fpsCounter;         // read only by MeasuredFps (status-poll thread)
 };
 
 // Module-level singleton state. Capture is used as a single global instance by the
@@ -215,13 +220,54 @@ bool CreateReader(const std::string& symbolicLink, IMFSourceReader*& outReader,
     SafeRelease(source);
     if (FAILED(hr) || !reader) return false;
 
-    // Request RGB32 output on the first video stream.
+    // Pick the camera's best native type up front: HIGHEST frame rate, then highest
+    // resolution, capped at 1080p (the overlay downscales; _frameBuf is sized for 4K).
+    // Without this MF picks the camera's *default* native type, which on common webcams
+    // (e.g. Logitech Brio 100) is a ~15fps mode rather than the MJPG 1080p30 path — so
+    // the live overlay is choppy at half the camera's real capability. fps dominates the
+    // score; resolution is only the tiebreaker.
+    UINT32 bestW = 0, bestH = 0, bestNum = 0, bestDen = 1;
+    double bestScore = -1.0;
+    for (DWORD i = 0; ; ++i) {
+        IMFMediaType* nt = nullptr;
+        if (FAILED(reader->GetNativeMediaType(
+                static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), i, &nt))) break;
+        UINT32 w = 0, h = 0, num = 0, den = 0;
+        if (SUCCEEDED(MFGetAttributeSize(nt, MF_MT_FRAME_SIZE, &w, &h)) &&
+            SUCCEEDED(MFGetAttributeRatio(nt, MF_MT_FRAME_RATE, &num, &den)) &&
+            w > 0 && h > 0 && den > 0 && w <= 1920 && h <= 1080) {
+            const double fps = static_cast<double>(num) / den;
+            const double score = fps * 1e8 + static_cast<double>(w) * h; // fps wins, res breaks ties
+            if (score > bestScore) {
+                bestScore = score; bestW = w; bestH = h; bestNum = num; bestDen = den;
+            }
+        }
+        SafeRelease(nt);
+    }
+
+    // Request RGB32 output on the first video stream. When a best native type was found,
+    // pin the output to its frame size + rate so MF selects that (high-fps) native path
+    // and converts it; if MF rejects the constrained request, retry unconstrained
+    // (previous behavior — MF picks the default).
     IMFMediaType* outType = nullptr;
     if (FAILED(MFCreateMediaType(&outType))) { SafeRelease(reader); return false; }
     outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     outType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    if (bestScore >= 0.0) {
+        MFSetAttributeSize(outType, MF_MT_FRAME_SIZE, bestW, bestH);
+        MFSetAttributeRatio(outType, MF_MT_FRAME_RATE, bestNum, bestDen);
+    }
     hr = reader->SetCurrentMediaType(
         static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, outType);
+    if (FAILED(hr) && bestScore >= 0.0) {
+        // Constrained request rejected — fall back to letting MF choose the native type.
+        SafeRelease(outType);
+        if (FAILED(MFCreateMediaType(&outType))) { SafeRelease(reader); return false; }
+        outType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        outType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        hr = reader->SetCurrentMediaType(
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, outType);
+    }
     SafeRelease(outType);
     if (FAILED(hr)) { SafeRelease(reader); return false; }
 
@@ -360,6 +406,7 @@ void Capture::WorkerLoop() {
                 g_state.width = width;
                 g_state.height = height;
                 g_state.hasNewFrame = true;
+                g_state.framesProduced.fetch_add(1, std::memory_order_release);
             }
             SafeRelease(sample);
         } else {
@@ -390,6 +437,8 @@ bool Capture::Start(const std::string& symbolicLink) {
         g_state.width = 0;
         g_state.height = 0;
         g_state.hasNewFrame = false;
+        g_state.framesProduced.store(0, std::memory_order_release);
+        g_state.fpsCounter.Reset();
     }
     g_state.stopRequested.store(false, std::memory_order_release);
     g_state.worker = std::thread(&Capture::WorkerLoop, this);
@@ -510,4 +559,12 @@ std::vector<CameraDesc> Capture::Enumerate() {
 
     if (devices) CoTaskMemFree(devices);
     return result;
+}
+
+double Capture::MeasuredFps() const {
+    using clock = std::chrono::steady_clock;
+    const double nowSec =
+        std::chrono::duration<double>(clock::now().time_since_epoch()).count();
+    const uint64_t frames = g_state.framesProduced.load(std::memory_order_acquire);
+    return g_state.fpsCounter.Sample(nowSec, frames);
 }
