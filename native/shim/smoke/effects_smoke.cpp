@@ -25,7 +25,7 @@ int main() {
     {
         std::string d;
         if (SuperRes::Probe(d)) {
-            SuperRes sr; assert(sr.Start(20));
+            SuperRes sr; assert(sr.Start(1, 20));  // quality 1 = VSR_Low upscale, scale 2x
             std::vector<uint8_t> in(640 * 480 * 4, 64), out; int ow = 0, oh = 0;
             bool ok = sr.ProcessFrame(in.data(), 640, 480, out, ow, oh);
             std::printf("SR ProcessFrame: %s -> %dx%d\n", ok ? "ok" : "fail", ow, oh);

@@ -47,6 +47,28 @@ After PR #14 (`feat/fps-and-capture-mode` = fps counter + highest-fps capture) m
 `feat/ai-sharpness-vsr` off `main`; rebase the parked branch's effect commits on (the fps/capture
 patches dedupe to empty since #14 carries them). The parked branch is the substrate.
 
+## Compile-testing the real SDK shim on THIS host (no dev SDK at `C:\dev`)
+
+The interactive user's `C:\dev` VFX/AR trees are absent on this box, **but the self-hosted runner
+SDK is present and usable** for real-headers compile tests of any shim task (T2–T9):
+
+- **SDK roots:** `C:\actions-runner\_sdk\VideoFX` (VFX 1.2.0.0), `C:\actions-runner\_sdk\Maxine-AR-SDK-1.1.1.0`.
+- **NGC key** (for `install_feature.ps1`) lives in the gitignored repo `.env` as
+  `$env:NGC_CLI_API_KEY="nvapi-…"`. **Dot-sourcing `.env` is flaky** (no trailing newline) — extract
+  it: `$raw = Get-Content .env -Raw; if ($raw -match 'nvapi-[A-Za-z0-9_\-]+') { $env:NGC_CLI_API_KEY = $matches[0] }`.
+- **VSR feature must be installed once** (was missing — only greenscreen shipped):
+  `cd C:\actions-runner\_sdk\VideoFX\features; .\install_feature.ps1 -features nvvfxvideosuperres`.
+  → installs `features\nvvfxvideosuperres\{include\nvVFXVideoSuperRes.h, bin\nvVFXVideoSuperRes.dll, bin\nvngx_vsr.dll}`.
+  **"No models found for SM86 (normal)" is expected** — VSR is NGX, baked into `nvngx_vsr.dll`, no per-arch engine.
+- **Build the real path:** MSBuild `native/shim/shim.vcxproj /p:Configuration=Debug /p:Platform=x64`
+  `/p:CosVfxSdkDir=C:\actions-runner\_sdk\VideoFX /p:CosArSdkDir=C:\actions-runner\_sdk\Maxine-AR-SDK-1.1.1.0`.
+- **Export-verify the deployed DLL** (`native/shim/x64/Debug/CameraOnScreen.Shim.dll`): `grep -ac`
+  finds `GreenScreen` + `GazeRedirection` + `VideoSuperRes`, and `not built in` is **absent**.
+- **Confirmed 2026-06-24:** T2 superres.cpp compiles clean against the real header (0 warnings,
+  both effects). The header's `NVVFX_FX_VIDEO_SUPER_RES "VideoSuperRes"` + `NVVFX_QUALITY_LEVEL
+  "QualityLevel"` match the rewrite. This only proves **compilation**; runtime VSR (Load/Run on real
+  frames) is still the T9 human gate on the 3090.
+
 ## Tasks
 
 - [x] **T1 — Probe VSR (DONE, 2026-06-24).** Verified the real API on the 3090 (above).
@@ -54,7 +76,14 @@ patches dedupe to empty since #14 carries them). The parked branch is the substr
 - [ ] **T0 — Spec update.** Edit the design spec: drop Artifact Reduction entirely; re-scope SR to
   VSR-only with a mode selector. Keep the generic-plumbing sections.
 
-- [ ] **T2 — Rewrite `superres.{h,cpp}`** against the real API (simpler than parked):
+- [x] **T2 — Rewrite `superres.{h,cpp}` (DONE, 2026-06-24).** Real `"VideoSuperRes"` selector +
+  `nvVFXVideoSuperRes.h` (added the feature include dir to `shim.vcxproj`); BGRA u8 GPU in+out
+  (BGR convert + per-pixel repack deleted → per-row `memcpy` honoring pitch, alpha flows through);
+  `Start(int qualityLevel, int scaleX10)` sets `NVVFX_QUALITY_LEVEL`; upscale 1-4 → out=in×scale,
+  clean 8-15 → out=in. Probe mirrors the verified Start sequence. **Built clean against the REAL
+  header on the runner SDK** (0 warnings, both effects + VSR — see "Compile-testing" above), plus a
+  stub build. Call sites stubbed to keep the tree green: `capture.cpp` passes quality `1` (ponytail
+  comment, T5/T6 thread real mode), `effects_smoke.cpp` updated. Original spec below:
   - selector `"VideoSuperRes"`, include the real header.
   - **BGRA u8 GPU in+out** — delete the BGR conversion and the per-pixel alpha-repack loop.
   - `Start(int qualityLevel, int scaleX10)`; set `NVVFX_QUALITY_LEVEL` (not `NVVFX_MODE`).

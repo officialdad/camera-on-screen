@@ -413,7 +413,9 @@ void Capture::WorkerLoop() {
                 const bool srWant = g_state.superResEnabled.load(std::memory_order_acquire);
                 const int  srScale = g_state.superResScale.load(std::memory_order_acquire);
                 if (srWant && !superRes.IsReady()) {
-                    if (!superRes.Start(srScale)) {
+                    // ponytail: hardcoded quality 1 (VSR_Low upscale); T5/T6 thread the real
+                    // QualityLevel (mode combo) once the ABI carries it.
+                    if (!superRes.Start(1, srScale)) {
                         std::lock_guard<std::mutex> e(g_state.srErrMtx);
                         const std::string& ne = superRes.LastError();
                         if (g_state.srError != ne) g_state.srError = ne;

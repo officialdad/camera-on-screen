@@ -76,7 +76,7 @@
   <ItemDefinitionGroup Condition="'$(CosVfxSdkDir)' != ''">
     <ClCompile>
       <PreprocessorDefinitions>COS_HAS_MAXINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(CosVfxSdkDir)\nvvfx\include;$(CosVfxSdkDir)\features\nvvfxgreenscreen\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(CosVfxSdkDir)\nvvfx\include;$(CosVfxSdkDir)\features\nvvfxgreenscreen\include;$(CosVfxSdkDir)\features\nvvfxvideosuperres\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
 
