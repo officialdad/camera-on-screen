@@ -21,8 +21,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private readonly Overlay.OverlayWindow _overlay;
     private readonly Hotkeys.GlobalHotkeyService _hotkeys;
     private readonly JsonSettingsStore _store = new(JsonSettingsStore.DefaultPath());
-    // Big enough for 1920x1080 BGRA; the test camera is 640x480. TryGetFrame writes the actual size.
-    private readonly byte[] _frameBuf = new byte[1920 * 1080 * 4];
+    // Pre-sized to 4K (3840x2160) BGRA so Super Resolution (up to 2x of 1080p) fits without a
+    // resize. TryGetFrame writes the actual size; cos_get_frame rejects frames larger than this.
+    private readonly byte[] _frameBuf = new byte[3840 * 2160 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
     private Overlay.OverlayMouseHook? _mouseHook;

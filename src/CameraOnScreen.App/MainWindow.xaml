@@ -30,6 +30,18 @@
             <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
                        Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
                        Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+            <ToggleSwitch Header="Artifact Reduction"
+                          IsEnabled="{x:Bind Vm.ArtifactReductionAvailable, Mode=OneWay}"
+                          IsOn="{x:Bind Vm.ArtifactReductionEnabled, Mode=TwoWay}"/>
+            <ToggleSwitch Header="Super Resolution"
+                          IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
+                          IsOn="{x:Bind Vm.SuperResEnabled, Mode=TwoWay}"/>
+            <ComboBox Header="Super-res scale"
+                      IsEnabled="{x:Bind Vm.SuperResEnabled, Mode=OneWay}"
+                      SelectedIndex="{x:Bind Vm.SuperResScaleIndex, Mode=TwoWay}">
+                <ComboBoxItem Content="1.5x"/>
+                <ComboBoxItem Content="2x"/>
+            </ComboBox>
             <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
                        Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
                        Foreground="{ThemeResource SystemFillColorCautionBrush}"/>

@@ -91,8 +91,11 @@
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
+    <ClCompile Include="artifactreduction.cpp" />
     <ClCompile Include="eyecontact.cpp" />
+    <ClCompile Include="superres.cpp" />
     <ClCompile Include="paths.cpp" />
+    <ClCompile Include="vfx_paths.cpp" />
   </ItemGroup>
 
   <!-- Proxy stubs provide the Maxine API by LoadLibrary'ing the runtime DLLs (no import .lib). -->
@@ -115,8 +118,11 @@
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
+    <ClInclude Include="artifactreduction.h" />
     <ClInclude Include="eyecontact.h" />
+    <ClInclude Include="superres.h" />
     <ClInclude Include="paths.h" />
+    <ClInclude Include="vfx_paths.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

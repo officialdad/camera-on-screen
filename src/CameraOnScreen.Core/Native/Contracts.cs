@@ -6,7 +6,8 @@ public readonly record struct CameraInfo(string Id, string Name);
 /// so existing 2-arg call sites keep compiling.</summary>
 public sealed record ShimCapabilities(
     bool GreenScreenAvailable, string Detail,
-    bool EyeContactAvailable = false, string EyeContactDetail = "");
+    bool EyeContactAvailable = false, string EyeContactDetail = "",
+    bool ArtifactReductionAvailable = false, bool SuperResAvailable = false);
 
 public enum GazeState { Unknown, OnCamera, Redirected, RealEyes }
 
@@ -25,7 +26,10 @@ public sealed record ShimParams(
     double GreenScreenFeather,
     bool EyeContactEnabled,
     double EyeContactSensitivity,
-    double EyeContactLookAwayRange);
+    double EyeContactLookAwayRange,
+    bool ArtifactReductionEnabled = false,
+    bool SuperResEnabled = false,
+    int SuperResScale = 0);            // 0=off, 15=1.5x, 20=2x
 
 public interface INativeShim : IDisposable
 {
