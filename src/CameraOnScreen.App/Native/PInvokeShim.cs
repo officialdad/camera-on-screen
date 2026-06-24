@@ -26,6 +26,7 @@ public sealed class PInvokeShim : INativeShim
         public double eye_contact_look_away_range;
         public int super_res_enabled;
         public int super_res_scale;
+        public int super_res_quality_level;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -82,6 +83,7 @@ public sealed class PInvokeShim : INativeShim
                 eye_contact_look_away_range = p.EyeContactLookAwayRange,
                 super_res_enabled = p.SuperResEnabled ? 1 : 0,
                 super_res_scale = p.SuperResScale,
+                super_res_quality_level = p.SuperResQualityLevel,
             };
             cos_set_params(ref native);
         }

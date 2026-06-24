@@ -247,6 +247,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility EyeContactNotAvailableVisibility =>
         Vm.EyeContactAvailable ? Visibility.Collapsed : Visibility.Visible;
 
+    // SR sub-controls gate on the probe AND the chosen mode. x:Bind re-runs these when either
+    // argument (SuperResAvailable / SuperResModeIndex) raises PropertyChanged. Mode 0 = Off, 1 = Upscale.
+    public static bool QualityEnabled(bool available, int modeIndex) => available && modeIndex != 0;
+    public static bool ScaleEnabled(bool available, int modeIndex) => available && modeIndex == 1;
+
     public string StatusLine =>
         Vm.IsRunning ? $"Running — {Vm.Fps:F0} fps" : "Stopped";
 

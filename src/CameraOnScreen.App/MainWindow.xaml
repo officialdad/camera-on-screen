@@ -1,67 +1,87 @@
 <Window
     x:Class="CameraOnScreen.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Padding="16" RowSpacing="12">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:CameraOnScreen.App">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ComboBox Grid.Row="0" Header="Camera"
-                  ItemsSource="{x:Bind Vm.Cameras}"
-                  SelectedItem="{x:Bind Vm.SelectedCamera, Mode=TwoWay}"
-                  DisplayMemberPath="Name" Width="280"/>
+        <!-- Controls scroll; the license-required footer (row 1) stays pinned outside. -->
+        <ScrollViewer Grid.Row="0" Padding="16">
+            <StackPanel Spacing="12">
+                <ComboBox Header="Camera"
+                          ItemsSource="{x:Bind Vm.Cameras}"
+                          SelectedItem="{x:Bind Vm.SelectedCamera, Mode=TwoWay}"
+                          DisplayMemberPath="Name" Width="280"/>
 
-        <StackPanel Grid.Row="1" Spacing="8">
-            <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
-                          IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
-            <Slider Header="Green-screen Expand" Minimum="0" Maximum="1" StepFrequency="0.05"
-                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
-                    Value="{x:Bind Vm.GreenScreenExpand, Mode=TwoWay}"/>
-            <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
-                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
-                    Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
-            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EyeContactAvailable, Mode=OneWay}"
-                          IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
-            <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
-                       Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
-                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
-            <ToggleSwitch Header="Super Resolution"
-                          IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
-                          IsOn="{x:Bind Vm.SuperResEnabled, Mode=TwoWay}"/>
-            <ComboBox Header="Super-res scale"
-                      IsEnabled="{x:Bind Vm.SuperResEnabled, Mode=OneWay}"
-                      SelectedIndex="{x:Bind Vm.SuperResScaleIndex, Mode=TwoWay}">
-                <ComboBoxItem Content="1.5x"/>
-                <ComboBoxItem Content="2x"/>
-            </ComboBox>
-            <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
-                       Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
-                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
-            <ToggleSwitch Header="Lock overlay"
-                          IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
-            <ToggleSwitch Header="Click-through"
-                          IsOn="{x:Bind Vm.ClickThrough, Mode=TwoWay}"/>
-            <ToggleSwitch Header="Mirror (selfie view)"
-                          IsOn="{x:Bind Vm.Mirror, Mode=TwoWay}"/>
-            <Slider Header="Zoom" Minimum="1" Maximum="3" StepFrequency="0.1"
-                    Value="{x:Bind Vm.Zoom, Mode=TwoWay}"/>
-        </StackPanel>
+                <StackPanel Spacing="8">
+                    <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
+                                  IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
+                    <Slider Header="Green-screen Expand" Minimum="0" Maximum="1" StepFrequency="0.05"
+                            IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                            Value="{x:Bind Vm.GreenScreenExpand, Mode=TwoWay}"/>
+                    <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
+                            IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                            Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
+                    <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EyeContactAvailable, Mode=OneWay}"
+                                  IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
+                    <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
+                               Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
+                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
-            <Button Content="Start" Command="{x:Bind Vm.StartCommand}"/>
-            <Button Content="Stop" Command="{x:Bind Vm.StopCommand}"/>
-        </StackPanel>
+                    <!-- Super Resolution: mode picks the VSR family (Off/Upscale/Denoise/Deblur);
+                         quality maps to QualityLevel within the family; the upscale factor only
+                         applies to Upscale (disabled otherwise). -->
+                    <ComboBox Header="Super Resolution"
+                              IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
+                              SelectedIndex="{x:Bind Vm.SuperResModeIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Off"/>
+                        <ComboBoxItem Content="Upscale"/>
+                        <ComboBoxItem Content="Denoise"/>
+                        <ComboBoxItem Content="Deblur"/>
+                    </ComboBox>
+                    <ComboBox Header="SR quality"
+                              IsEnabled="{x:Bind local:MainWindow.QualityEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
+                              SelectedIndex="{x:Bind Vm.SuperResQualityIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="Low"/>
+                        <ComboBoxItem Content="Medium"/>
+                        <ComboBoxItem Content="High"/>
+                        <ComboBoxItem Content="Ultra"/>
+                    </ComboBox>
+                    <ComboBox Header="Upscale factor"
+                              IsEnabled="{x:Bind local:MainWindow.ScaleEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
+                              SelectedIndex="{x:Bind Vm.SuperResScaleIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="1.5x"/>
+                        <ComboBoxItem Content="2x"/>
+                    </ComboBox>
+                    <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
+                               Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
+                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
 
-        <TextBlock Grid.Row="3"
-                   Text="{x:Bind StatusLine, Mode=OneWay}"/>
+                    <ToggleSwitch Header="Lock overlay"
+                                  IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
+                    <ToggleSwitch Header="Click-through"
+                                  IsOn="{x:Bind Vm.ClickThrough, Mode=TwoWay}"/>
+                    <ToggleSwitch Header="Mirror (selfie view)"
+                                  IsOn="{x:Bind Vm.Mirror, Mode=TwoWay}"/>
+                    <Slider Header="Zoom" Minimum="1" Maximum="3" StepFrequency="0.1"
+                            Value="{x:Bind Vm.Zoom, Mode=TwoWay}"/>
+                </StackPanel>
 
-        <!-- Required NVIDIA Maxine attribution (SDK License Supplement §3.1). -->
-        <TextBlock Grid.Row="4" VerticalAlignment="Bottom"
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Start" Command="{x:Bind Vm.StartCommand}"/>
+                    <Button Content="Stop" Command="{x:Bind Vm.StopCommand}"/>
+                </StackPanel>
+
+                <TextBlock Text="{x:Bind StatusLine, Mode=OneWay}"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Required NVIDIA Maxine attribution (SDK License Supplement §3.1) — always visible. -->
+        <TextBlock Grid.Row="1" Margin="16,8,16,12"
                    Text="{x:Bind MaxineAttribution}"
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

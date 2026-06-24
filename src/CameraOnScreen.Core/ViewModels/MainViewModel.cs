@@ -62,8 +62,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool eyeContactEnabled;
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
-    [ObservableProperty] private bool superResEnabled;
-    [ObservableProperty] private int superResScaleIndex; // 0=1.5x, 1=2x
+    [ObservableProperty] private int superResModeIndex;      // 0=Off, 1=Upscale, 2=Denoise, 3=Deblur
+    [ObservableProperty] private int superResQualityIndex;   // 0=Low, 1=Med, 2=High, 3=Ultra
+    [ObservableProperty] private int superResScaleIndex = 1; // 0=1.5x, 1=2x
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
@@ -78,9 +79,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
 
-    // SuperResScaleIndex 0/1 -> shim scale 15/20 (1.5x / 2x). On/off is the SuperResEnabled toggle.
+    // SuperResScaleIndex 0/1 -> shim scale 15/20 (1.5x / 2x). Mode 0 = Off; scale applies to Upscale only.
     private static int ScaleFromIndex(int i) => i switch { 1 => 20, _ => 15 };
     private static int IndexFromScale(int s) => s switch { 20 => 1, _ => 0 };
+    // VSR QualityLevel base per mode (Upscale=1, Denoise=8, Deblur=12) + quality 0..3. Off => 0.
+    private static int QualityLevelFor(int mode, int quality) => mode switch
+    {
+        1 => 1 + quality, 2 => 8 + quality, 3 => 12 + quality, _ => 0,
+    };
 
     public void LoadFrom(AppConfig config)
     {
@@ -90,7 +96,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
-        SuperResEnabled = config.Effects.SuperResEnabled;
+        SuperResModeIndex = config.Effects.SuperResMode;
+        SuperResQualityIndex = config.Effects.SuperResQuality;
         SuperResScaleIndex = IndexFromScale(config.Effects.SuperResScale);
         Locked = config.Overlay.Locked;
         ClickThrough = config.Overlay.ClickThrough;
@@ -119,7 +126,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             GreenScreenFeather = GreenScreenFeather,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
             EyeContactLookAwayRange = EyeContactLookAwayRange,
-            SuperResEnabled = SuperResEnabled,
+            SuperResMode = SuperResModeIndex,
+            SuperResQuality = SuperResQualityIndex,
             SuperResScale = ScaleFromIndex(SuperResScaleIndex),
         },
         Hotkeys = _hotkeys
@@ -136,7 +144,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
-    partial void OnSuperResEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnSuperResModeIndexChanged(int value) => ApplyLiveParams();
+    partial void OnSuperResQualityIndexChanged(int value) => ApplyLiveParams();
     partial void OnSuperResScaleIndexChanged(int value) => ApplyLiveParams();
 
     private void ApplyLiveParams()
@@ -152,8 +161,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled: EyeContactEnabled,
         EyeContactSensitivity: EyeContactSensitivity,
         EyeContactLookAwayRange: EyeContactLookAwayRange,
-        SuperResEnabled: SuperResEnabled,
-        SuperResScale: ScaleFromIndex(SuperResScaleIndex));
+        SuperResEnabled: SuperResModeIndex != 0,
+        SuperResScale: SuperResModeIndex == 1 ? ScaleFromIndex(SuperResScaleIndex) : 0,
+        SuperResQualityLevel: QualityLevelFor(SuperResModeIndex, SuperResQualityIndex));
 
     public void OnStatus(ShimStatus s)
     {

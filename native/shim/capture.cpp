@@ -51,6 +51,7 @@ struct CaptureState {
 
     std::atomic<bool>     superResEnabled{false};
     std::atomic<int>      superResScale{20};   // 15 or 20
+    std::atomic<int>      superResQuality{1};  // VSR QualityLevel (mode): 1-4 / 8-11 / 12-15
     std::atomic<bool>     superResActive{false};
     std::mutex            srErrMtx;            // leaf lock
     std::string           srError;
@@ -310,6 +311,7 @@ void Capture::WorkerLoop() {
     Aigs aigs;
     EyeContact eyeContact;
     SuperRes superRes;
+    int srAppliedQuality = 0, srAppliedScale = 0; // last (quality,scale) Start ran with; for live restart
 
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
@@ -412,13 +414,17 @@ void Capture::WorkerLoop() {
                 // Super Resolution runs LAST; it changes the frame dimensions.
                 const bool srWant = g_state.superResEnabled.load(std::memory_order_acquire);
                 const int  srScale = g_state.superResScale.load(std::memory_order_acquire);
+                const int  srQuality = g_state.superResQuality.load(std::memory_order_acquire);
+                // QualityLevel + scale are baked at Start; restart the effect if either changed live.
+                if (srWant && superRes.IsReady() && (srQuality != srAppliedQuality || srScale != srAppliedScale))
+                    superRes.Stop();
                 if (srWant && !superRes.IsReady()) {
-                    // ponytail: hardcoded quality 1 (VSR_Low upscale); T5/T6 thread the real
-                    // QualityLevel (mode combo) once the ABI carries it.
-                    if (!superRes.Start(1, srScale)) {
+                    if (!superRes.Start(srQuality, srScale)) {
                         std::lock_guard<std::mutex> e(g_state.srErrMtx);
                         const std::string& ne = superRes.LastError();
                         if (g_state.srError != ne) g_state.srError = ne;
+                    } else {
+                        srAppliedQuality = srQuality; srAppliedScale = srScale;
                     }
                 } else if (!srWant && superRes.IsReady()) {
                     superRes.Stop();
@@ -550,8 +556,9 @@ std::string Capture::EyeContactError() const {
     return g_state.ecError;
 }
 
-void Capture::SetSuperRes(bool enabled, int scaleX10) {
+void Capture::SetSuperRes(bool enabled, int qualityLevel, int scaleX10) {
     g_state.superResScale.store(scaleX10 == 15 ? 15 : 20, std::memory_order_release);
+    g_state.superResQuality.store(qualityLevel, std::memory_order_release);
     g_state.superResEnabled.store(enabled, std::memory_order_release);
 }
 bool Capture::SuperResActive() const {

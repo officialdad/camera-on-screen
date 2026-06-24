@@ -65,7 +65,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_capture.SetGreenScreen(p->green_screen_enabled != 0);
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
     g_capture.SetEyeContact(p->eye_contact_enabled != 0);
-    g_capture.SetSuperRes(p->super_res_enabled != 0, p->super_res_scale);
+    g_capture.SetSuperRes(p->super_res_enabled != 0, p->super_res_quality_level, p->super_res_scale);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }

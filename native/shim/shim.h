@@ -24,7 +24,8 @@ typedef struct {
     double eye_contact_sensitivity;
     double eye_contact_look_away_range;
     int    super_res_enabled;
-    int    super_res_scale;           // 0=off, 15=1.5x, 20=2x
+    int    super_res_scale;           // 0=off, 15=1.5x, 20=2x (upscale modes only)
+    int    super_res_quality_level;   // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
 } CosParams;
 
 typedef struct {

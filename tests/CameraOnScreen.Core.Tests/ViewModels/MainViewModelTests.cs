@@ -260,12 +260,28 @@ public class MainViewModelTests
         orch.ProbeCapabilities();
         var vm = new MainViewModel(orch, shim);
 
-        vm.SuperResEnabled = true;
-        vm.SuperResScaleIndex = 1; // 2x
+        vm.SuperResModeIndex = 1;    // Upscale
+        vm.SuperResQualityIndex = 2; // High -> QualityLevel 3
+        vm.SuperResScaleIndex = 1;   // 2x
 
         var p = vm.BuildParams();
         Assert.True(p.SuperResEnabled);
         Assert.Equal(20, p.SuperResScale);
+        Assert.Equal(3, p.SuperResQualityLevel);
+
+        // Denoise is a clean mode: enabled, QualityLevel 8 (Low), and scale forced 0 (no upscale).
+        vm.SuperResModeIndex = 2;    // Denoise
+        vm.SuperResQualityIndex = 0; // Low -> QualityLevel 8
+        var p2 = vm.BuildParams();
+        Assert.True(p2.SuperResEnabled);
+        Assert.Equal(0, p2.SuperResScale);
+        Assert.Equal(8, p2.SuperResQualityLevel);
+
+        // Off mode disables and zeroes the level.
+        vm.SuperResModeIndex = 0;
+        var p3 = vm.BuildParams();
+        Assert.False(p3.SuperResEnabled);
+        Assert.Equal(0, p3.SuperResQualityLevel);
     }
 
     [Fact]
@@ -274,15 +290,17 @@ public class MainViewModelTests
         var shim = new FakeShim();
         var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
         {
-            SuperResEnabled = true, SuperResScaleIndex = 0
+            SuperResModeIndex = 2, SuperResQualityIndex = 3, SuperResScaleIndex = 0
         };
         var cfg = vm.ToAppConfig(0, 0, 320, 240);
-        Assert.True(cfg.Effects.SuperResEnabled);
+        Assert.Equal(2, cfg.Effects.SuperResMode);
+        Assert.Equal(3, cfg.Effects.SuperResQuality);
         Assert.Equal(15, cfg.Effects.SuperResScale);
 
         var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
         vm2.LoadFrom(cfg);
-        Assert.True(vm2.SuperResEnabled);
+        Assert.Equal(2, vm2.SuperResModeIndex);
+        Assert.Equal(3, vm2.SuperResQualityIndex);
         Assert.Equal(0, vm2.SuperResScaleIndex);
     }
 
