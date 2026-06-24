@@ -6,7 +6,6 @@ public sealed class FakeShim : INativeShim
     public ShimParams? LastParams { get; private set; }
     public bool GreenScreenAvailable { get; set; }
     public bool EyeContactAvailable { get; set; }
-    public bool ArtifactReductionAvailable { get; set; }
     public bool SuperResAvailable { get; set; }
     private bool _running;
 
@@ -34,7 +33,7 @@ public sealed class FakeShim : INativeShim
             GreenScreenAvailable ? "fake: available" : "fake: unavailable",
             EyeContactAvailable,
             EyeContactAvailable ? "fake: ec available" : "fake: ec unavailable",
-            ArtifactReductionAvailable, SuperResAvailable);
+            SuperResAvailable);
 
     public bool Disposed { get; private set; }
     public void Dispose() => Disposed = true;

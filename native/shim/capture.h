@@ -42,11 +42,6 @@ public:
     bool EyeContactActive() const;        // true only while gaze redirection is transforming frames
     std::string EyeContactError() const;  // empty when none
 
-    // Toggles Artifact Reduction for subsequent frames. Thread-safe; worker owns the object.
-    void SetArtifactReduction(bool enabled);
-    bool ArtifactReductionActive() const;
-    std::string ArtifactReductionError() const;
-
     // Toggles Super Resolution + scale (15=1.5x, 20=2x). Thread-safe; worker owns the object.
     void SetSuperRes(bool enabled, int scaleX10);
     bool SuperResActive() const;

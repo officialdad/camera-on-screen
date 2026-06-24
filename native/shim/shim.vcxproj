@@ -91,7 +91,6 @@
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
-    <ClCompile Include="artifactreduction.cpp" />
     <ClCompile Include="eyecontact.cpp" />
     <ClCompile Include="superres.cpp" />
     <ClCompile Include="paths.cpp" />
@@ -118,7 +117,6 @@
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
-    <ClInclude Include="artifactreduction.h" />
     <ClInclude Include="eyecontact.h" />
     <ClInclude Include="superres.h" />
     <ClInclude Include="paths.h" />

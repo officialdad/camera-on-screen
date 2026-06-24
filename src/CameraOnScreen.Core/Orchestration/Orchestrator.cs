@@ -36,9 +36,6 @@ public sealed class Orchestrator
     /// <summary>Human-readable reason from the eye-contact probe. "Checking…" until probed.</summary>
     public string EyeContactDetail { get; private set; } = "Checking effect availability…";
 
-    /// <summary>True when the shim reports Artifact Reduction can run. False until <see cref="ProbeCapabilities"/>.</summary>
-    public bool ArtifactReductionAvailable { get; private set; }
-
     /// <summary>True when the shim reports Super Resolution can run. False until <see cref="ProbeCapabilities"/>.</summary>
     public bool SuperResAvailable { get; private set; }
 
@@ -52,7 +49,6 @@ public sealed class Orchestrator
         CapabilityDetail = caps.Detail;
         EyeContactAvailable = caps.EyeContactAvailable;
         EyeContactDetail = caps.EyeContactDetail;
-        ArtifactReductionAvailable = caps.ArtifactReductionAvailable;
         SuperResAvailable = caps.SuperResAvailable;
     }
 
@@ -77,7 +73,6 @@ public sealed class Orchestrator
         {
             GreenScreenEnabled = requested.GreenScreenEnabled && EffectsAvailable,
             EyeContactEnabled = requested.EyeContactEnabled && EyeContactAvailable,
-            ArtifactReductionEnabled = requested.ArtifactReductionEnabled && ArtifactReductionAvailable,
             SuperResEnabled = requested.SuperResEnabled && SuperResAvailable,
         };
         _shim.SetParams(effective);

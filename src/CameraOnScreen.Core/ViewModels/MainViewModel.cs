@@ -31,7 +31,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CapabilityDetail = orchestrator.CapabilityDetail;
         EyeContactAvailable = orchestrator.EyeContactAvailable;
         EyeContactDetail = orchestrator.EyeContactDetail;
-        ArtifactReductionAvailable = orchestrator.ArtifactReductionAvailable;
         SuperResAvailable = orchestrator.SuperResAvailable;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
@@ -51,7 +50,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CapabilityDetail = _orchestrator.CapabilityDetail;
         EyeContactAvailable = _orchestrator.EyeContactAvailable;
         EyeContactDetail = _orchestrator.EyeContactDetail;
-        ArtifactReductionAvailable = _orchestrator.ArtifactReductionAvailable;
         SuperResAvailable = _orchestrator.SuperResAvailable;
     }
 
@@ -64,14 +62,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool eyeContactEnabled;
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
-    [ObservableProperty] private bool artifactReductionEnabled;
     [ObservableProperty] private bool superResEnabled;
     [ObservableProperty] private int superResScaleIndex; // 0=1.5x, 1=2x
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
-    [ObservableProperty] private bool artifactReductionAvailable;
     [ObservableProperty] private bool superResAvailable;
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool locked;
@@ -94,7 +90,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
-        ArtifactReductionEnabled = config.Effects.ArtifactReductionEnabled;
         SuperResEnabled = config.Effects.SuperResEnabled;
         SuperResScaleIndex = IndexFromScale(config.Effects.SuperResScale);
         Locked = config.Overlay.Locked;
@@ -124,7 +119,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             GreenScreenFeather = GreenScreenFeather,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
             EyeContactLookAwayRange = EyeContactLookAwayRange,
-            ArtifactReductionEnabled = ArtifactReductionEnabled,
             SuperResEnabled = SuperResEnabled,
             SuperResScale = ScaleFromIndex(SuperResScaleIndex),
         },
@@ -142,7 +136,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
-    partial void OnArtifactReductionEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnSuperResEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnSuperResScaleIndexChanged(int value) => ApplyLiveParams();
 
@@ -159,7 +152,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled: EyeContactEnabled,
         EyeContactSensitivity: EyeContactSensitivity,
         EyeContactLookAwayRange: EyeContactLookAwayRange,
-        ArtifactReductionEnabled: ArtifactReductionEnabled,
         SuperResEnabled: SuperResEnabled,
         SuperResScale: ScaleFromIndex(SuperResScaleIndex));
 

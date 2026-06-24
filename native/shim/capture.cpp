@@ -1,7 +1,6 @@
 #include "capture.h"
 #include "aigs.h"
 #include "eyecontact.h"
-#include "artifactreduction.h"
 #include "superres.h"
 
 #include <atomic>
@@ -49,11 +48,6 @@ struct CaptureState {
     std::atomic<bool>     eyeContactActive{false};  // set by worker
     std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
     std::string           ecError;                   // guarded by ecErrMtx
-
-    std::atomic<bool>     artifactReductionEnabled{false};
-    std::atomic<bool>     artifactReductionActive{false};
-    std::mutex            arErrMtx;            // leaf lock
-    std::string           arError;
 
     std::atomic<bool>     superResEnabled{false};
     std::atomic<int>      superResScale{20};   // 15 or 20
@@ -315,7 +309,6 @@ void Capture::WorkerLoop() {
     // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
     Aigs aigs;
     EyeContact eyeContact;
-    ArtifactReduction artifactReduction;
     SuperRes superRes;
 
     IMFSourceReader* reader = nullptr;
@@ -357,31 +350,7 @@ void Capture::WorkerLoop() {
 
         if (sample) {
             if (CopyFrame(sample, width, height, stride, scratch)) {
-                // Artifact Reduction runs FIRST so the AI effects downstream get a clean frame.
-                const bool arWant = g_state.artifactReductionEnabled.load(std::memory_order_acquire);
-                if (arWant && !artifactReduction.IsReady()) {
-                    if (!artifactReduction.Start()) {
-                        std::lock_guard<std::mutex> e(g_state.arErrMtx);
-                        const std::string& ne = artifactReduction.LastError();
-                        if (g_state.arError != ne) g_state.arError = ne;
-                    }
-                } else if (!arWant && artifactReduction.IsReady()) {
-                    artifactReduction.Stop();
-                    std::lock_guard<std::mutex> e(g_state.arErrMtx);
-                    if (!g_state.arError.empty()) g_state.arError.clear();
-                }
-                bool arApplied = false;
-                if (arWant && artifactReduction.IsReady()) {
-                    arApplied = artifactReduction.ProcessFrame(scratch.data(), width, height);
-                    std::lock_guard<std::mutex> e(g_state.arErrMtx);
-                    if (!arApplied) {
-                        const std::string& ne = artifactReduction.LastError();
-                        if (g_state.arError != ne) g_state.arError = ne;
-                    } else if (!g_state.arError.empty()) { g_state.arError.clear(); }
-                }
-                g_state.artifactReductionActive.store(arApplied, std::memory_order_release);
-
-                // Eye Contact runs second, on the (AR-cleaned) raw frame (needs real eyes/landmarks).
+                // Eye Contact runs first, on the raw frame (needs real eyes/landmarks).
                 const bool ecWant = g_state.eyeContactEnabled.load(std::memory_order_acquire);
                 if (ecWant && !eyeContact.IsReady()) {
                     if (!eyeContact.Start()) {
@@ -488,7 +457,6 @@ void Capture::WorkerLoop() {
 
     // Tear down all effects before releasing the reader (thread-affinity requirement).
     superRes.Stop();
-    artifactReduction.Stop();
     eyeContact.Stop();
     aigs.Stop();
     SafeRelease(reader);
@@ -535,8 +503,6 @@ void Capture::Stop() {
         std::lock_guard<std::mutex> e(g_state.ecErrMtx);
         g_state.ecError.clear();
     }
-    g_state.artifactReductionActive.store(false, std::memory_order_release);
-    { std::lock_guard<std::mutex> e(g_state.arErrMtx); g_state.arError.clear(); }
     g_state.superResActive.store(false, std::memory_order_release);
     { std::lock_guard<std::mutex> e(g_state.srErrMtx); g_state.srError.clear(); }
 }
@@ -582,15 +548,6 @@ std::string Capture::EyeContactError() const {
     return g_state.ecError;
 }
 
-void Capture::SetArtifactReduction(bool enabled) {
-    g_state.artifactReductionEnabled.store(enabled, std::memory_order_release);
-}
-bool Capture::ArtifactReductionActive() const {
-    return g_state.artifactReductionActive.load(std::memory_order_acquire);
-}
-std::string Capture::ArtifactReductionError() const {
-    std::lock_guard<std::mutex> e(g_state.arErrMtx); return g_state.arError;
-}
 void Capture::SetSuperRes(bool enabled, int scaleX10) {
     g_state.superResScale.store(scaleX10 == 15 ? 15 : 20, std::memory_order_release);
     g_state.superResEnabled.store(enabled, std::memory_order_release);

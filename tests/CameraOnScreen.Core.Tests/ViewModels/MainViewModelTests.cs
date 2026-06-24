@@ -252,20 +252,18 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void BuildParams_includes_artifact_reduction_and_superres()
+    public void BuildParams_includes_superres()
     {
         var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = true,
-                                  ArtifactReductionAvailable = true, SuperResAvailable = true };
+                                  SuperResAvailable = true };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
         orch.ProbeCapabilities();
         var vm = new MainViewModel(orch, shim);
 
-        vm.ArtifactReductionEnabled = true;
         vm.SuperResEnabled = true;
         vm.SuperResScaleIndex = 1; // 2x
 
         var p = vm.BuildParams();
-        Assert.True(p.ArtifactReductionEnabled);
         Assert.True(p.SuperResEnabled);
         Assert.Equal(20, p.SuperResScale);
     }
@@ -276,16 +274,14 @@ public class MainViewModelTests
         var shim = new FakeShim();
         var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
         {
-            ArtifactReductionEnabled = true, SuperResEnabled = true, SuperResScaleIndex = 0
+            SuperResEnabled = true, SuperResScaleIndex = 0
         };
         var cfg = vm.ToAppConfig(0, 0, 320, 240);
-        Assert.True(cfg.Effects.ArtifactReductionEnabled);
         Assert.True(cfg.Effects.SuperResEnabled);
         Assert.Equal(15, cfg.Effects.SuperResScale);
 
         var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
         vm2.LoadFrom(cfg);
-        Assert.True(vm2.ArtifactReductionEnabled);
         Assert.True(vm2.SuperResEnabled);
         Assert.Equal(0, vm2.SuperResScaleIndex);
     }
