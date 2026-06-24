@@ -58,6 +58,7 @@ if ($DryRun) {
     Write-Host "DRY RUN — assemble stage at $OutStage"
     Write-Host "  VFX bin DLLs (shared + NVVideoEffects dispatcher) <- $VfxSdk\bin"
     Write-Host "  nvVFXGreenScreen.dll <- $VfxSdk\features\nvvfxgreenscreen\bin"
+    Write-Host "  nvVFXVideoSuperRes.dll + nvngx_vsr.dll <- $VfxSdk\features\nvvfxvideosuperres\bin"
     Write-Host "  nvARPose.dll <- $ArSdk\bin"
     foreach ($f in $arFeatures) { Write-Host "  $($f.dll) <- $(Feature-Dir $f.name)\bin" }
     foreach ($l in $licenses) { Write-Host "  license: $($l.dst) <- $($l.src)" }
@@ -78,6 +79,10 @@ function Copy-One([string]$src, [string]$dst) {
 Get-ChildItem (Join-Path $VfxSdk 'bin') -Filter *.dll -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $OutStage -Force }
 # 2. VFX green-screen feature DLL.
 Copy-One (Join-Path $VfxSdk 'features\nvvfxgreenscreen\bin\nvVFXGreenScreen.dll') $OutStage
+# 2b. VFX video-super-resolution feature DLL + its NGX runtime. VSR is NGX (model baked into
+# nvngx_vsr.dll) -- no per-arch engine to fetch, runs on every RTX arch.
+Copy-One (Join-Path $VfxSdk 'features\nvvfxvideosuperres\bin\nvVFXVideoSuperRes.dll') $OutStage
+Copy-One (Join-Path $VfxSdk 'features\nvvfxvideosuperres\bin\nvngx_vsr.dll') $OutStage
 # 3. AR dispatcher + the three gaze feature DLLs (AR-unique only -- shared DLLs already from VFX).
 Copy-One (Join-Path $ArSdk 'bin\nvARPose.dll') $OutStage
 foreach ($f in $arFeatures) { Copy-One (Join-Path (Feature-Dir $f.name) (Join-Path 'bin' $f.dll)) $OutStage }

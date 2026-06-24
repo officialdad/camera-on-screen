@@ -1,7 +1,28 @@
 # Camera-on-Screen — Design Spec: AI Sharpness & Resolution (Phase 1)
 
+> **⚠️ AMENDED 2026-06-24 (issue #15) — re-scoped to VSR-only; implemented.** Two design
+> assumptions below are **superseded** by what was verified against the live NGC catalog + the
+> real VFX 1.2.0.0 headers (memory `vfx-vsr-ngc-grounded`):
+> 1. **Artifact Reduction is DROPPED — it does not exist.** `NVVFX_FX_ARTIFACT_REDUCTION` is absent
+>    from the VFX 1.2.0.0 catalog (only a help-text typo in `install_feature.ps1`); NGC returns
+>    `PAYMENT_REQUIRED` for it. All `artifactreduction.{h,cpp}` / CosParams / CosCaps / UI / test
+>    references were removed.
+> 2. **Super Resolution = NGX VSR, not the old `SuperRes` effect.** Real selector
+>    `NVVFX_FX_VIDEO_SUPER_RES "VideoSuperRes"`, param `NVVFX_QUALITY_LEVEL "QualityLevel"` (NOT
+>    `NVVFX_MODE`/`NVVFX_STRENGTH`/a scale param). BGRA u8 GPU in+out. **QualityLevel is the mode
+>    selector**: 1-4 upscale (Low/Med/High/Ultra, scaled by 1.5×/2×), 8-11 denoise, 12-15 deblur —
+>    so VSR's clean modes cover the image-cleanup goal the dead Artifact Reduction was meant to
+>    serve. VSR is NGX (model baked into `nvngx_vsr.dll`) → **no per-arch TRT engine**, runs on
+>    every RTX arch. Bundle delta = 3 DLLs (`nvVFXVideoSuperRes.dll`, `nvngxruntime.dll`,
+>    `nvngx_vsr.dll`), confirmed by `trace_closure` on the 3090 (22 modules).
+>
+> The **generic plumbing** below (worker-chain placement, dynamic output-resolution publish, 4K
+> `_frameBuf`, factor cap, present-path ripple, single-effect MVVM/persistence pattern) still holds.
+> Authoritative current scope + task state: `docs/superpowers/plans/2026-06-24-issue-15-vsr-resume.md`.
+> Treat any `NVVFX_FX_SUPER_RES` / `NVVFX_MODE` / Artifact-Reduction wording below as historical.
+
 **Date:** 2026-06-23
-**Status:** Approved (design); pending implementation plan
+**Status:** AMENDED + implemented 2026-06-24 (issue #15, VSR-only) — see banner above
 **Depends on:** M3 (AI Green Screen) + M4 (Eye Contact) — both merged to `main`. Reuses the
 worker-thread effect chain (`aigs.{h,cpp}` pattern), the capability probe, and the live-param push.
 **Parent spec:** `docs/superpowers/specs/2026-06-20-camera-on-screen-design.md`.

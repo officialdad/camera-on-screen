@@ -5,8 +5,13 @@
     #
     # The Dlls list was PRODUCED by running native/shim/smoke/trace_closure against the assembled
     # co-versioned stage on an RTX 3090 (sm86) and enumerating the modules actually loaded from
-    # maxine\ (both effects Start=1, 19 modules). Re-run the trace and update this list on any SDK
-    # bump. See docs/superpowers/specs/2026-06-23-camera-on-screen-m5-multigpu-findings.md.
+    # maxine\ (all three effects Start=1, 22 modules). Re-run the trace and update this list on any
+    # SDK bump. See docs/superpowers/specs/2026-06-23-camera-on-screen-m5-multigpu-findings.md.
+    #
+    # VSR (issue #15) added 3 DLLs (static-import closure of nvVFXVideoSuperRes.dll via dumpbin):
+    # nvVFXVideoSuperRes.dll (feature) -> nvngxruntime.dll (NGX loader, from VFX\bin) + nvngx_vsr.dll
+    # (NGX model, 45 MB). VSR is NGX not TensorRT, so it pulls NO nvinfer/engine; nvcuda.dll is the
+    # driver DLL (System32) and is never bundled. NVCVImage.dll is shared (already listed).
     #
     # SOURCE MODEL (bundle-maxine.ps1): the bundler PRUNES a pre-assembled, co-versioned flat
     # "stage" dir (-MaxineStage) down to this allow-list + model globs + license set. The stage is
@@ -36,6 +41,9 @@
         'nvonnxparser_10.dll'
         'NVVideoEffects.dll'        # VFX dispatcher
         'nvVFXGreenScreen.dll'      # VFX green-screen feature
+        'nvVFXVideoSuperRes.dll'    # VFX video-super-res feature (NGX)
+        'nvngxruntime.dll'          # NGX loader (pulled by nvVFXVideoSuperRes.dll)
+        'nvngx_vsr.dll'             # NGX VSR model (no per-arch engine)
         'nvARPose.dll'              # AR dispatcher
         'nvARGazeRedirection.dll'   # AR gaze feature
         'nvARFaceBoxDetection.dll'  # AR gaze dep
