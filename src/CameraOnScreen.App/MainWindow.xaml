@@ -32,30 +32,23 @@
                                Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
                                Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
 
-                    <!-- Super Resolution: mode picks the VSR family (Off/Upscale/Denoise/Deblur);
-                         quality maps to QualityLevel within the family; the upscale factor only
-                         applies to Upscale (disabled otherwise). -->
-                    <ComboBox Header="Super Resolution"
+                    <!-- AI Sharpness (VSR): Denoise (QualityLevel 8-11) or Deblur (12-15), both at
+                         native res. Upscale dropped — wasted on a downscaled overlay. Quality picks
+                         the tier (Low..Ultra). -->
+                    <ComboBox Header="AI Sharpness"
                               IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
                               SelectedIndex="{x:Bind Vm.SuperResModeIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="Off"/>
-                        <ComboBoxItem Content="Upscale"/>
                         <ComboBoxItem Content="Denoise"/>
                         <ComboBoxItem Content="Deblur"/>
                     </ComboBox>
-                    <ComboBox Header="SR quality"
+                    <ComboBox Header="Quality"
                               IsEnabled="{x:Bind local:MainWindow.QualityEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
                               SelectedIndex="{x:Bind Vm.SuperResQualityIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="Low"/>
                         <ComboBoxItem Content="Medium"/>
                         <ComboBoxItem Content="High"/>
                         <ComboBoxItem Content="Ultra"/>
-                    </ComboBox>
-                    <ComboBox Header="Upscale factor"
-                              IsEnabled="{x:Bind local:MainWindow.ScaleEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
-                              SelectedIndex="{x:Bind Vm.SuperResScaleIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="1.5x"/>
-                        <ComboBoxItem Content="2x"/>
                     </ComboBox>
                     <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
                                Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"

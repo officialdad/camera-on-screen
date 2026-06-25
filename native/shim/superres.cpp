@@ -136,14 +136,18 @@ bool SuperRes::ProcessFrame(const uint8_t* bgra, int w, int h, std::vector<uint8
     // Download: GPU BGRA (ow x oh) -> CPU BGRA.
     if (NvCVImage_Transfer(&impl->dstGpu, &impl->dstCpu, 1.0f, impl->stream, nullptr) != NVCV_SUCCESS) { lastError_ = "download failed"; return false; }
     if (NvVFX_CudaStreamSynchronize(impl->stream) != NVCV_SUCCESS) { lastError_ = "stream sync failed"; return false; }
-    // Write-back: BGRA CPU -> packed BGRA out, honoring source pitch. Alpha passes through VSR
-    // (opaque in passthrough; the green-screen matte if AIGS ran upstream).
+    // Write-back: BGRA CPU -> packed BGRA out, honoring source pitch. Force alpha opaque: VSR
+    // does not preserve the alpha channel, and SR now runs on a pre-matte frame (green screen
+    // authors the real matte AFTER SR). Opaque matches CopyFrame's passthrough invariant.
     out.resize(static_cast<size_t>(ow) * oh * 4);
     const uint8_t* d = static_cast<const uint8_t*>(impl->dstCpu.pixels);
     const int dpitch = impl->dstCpu.pitch;
-    for (int y = 0; y < oh; ++y)
-        std::memcpy(out.data() + static_cast<size_t>(ow) * 4 * y,
-                    d + static_cast<size_t>(dpitch) * y, static_cast<size_t>(ow) * 4);
+    const int rowBytes = ow * 4;
+    for (int y = 0; y < oh; ++y) {
+        uint8_t* orow = out.data() + static_cast<size_t>(rowBytes) * y;
+        std::memcpy(orow, d + static_cast<size_t>(dpitch) * y, static_cast<size_t>(rowBytes));
+        for (int x = 3; x < rowBytes; x += 4) orow[x] = 0xFF;
+    }
     outW = ow; outH = oh;
     return true;
 }

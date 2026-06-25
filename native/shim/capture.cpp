@@ -379,39 +379,10 @@ void Capture::WorkerLoop() {
                 }
                 g_state.eyeContactActive.store(ecApplied, std::memory_order_release);
 
-                // Lazily start/stop AIGS to match the enabled flag.
-                const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
-                if (want && !aigs.IsReady()) {
-                    if (!aigs.Start()) {
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        const std::string& newErr = aigs.LastError();
-                        if (g_state.gsError != newErr) g_state.gsError = newErr;
-                    }
-                } else if (!want && aigs.IsReady()) {
-                    aigs.Stop();
-                    // Clear any stale error: green screen is off, error is no longer relevant.
-                    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                    if (!g_state.gsError.empty()) g_state.gsError.clear();
-                }
-
-                bool applied = false;
-                if (want && aigs.IsReady()) {
-                    const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
-                    const double feather = g_state.matteFeather.load(std::memory_order_acquire);
-                    applied = aigs.ProcessFrame(scratch.data(), width, height, expand, feather);
-                    if (!applied) {
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        const std::string& newErr = aigs.LastError();
-                        if (g_state.gsError != newErr) g_state.gsError = newErr;
-                    } else {
-                        // Frame succeeded — clear any stale error so status is consistent.
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        if (!g_state.gsError.empty()) g_state.gsError.clear();
-                    }
-                }
-                g_state.greenScreenActive.store(applied, std::memory_order_release);
-
-                // Super Resolution runs LAST; it changes the frame dimensions.
+                // Super Resolution runs BEFORE green screen: it sharpens/upscales the raw RGB,
+                // then green screen authors the final alpha matte on the result. (Running SR
+                // last clobbered the matte — NGX VSR does not preserve alpha — so a green-
+                // screened overlay went opaque/black.) SR may change the frame dimensions.
                 const bool srWant = g_state.superResEnabled.load(std::memory_order_acquire);
                 const int  srScale = g_state.superResScale.load(std::memory_order_acquire);
                 const int  srQuality = g_state.superResQuality.load(std::memory_order_acquire);
@@ -432,11 +403,11 @@ void Capture::WorkerLoop() {
                     if (!g_state.srError.empty()) g_state.srError.clear();
                 }
 
-                int pubW = width, pubH = height;
+                int curW = width, curH = height;
                 std::vector<uint8_t> srOut;
                 bool srApplied = false;
                 if (srWant && superRes.IsReady()) {
-                    srApplied = superRes.ProcessFrame(scratch.data(), width, height, srOut, pubW, pubH);
+                    srApplied = superRes.ProcessFrame(scratch.data(), width, height, srOut, curW, curH);
                     std::lock_guard<std::mutex> e(g_state.srErrMtx);
                     if (!srApplied) {
                         const std::string& ne = superRes.LastError();
@@ -445,12 +416,47 @@ void Capture::WorkerLoop() {
                 }
                 g_state.superResActive.store(srApplied, std::memory_order_release);
 
+                // The "current" frame is the SR output if it ran, else the raw capture.
+                // Green screen composites onto it and writes the final premultiplied alpha.
+                std::vector<uint8_t>& cur = srApplied ? srOut : scratch;
+
+                // Lazily start/stop AIGS to match the enabled flag.
+                const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
+                if (want && !aigs.IsReady()) {
+                    if (!aigs.Start()) {
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        const std::string& newErr = aigs.LastError();
+                        if (g_state.gsError != newErr) g_state.gsError = newErr;
+                    }
+                } else if (!want && aigs.IsReady()) {
+                    aigs.Stop();
+                    // Clear any stale error: green screen is off, error is no longer relevant.
+                    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                    if (!g_state.gsError.empty()) g_state.gsError.clear();
+                }
+
+                bool applied = false;
+                if (want && aigs.IsReady()) {
+                    const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
+                    const double feather = g_state.matteFeather.load(std::memory_order_acquire);
+                    applied = aigs.ProcessFrame(cur.data(), curW, curH, expand, feather);
+                    if (!applied) {
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        const std::string& newErr = aigs.LastError();
+                        if (g_state.gsError != newErr) g_state.gsError = newErr;
+                    } else {
+                        // Frame succeeded — clear any stale error so status is consistent.
+                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                        if (!g_state.gsError.empty()) g_state.gsError.clear();
+                    }
+                }
+                g_state.greenScreenActive.store(applied, std::memory_order_release);
+
                 {
                     std::lock_guard<std::mutex> lock(g_state.mtx);
-                    if (srApplied) g_state.frame.swap(srOut);
-                    else           g_state.frame.swap(scratch);
-                    g_state.width = pubW;
-                    g_state.height = pubH;
+                    g_state.frame.swap(cur);
+                    g_state.width = curW;
+                    g_state.height = curH;
                     g_state.hasNewFrame = true;
                     g_state.framesProduced.fetch_add(1, std::memory_order_release);
                 }

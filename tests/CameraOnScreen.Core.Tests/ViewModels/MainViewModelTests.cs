@@ -260,22 +260,21 @@ public class MainViewModelTests
         orch.ProbeCapabilities();
         var vm = new MainViewModel(orch, shim);
 
-        vm.SuperResModeIndex = 1;    // Upscale
-        vm.SuperResQualityIndex = 2; // High -> QualityLevel 3
-        vm.SuperResScaleIndex = 1;   // 2x
-
+        // Denoise High -> QualityLevel 11; scale always 0 (no upscale mode anymore).
+        vm.SuperResModeIndex = 1;    // Denoise
+        vm.SuperResQualityIndex = 2; // High -> 8 + 2 = 10
         var p = vm.BuildParams();
         Assert.True(p.SuperResEnabled);
-        Assert.Equal(20, p.SuperResScale);
-        Assert.Equal(3, p.SuperResQualityLevel);
+        Assert.Equal(0, p.SuperResScale);
+        Assert.Equal(10, p.SuperResQualityLevel);
 
-        // Denoise is a clean mode: enabled, QualityLevel 8 (Low), and scale forced 0 (no upscale).
-        vm.SuperResModeIndex = 2;    // Denoise
-        vm.SuperResQualityIndex = 0; // Low -> QualityLevel 8
+        // Deblur Low -> QualityLevel 12, scale 0.
+        vm.SuperResModeIndex = 2;    // Deblur
+        vm.SuperResQualityIndex = 0; // Low -> 12 + 0 = 12
         var p2 = vm.BuildParams();
         Assert.True(p2.SuperResEnabled);
         Assert.Equal(0, p2.SuperResScale);
-        Assert.Equal(8, p2.SuperResQualityLevel);
+        Assert.Equal(12, p2.SuperResQualityLevel);
 
         // Off mode disables and zeroes the level.
         vm.SuperResModeIndex = 0;
@@ -290,18 +289,28 @@ public class MainViewModelTests
         var shim = new FakeShim();
         var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
         {
-            SuperResModeIndex = 2, SuperResQualityIndex = 3, SuperResScaleIndex = 0
+            SuperResModeIndex = 2, SuperResQualityIndex = 3
         };
         var cfg = vm.ToAppConfig(0, 0, 320, 240);
         Assert.Equal(2, cfg.Effects.SuperResMode);
         Assert.Equal(3, cfg.Effects.SuperResQuality);
-        Assert.Equal(15, cfg.Effects.SuperResScale);
 
         var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
         vm2.LoadFrom(cfg);
         Assert.Equal(2, vm2.SuperResModeIndex);
         Assert.Equal(3, vm2.SuperResQualityIndex);
-        Assert.Equal(0, vm2.SuperResScaleIndex);
+    }
+
+    [Fact]
+    public void LoadFrom_clamps_stale_superres_mode_out_of_range()
+    {
+        // A config saved by the old 4-mode build (Off/Upscale/Denoise/Deblur) could hold mode 3,
+        // which is past the live 3-item combo and throws when the binding sets SelectedIndex.
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.LoadFrom(new AppConfig { Effects = new EffectSettings { SuperResMode = 3, SuperResQuality = 9 } });
+        Assert.Equal(2, vm.SuperResModeIndex);
+        Assert.Equal(3, vm.SuperResQualityIndex);
     }
 
     private sealed class ControllableFpsShim : INativeShim
