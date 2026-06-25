@@ -1,11 +1,15 @@
-// Task 3: GPU integration smoke -- drives Fruc::Submit over a 6-frame sequence
-// of a moving red bar, dumps BMP files, and reports byte/color statistics.
+// Task 3: GPU integration smoke -- drives Fruc::Submit over an 8-frame sequence
+// of a smoothly translated 2D sinusoidal texture, dumps BMP files, and reports
+// byte/mean-abs-diff statistics to confirm genuine optical-flow interpolation.
 //
 // Frame layout (1280x720 BGRA):
-//   Frame i: solid RED bar (B=0,G=0,R=255,A=255) at x=[200+i*80, 200+i*80+80),
-//            all other pixels black (0,0,0,255).
-//   Frames 0..5 submitted sequentially via Fruc::Submit (streaming API).
-//   Mid between frame3 and frame4 is the analysis target.
+//   Frame i: grayscale texture, B=G=R=intensity(x,y,dx), A=255
+//   where dx = i*6 (6 px/frame horizontal translation),
+//   intensity(x,y,dx) =
+//     clamp(128 + 80*sin((x+dx)*0.04)*cos(y*0.04) + 40*sin((x+dx)*0.011+y*0.017), 0,255)
+//   Small sub-threshold translation: smooth, well-posed for optical flow.
+//   Frames 0..7 submitted sequentially via Fruc::Submit (streaming API).
+//   Mid between frame6 and frame7 is the analysis target (warmed up by 6 prior pairs).
 //
 // Build: native\shim\smoke\build_fruc_interp_smoke.bat
 // Run:
@@ -13,9 +17,11 @@
 //   native\shim\smoke\fruc_interp_smoke.exe
 //
 // Output:
-//   f3.bmp / mid34.bmp / f4.bmp in the session scratchpad dir (paths printed to stdout)
+//   f6.bmp / mid67.bmp / f7.bmp in the session scratchpad dir (paths printed to stdout)
 //   Submit avg latency in ms (excluding first/warm-up call)
-//   Byte-identical %, non-black avg R/G/B, mid bar x-range
+//   % bytes identical mid-vs-f6 and mid-vs-f7
+//   meanAbsDiff mid-f6, mid-f7, f6-f7
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -87,46 +93,53 @@ static double ByteMatchFraction(const uint8_t* a, const uint8_t* b, size_t bytes
     return (double)same / (double)bytes;
 }
 
+// ---------------------------------------------------------------------------
+// Mean absolute difference (per byte, 0-255 scale) between two same-size buffers.
+// ---------------------------------------------------------------------------
+static double MeanAbsDiff(const uint8_t* a, const uint8_t* b, size_t bytes) {
+    double sum = 0.0;
+    for (size_t i = 0; i < bytes; ++i) {
+        const int d = (int)a[i] - (int)b[i];
+        sum += d < 0 ? -d : d;
+    }
+    return sum / (double)bytes;
+}
+
 int main() {
     const int W = 1280, H = 720;
     const size_t kBytes  = (size_t)W * H * 4;
-    const int    kFrames = 6;
+    const int    kFrames = 8;
 
     const char* scratchDir =
         "C:\\Temp\\claude\\C--Users-opari-OneDrive-Desktop-claude-code-camera-on-screen"
         "\\ee2d499c-5476-45b3-9689-71ae0faf6005\\scratchpad";
 
-    char f3Path[MAX_PATH], midPath[MAX_PATH], f4Path[MAX_PATH];
-    _snprintf_s(f3Path,  sizeof(f3Path),  _TRUNCATE, "%s\\f3.bmp",    scratchDir);
-    _snprintf_s(midPath, sizeof(midPath), _TRUNCATE, "%s\\mid34.bmp", scratchDir);
-    _snprintf_s(f4Path,  sizeof(f4Path),  _TRUNCATE, "%s\\f4.bmp",    scratchDir);
+    char f6Path[MAX_PATH], midPath[MAX_PATH], f7Path[MAX_PATH];
+    _snprintf_s(f6Path,  sizeof(f6Path),  _TRUNCATE, "%s\\f6.bmp",    scratchDir);
+    _snprintf_s(midPath, sizeof(midPath), _TRUNCATE, "%s\\mid67.bmp", scratchDir);
+    _snprintf_s(f7Path,  sizeof(f7Path),  _TRUNCATE, "%s\\f7.bmp",    scratchDir);
 
     // -----------------------------------------------------------------------
-    // Generate 6 frames: solid RED bar (B=0, G=0, R=255, A=255) on black
-    // (B=0, G=0, R=0, A=255). BGRA byte order in memory.
-    // Frame i: bar at x = [200 + i*80, 200 + i*80 + 80).
-    //   Frame 0: x[200, 280)   Frame 3: x[440, 520)
-    //   Frame 1: x[280, 360)   Frame 4: x[520, 600)
-    //   Frame 2: x[360, 440)   Frame 5: x[600, 680)
+    // Generate 8 frames: smooth sinusoidal 2D texture translated 6 px/frame.
+    // B=G=R=intensity(x,y,dx), A=255. dx = frameIndex * 6.
+    // intensity(x,y,dx) = clamp(128 + 80*sin((x+dx)*0.04)*cos(y*0.04)
+    //                               + 40*sin((x+dx)*0.011 + y*0.017), 0, 255)
     // -----------------------------------------------------------------------
     std::vector<std::vector<uint8_t>> frames(kFrames, std::vector<uint8_t>(kBytes, 0u));
     for (int fi = 0; fi < kFrames; ++fi) {
-        const int barX0 = 200 + fi * 80;
-        const int barX1 = barX0 + 80;
+        const int dx = fi * 6;
         for (int y = 0; y < H; ++y) {
             for (int x = 0; x < W; ++x) {
                 const int idx = (y * W + x) * 4;
-                if (x >= barX0 && x < barX1) {
-                    frames[fi][idx + 0] = 0;    // B
-                    frames[fi][idx + 1] = 0;    // G
-                    frames[fi][idx + 2] = 255;  // R
-                    frames[fi][idx + 3] = 255;  // A
-                } else {
-                    frames[fi][idx + 0] = 0;    // B
-                    frames[fi][idx + 1] = 0;    // G
-                    frames[fi][idx + 2] = 0;    // R
-                    frames[fi][idx + 3] = 255;  // A
-                }
+                const double raw = 128.0
+                    + 80.0 * std::sin((x + dx) * 0.04) * std::cos(y * 0.04)
+                    + 40.0 * std::sin((x + dx) * 0.011 + y * 0.017);
+                const int iv = (int)raw;
+                const uint8_t intensity = (uint8_t)(iv < 0 ? 0 : (iv > 255 ? 255 : iv));
+                frames[fi][idx + 0] = intensity; // B
+                frames[fi][idx + 1] = intensity; // G
+                frames[fi][idx + 2] = intensity; // R
+                frames[fi][idx + 3] = 255;       // A
             }
         }
     }
@@ -142,15 +155,15 @@ int main() {
     std::printf("Start ok\n");
 
     // -----------------------------------------------------------------------
-    // Submit frames 0..5. Time each call; exclude first (i==0, warm-up).
-    // Mid between frame3 and frame4 is produced when submitting frame4 (i==4).
+    // Submit frames 0..7. Time each call; exclude first (i==0, warm-up).
+    // Mid between frame6 and frame7 is produced when submitting frame7 (i==7).
     // -----------------------------------------------------------------------
     LARGE_INTEGER freq, t0, t1;
     QueryPerformanceFrequency(&freq);
 
     double totalMs    = 0.0;
     int    timedCalls = 0;
-    std::vector<uint8_t> mid34;
+    std::vector<uint8_t> mid67;
 
     for (int i = 0; i < kFrames; ++i) {
         std::vector<uint8_t> outMid;
@@ -178,98 +191,52 @@ int main() {
                         hasMid ? "true" : "false", ms);
         }
 
-        // Mid between frame3 and frame4 is produced when we submit frame4 (i==4)
-        if (i == 4 && hasMid && !outMid.empty()) {
-            mid34 = outMid;
-            std::printf("  -> mid34 captured (%zu bytes)\n", mid34.size());
+        // Mid between frame6 and frame7 is produced when we submit frame7 (i==7)
+        if (i == 7 && hasMid && !outMid.empty()) {
+            mid67 = outMid;
+            std::printf("  -> mid67 captured (%zu bytes)\n", mid67.size());
         }
     }
 
     const double avgMs = timedCalls > 0 ? totalMs / (double)timedCalls : 0.0;
-    std::printf("\nSubmit avg (frames 1-5): %.2f ms\n", avgMs);
+    std::printf("\nSubmit avg (frames 1-7): %.2f ms\n", avgMs);
 
     // -----------------------------------------------------------------------
-    // Analyse mid34.
+    // Analyse mid67.
     // -----------------------------------------------------------------------
-    if (mid34.empty()) {
-        std::printf("WARNING: mid34 not captured (hasMid was false when submitting frame4)\n");
+    if (mid67.empty()) {
+        std::printf("WARNING: mid67 not captured (hasMid was false when submitting frame7)\n");
     } else {
-        // 1. % bytes identical vs frame3 and frame4
-        const double midVsF3 = ByteMatchFraction(mid34.data(), frames[3].data(), kBytes) * 100.0;
-        const double midVsF4 = ByteMatchFraction(mid34.data(), frames[4].data(), kBytes) * 100.0;
-        std::printf("%% bytes identical: mid vs frame3 = %.2f%%\n", midVsF3);
-        std::printf("%% bytes identical: mid vs frame4 = %.2f%%\n", midVsF4);
+        // 1. % bytes identical vs frame6 and frame7
+        const double midVsF6 = ByteMatchFraction(mid67.data(), frames[6].data(), kBytes) * 100.0;
+        const double midVsF7 = ByteMatchFraction(mid67.data(), frames[7].data(), kBytes) * 100.0;
+        std::printf("%% bytes identical: mid vs f6 = %.2f%%\n", midVsF6);
+        std::printf("%% bytes identical: mid vs f7 = %.2f%%\n", midVsF7);
 
-        // 2. Color-order check: avg R/G/B over non-black pixels (max(B,G,R) > 30).
-        //    BGRA layout: idx+0=B, idx+1=G, idx+2=R, idx+3=A.
-        //    Red preserved => R high, B~0.  Swapped => B high, R~0.
-        double sumR = 0.0, sumG = 0.0, sumB = 0.0;
-        size_t nonBlack = 0;
-        for (int y = 0; y < H; ++y) {
-            for (int x = 0; x < W; ++x) {
-                const int     idx = (y * W + x) * 4;
-                const uint8_t b   = mid34[idx + 0];
-                const uint8_t g   = mid34[idx + 1];
-                const uint8_t r   = mid34[idx + 2];
-                const uint8_t mx  = (b > g ? b : g);
-                const uint8_t mx2 = (mx > r ? mx : r);
-                if (mx2 > 30) {
-                    sumB += b;
-                    sumG += g;
-                    sumR += r;
-                    ++nonBlack;
-                }
-            }
-        }
-        if (nonBlack > 0) {
-            std::printf("mid non-black avg: R=%.1f G=%.1f B=%.1f (over %zu pixels)\n",
-                        sumR / (double)nonBlack,
-                        sumG / (double)nonBlack,
-                        sumB / (double)nonBlack,
-                        nonBlack);
-        } else {
-            std::printf("mid non-black avg: no non-black pixels found\n");
-        }
-
-        // 3. x-range of columns containing non-black pixels in mid.
-        //    Frame3 bar = x[440,520), frame4 bar = x[520,600).
-        //    Midpoint interpolation should show energy around x[480,560) or spanning both bars.
-        int minX = W, maxX = -1;
-        for (int y = 0; y < H; ++y) {
-            for (int x = 0; x < W; ++x) {
-                const int     idx = (y * W + x) * 4;
-                const uint8_t b   = mid34[idx + 0];
-                const uint8_t g   = mid34[idx + 1];
-                const uint8_t r   = mid34[idx + 2];
-                const uint8_t mx  = (b > g ? b : g);
-                const uint8_t mx2 = (mx > r ? mx : r);
-                if (mx2 > 30) {
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                }
-            }
-        }
-        if (maxX >= 0) {
-            std::printf("mid bar x-range: x[%d, %d] "
-                        "(frame3 bar=[440,520), frame4 bar=[520,600))\n",
-                        minX, maxX);
-        } else {
-            std::printf("mid bar x-range: no non-black columns found\n");
-        }
+        // 2. Mean absolute per-byte difference (0-255 scale).
+        //    A repeated frame => one of mid-fX is ~0. True interpolation => both
+        //    small-but-nonzero and each roughly half of f6-f7.
+        const double madMidF6 = MeanAbsDiff(mid67.data(), frames[6].data(), kBytes);
+        const double madMidF7 = MeanAbsDiff(mid67.data(), frames[7].data(), kBytes);
+        const double madF6F7  = MeanAbsDiff(frames[6].data(), frames[7].data(), kBytes);
+        std::printf("meanAbsDiff mid-f6 = %.3f\n", madMidF6);
+        std::printf("meanAbsDiff mid-f7 = %.3f\n", madMidF7);
+        std::printf("meanAbsDiff f6-f7  = %.3f  (full motion; mid-to-each should be ~half)\n",
+                    madF6F7);
     }
 
     // -----------------------------------------------------------------------
-    // Write BMPs: f3.bmp, mid34.bmp, f4.bmp.
+    // Write BMPs: f6.bmp, mid67.bmp, f7.bmp.
     // -----------------------------------------------------------------------
-    const bool f3Ok  = WriteBmp(f3Path,  frames[3].data(), W, H);
-    const bool midOk = !mid34.empty() && WriteBmp(midPath, mid34.data(), W, H);
-    const bool f4Ok  = WriteBmp(f4Path,  frames[4].data(), W, H);
+    const bool f6Ok  = WriteBmp(f6Path,  frames[6].data(), W, H);
+    const bool midOk = !mid67.empty() && WriteBmp(midPath, mid67.data(), W, H);
+    const bool f7Ok  = WriteBmp(f7Path,  frames[7].data(), W, H);
 
     std::printf("\nBMP paths:\n");
-    std::printf("  f3:    %s (%s)\n", f3Path,  f3Ok  ? "ok" : "WRITE FAILED");
-    std::printf("  mid34: %s (%s)\n", midPath,
-                midOk ? "ok" : (mid34.empty() ? "no mid data" : "WRITE FAILED"));
-    std::printf("  f4:    %s (%s)\n", f4Path,  f4Ok  ? "ok" : "WRITE FAILED");
+    std::printf("  f6:    %s (%s)\n", f6Path,  f6Ok  ? "ok" : "WRITE FAILED");
+    std::printf("  mid67: %s (%s)\n", midPath,
+                midOk ? "ok" : (mid67.empty() ? "no mid data" : "WRITE FAILED"));
+    std::printf("  f7:    %s (%s)\n", f7Path,  f7Ok  ? "ok" : "WRITE FAILED");
 
     fruc.Stop();
     std::printf("\nDone. Exit 0.\n");
