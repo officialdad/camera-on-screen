@@ -48,6 +48,11 @@ public:
     bool SuperResActive() const;
     std::string SuperResError() const;
 
+    // Toggles FRUC 30->60 frame interpolation. Thread-safe; worker owns the object.
+    void SetFrameInterp(bool enabled);
+    bool FrameInterpActive() const;
+    std::string FrameInterpError() const;
+
     // Locks camera exposure to Manual at a normalized 0..1 value (mapped onto the camera's
     // IAMCameraControl exposure range) so framerate holds steady in low light; disabled
     // restores Auto. Thread-safe; worker applies on change. No-op if the camera lacks

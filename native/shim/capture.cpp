@@ -2,6 +2,7 @@
 #include "aigs.h"
 #include "eyecontact.h"
 #include "superres.h"
+#include "fruc.h"
 
 #include <atomic>
 #include <chrono>
@@ -56,6 +57,11 @@ struct CaptureState {
     std::atomic<bool>     superResActive{false};
     std::mutex            srErrMtx;            // leaf lock
     std::string           srError;
+
+    std::atomic<bool>     frameInterpEnabled{false};
+    std::atomic<bool>     frameInterpActive{false};
+    std::mutex            fiErrMtx;   // leaf lock, never nested under mtx/lifecycle
+    std::string           fiError;
 
     std::atomic<bool>     exposureLockEnabled{false}; // set by UI thread, read by worker
     std::atomic<double>   exposureValue{0.0};         // 0..1 normalized, set by UI thread
@@ -317,6 +323,7 @@ void Capture::WorkerLoop() {
     EyeContact eyeContact;
     SuperRes superRes;
     int srAppliedQuality = 0, srAppliedScale = 0; // last (quality,scale) Start ran with; for live restart
+    Fruc fruc; int fiW = 0, fiH = 0;
 
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
@@ -501,14 +508,44 @@ void Capture::WorkerLoop() {
                 }
                 g_state.greenScreenActive.store(applied, std::memory_order_release);
 
-                {
+                // FRUC frame interpolation runs LAST, on the final composite. Streaming: feed each
+                // composite once; on a successful interpolation publish the midpoint, pace ~half a
+                // frame, then publish the real frame -> doubled output cadence.
+                const bool fiWant = g_state.frameInterpEnabled.load(std::memory_order_acquire);
+                if (fiWant && !fruc.IsReady()) {
+                    if (fruc.Start(curW, curH)) { fiW = curW; fiH = curH; }
+                    else { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                           if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError(); }
+                } else if (fruc.IsReady() && (!fiWant || curW != fiW || curH != fiH)) {
+                    fruc.Stop();
+                    if (!fiWant) { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                                   if (!g_state.fiError.empty()) g_state.fiError.clear(); }
+                }
+
+                auto publish = [&](std::vector<uint8_t>& f, int w, int h) {
                     std::lock_guard<std::mutex> lock(g_state.mtx);
-                    g_state.frame.swap(cur);
-                    g_state.width = curW;
-                    g_state.height = curH;
+                    g_state.frame.swap(f);
+                    g_state.width = w; g_state.height = h;
                     g_state.hasNewFrame = true;
                     g_state.framesProduced.fetch_add(1, std::memory_order_release);
+                };
+
+                bool fiApplied = false;
+                if (fiWant && fruc.IsReady()) {
+                    std::vector<uint8_t> mid; bool hasMid = false;
+                    if (fruc.Submit(cur.data(), curW, curH, mid, hasMid)) {
+                        if (hasMid) {
+                            publish(mid, curW, curH);                  // midpoint first
+                            std::this_thread::sleep_for(std::chrono::milliseconds(8)); // pace toward 60Hz
+                            fiApplied = true;
+                        }
+                    } else {
+                        std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                        if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError();
+                    }
                 }
+                g_state.frameInterpActive.store(fiApplied, std::memory_order_release);
+                publish(cur, curW, curH);                              // then the real frame
             }
             SafeRelease(sample);
         } else {
@@ -526,6 +563,7 @@ void Capture::WorkerLoop() {
     }
 
     // Tear down all effects before releasing the reader (thread-affinity requirement).
+    fruc.Stop();
     superRes.Stop();
     eyeContact.Stop();
     aigs.Stop();
@@ -575,6 +613,8 @@ void Capture::Stop() {
     }
     g_state.superResActive.store(false, std::memory_order_release);
     { std::lock_guard<std::mutex> e(g_state.srErrMtx); g_state.srError.clear(); }
+    g_state.frameInterpActive.store(false, std::memory_order_release);
+    { std::lock_guard<std::mutex> e(g_state.fiErrMtx); g_state.fiError.clear(); }
     // Exposure support is per open camera; clear it so a stopped session reads "unsupported".
     g_state.exposureSupported.store(false, std::memory_order_release);
 }
@@ -630,6 +670,16 @@ bool Capture::SuperResActive() const {
 }
 std::string Capture::SuperResError() const {
     std::lock_guard<std::mutex> e(g_state.srErrMtx); return g_state.srError;
+}
+
+void Capture::SetFrameInterp(bool enabled) {
+    g_state.frameInterpEnabled.store(enabled, std::memory_order_release);
+}
+bool Capture::FrameInterpActive() const {
+    return g_state.frameInterpActive.load(std::memory_order_acquire);
+}
+std::string Capture::FrameInterpError() const {
+    std::lock_guard<std::mutex> e(g_state.fiErrMtx); return g_state.fiError;
 }
 
 void Capture::SetExposureLock(bool enabled, double value) {
