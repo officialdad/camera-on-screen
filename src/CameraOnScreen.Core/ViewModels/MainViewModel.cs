@@ -73,10 +73,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double exposureValue = 0.5;    // 0..1 normalized; only meaningful when locked
     [ObservableProperty] private bool exposureSupported;        // camera exposes manual exposure (status poll, while running)
     [ObservableProperty] private bool isRunning;
-    [ObservableProperty] private bool locked;
-    [ObservableProperty] private bool clickThrough;
     [ObservableProperty] private bool mirror;
-    [ObservableProperty] private double zoom = 1.0;
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
@@ -103,26 +100,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SuperResQualityIndex = Math.Clamp(config.Effects.SuperResQuality, 0, 3);
         ExposureLock = config.Effects.ExposureLock;
         ExposureValue = Math.Clamp(config.Effects.ExposureValue, 0.0, 1.0);
-        Locked = config.Overlay.Locked;
-        ClickThrough = config.Overlay.ClickThrough;
         Mirror = config.Overlay.Mirror;
-        Zoom = config.Overlay.Zoom;
         _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
     }
 
     // Capture current VM + overlay state into a persistable AppConfig. Geometry is passed in by the
-    // caller (read from the live overlay window). Locked/ClickThrough are the existing observable
-    // props (Task 13) — used here, not redeclared.
+    // caller (read from the live overlay window). Mirror is the kept observable prop; Lock/ClickThrough/Zoom were removed (overlay is always interactive).
     public AppConfig ToAppConfig(double x, double y, double w, double h) => new()
     {
         CameraId = SelectedCamera?.Id,
         Overlay = new OverlaySettings
         {
             X = x, Y = y, Width = w, Height = h,
-            Locked = Locked, ClickThrough = ClickThrough,
-            Mirror = Mirror, Zoom = Zoom
+            // ponytail: Locked/ClickThrough/Zoom intentionally omitted — fields kept on the record
+            // (default false/false/1.0) so config stays schema-stable; the overlay is always
+            // interactive and unzoomed now.
+            Mirror = Mirror
         },
         Effects = new EffectSettings
         {
