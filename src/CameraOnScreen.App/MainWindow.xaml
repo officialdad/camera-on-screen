@@ -6,19 +6,12 @@
     xmlns:local="using:CameraOnScreen.App">
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Custom title bar (drag region set via SetTitleBar in code-behind). -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="36" Padding="12,0,0,0">
-            <TextBlock Text="Camera on Screen" VerticalAlignment="Center"
-                       Style="{ThemeResource CaptionTextBlockStyle}"/>
-        </Grid>
-
-        <!-- Controls scroll; the license-required footer (row 2) stays pinned outside. -->
-        <ScrollViewer Grid.Row="1" Padding="16">
+        <!-- Controls scroll; the license-required footer (row 1) stays pinned outside. -->
+        <ScrollViewer Grid.Row="0" Padding="16">
             <StackPanel Spacing="16">
 
                 <muxc:InfoBar Severity="Informational" IsOpen="True" IsClosable="False"
@@ -104,7 +97,7 @@
         </ScrollViewer>
 
         <!-- Required NVIDIA Maxine attribution (SDK License Supplement §3.1) — always visible. -->
-        <TextBlock Grid.Row="2" Margin="16,8,16,12"
+        <TextBlock Grid.Row="1" Margin="16,8,16,12"
                    Text="{x:Bind MaxineAttribution}"
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>

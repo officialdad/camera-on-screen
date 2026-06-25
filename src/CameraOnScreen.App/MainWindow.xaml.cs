@@ -22,6 +22,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
     private Overlay.OverlayMouseHook? _mouseHook;
+    private Microsoft.UI.Windowing.AppWindow? _appWindow; // this control-panel window, for size restore/persist
+    // Last control-panel size (physical px) loaded from config; 0 => first launch (size to content).
+    private readonly double _savedPanelW, _savedPanelH;
     // Hook-driven drag state (all touched on the UI thread inside the hook callback).
     private bool _dragging;
     // Cursor-minus-origin offset captured at drag start. The drag MOVE is driven by the frame-pump
@@ -42,6 +45,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // (e.g. first run, corrupt config, or a config written before geometry was persisted).
         var config = _store.Load();
         var (x, y, w, h) = ResolveStartupBounds(config.Overlay);
+        _savedPanelW = config.PanelWidth;
+        _savedPanelH = config.PanelHeight;
 
         // Build the overlay BEFORE the VM so its D3D device pointer exists when shim.Init runs.
         _overlay = new Overlay.OverlayWindow(x, y, w, h);
@@ -64,8 +69,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.InteractionEnded += Save;
         this.Closed += OnWindowClosed;
         InitializeComponent();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
+        // Default Windows title bar (system chrome). Cache the AppWindow for size restore/persist,
+        // and persist (debounced) whenever the user resizes the panel.
+        var panelHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(
+            Microsoft.UI.Win32Interop.GetWindowIdFromWindow(panelHwnd));
+        _appWindow.Changed += OnAppWindowChanged;
         RightSizePanel();
 
         // ~30 Hz frame pump on the WinUI UI thread: pull the latest BGRA frame from the shim and
@@ -106,23 +115,35 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _ = Vm.ProbeCapabilitiesAsync();
     }
 
-    // Size the window to its content (DPI-scaled) instead of a magic number, so every control is
-    // visible at open. ScrollViewer is the fallback if the user shrinks the window.
+    // Restore the last panel size (physical px) so it reopens as the user left it. First launch
+    // (no saved size): size to content once so every control is visible. ponytail: stored/restored
+    // in physical pixels — a cross-DPI restore (different-scaling monitor between sessions) is
+    // approximate; the user can resize and it re-persists. ScrollViewer is the shrink fallback.
     private void RightSizePanel()
     {
+        if (_savedPanelW > 0 && _savedPanelH > 0)
+        {
+            _appWindow!.Resize(new Windows.Graphics.SizeInt32((int)_savedPanelW, (int)_savedPanelH));
+            return;
+        }
         RootGrid.Loaded += (_, _) =>
         {
             RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             double scale = GetDpiForWindow(hwnd) / 96.0;
-            var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
             int w = (int)(RootGrid.DesiredSize.Width * scale);
             int h = (int)(RootGrid.DesiredSize.Height * scale);
-            appWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
-            // OverlappedPresenter.PreferredMinimumWidth/Height do not exist in Windows App SDK 1.8;
-            // ScrollViewer is the shrink fallback. No WM_GETMINMAXINFO subclass — out of scope.
+            if (w > 0 && h > 0)
+                _appWindow!.Resize(new Windows.Graphics.SizeInt32(w, h));
         };
+    }
+
+    // Persist the panel size when the user resizes it (debounced via _saveTimer, same as wheel-resize).
+    // _saveTimer is created later in the ctor, so the startup Resize's notification no-ops via `?.`.
+    private void OnAppWindowChanged(Microsoft.UI.Windowing.AppWindow sender,
+        Microsoft.UI.Windowing.AppWindowChangedEventArgs args)
+    {
+        if (args.DidSizeChange) { _saveTimer?.Stop(); _saveTimer?.Start(); }
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -140,7 +161,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // double-save while teardown is in progress.
         _overlay.InteractionEnded -= Save;
         _overlay.HotkeyPressed -= _hotkeys.OnHotkeyMessage;
-        Save(); // final persist with the closing geometry/state
+        if (_appWindow != null) _appWindow.Changed -= OnAppWindowChanged;
+        Save(); // final persist with the closing geometry/state + panel size
         _hotkeys.Dispose(); // unregister all hotkeys
         Vm.PropertyChanged -= OnVmPropertyChanged;
         Vm.Dispose();
@@ -240,7 +262,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private void Save()
     {
         var (x, y, w, h) = _overlay.GetBounds();
-        _store.Save(Vm.ToAppConfig(x, y, w, h));
+        var cfg = Vm.ToAppConfig(x, y, w, h);
+        // Also persist the control-panel window size (physical px) so it restores on next launch.
+        var size = _appWindow?.Size ?? default;
+        if (size.Width > 0 && size.Height > 0)
+            cfg = cfg with { PanelWidth = size.Width, PanelHeight = size.Height };
+        _store.Save(cfg);
     }
 
     public Visibility NotAvailableVisibility =>

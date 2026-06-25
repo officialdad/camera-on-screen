@@ -48,8 +48,11 @@ public sealed record AppConfig
     public OverlaySettings Overlay { get; init; } = new();
     public EffectSettings Effects { get; init; } = new();
     public IReadOnlyList<HotkeyBinding> Hotkeys { get; init; } = DefaultHotkeys();
+    // Control-panel window size in physical pixels (0 = unset → first launch sizes to content).
+    public double PanelWidth { get; init; }
+    public double PanelHeight { get; init; }
 
-    // VK codes: F8=0x77, F9=0x78, F10=0x79, F11=0x7A
+    // VK codes: F10=0x79, F11=0x7A. (ToggleLock/ToggleClickThrough F8/F9 defaults removed; enum members kept.)
     public static IReadOnlyList<HotkeyBinding> DefaultHotkeys() => Array.AsReadOnly(new[]
     {
         new HotkeyBinding { Action = HotkeyAction.ToggleOverlayVisible,Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt, VirtualKey = 0x79 },
@@ -60,11 +63,13 @@ public sealed record AppConfig
         && CameraId == other.CameraId
         && Overlay == other.Overlay
         && Effects == other.Effects
+        && PanelWidth == other.PanelWidth
+        && PanelHeight == other.PanelHeight
         && Hotkeys.SequenceEqual(other.Hotkeys);
 
     public override int GetHashCode()
     {
         var hk = Hotkeys.Aggregate(0, (h, b) => HashCode.Combine(h, b));
-        return HashCode.Combine(CameraId, Overlay, Effects, hk);
+        return HashCode.Combine(CameraId, Overlay, Effects, hk, PanelWidth, PanelHeight);
     }
 }
