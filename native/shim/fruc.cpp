@@ -13,7 +13,6 @@ struct FrucImpl {
     CUcontext ctx = nullptr; CUdevice dev = 0;
     NvOFFRUCHandle h = nullptr;
     CUdeviceptr buf[3] = {0,0,0};   // [0]=interpolate, [1..2]=render (sample's GetResource order)
-    int toggle = 0;                 // which render buffer holds "current"
     PtrToFuncNvOFFRUCCreate   pCreate   = nullptr;
     PtrToFuncNvOFFRUCRegisterResource   pReg = nullptr;
     PtrToFuncNvOFFRUCUnregisterResource pUnreg = nullptr;
@@ -78,33 +77,42 @@ bool Fruc::Start(int width, int height) {
     impl->pProcess= (PtrToFuncNvOFFRUCProcess)GetProcAddress(impl->dll, ProcessProcName);
     impl->pDestroy= (PtrToFuncNvOFFRUCDestroy)GetProcAddress(impl->dll, DestroyProcName);
     if (!impl->pCreate || !impl->pReg || !impl->pUnreg || !impl->pProcess || !impl->pDestroy) {
-        lastError_ = "NvOFFRUC exports missing"; delete impl; return false;
+        lastError_ = "NvOFFRUC exports missing"; FreeLibrary(impl->dll); delete impl; return false;
     }
-    if (cuInit(0) != CUDA_SUCCESS || cuDeviceGet(&impl->dev, 0) != CUDA_SUCCESS ||
-        cuDevicePrimaryCtxRetain(&impl->ctx, impl->dev) != CUDA_SUCCESS ||
-        cuCtxSetCurrent(impl->ctx) != CUDA_SUCCESS) {
-        lastError_ = "CUDA ctx setup failed"; delete impl; return false;
+    // CUDA ctx setup: track retain separately so a cuCtxSetCurrent failure releases the ctx.
+    if (cuInit(0) != CUDA_SUCCESS || cuDeviceGet(&impl->dev, 0) != CUDA_SUCCESS) {
+        lastError_ = "CUDA ctx setup failed"; FreeLibrary(impl->dll); delete impl; return false;
+    }
+    bool ctxRetained = (cuDevicePrimaryCtxRetain(&impl->ctx, impl->dev) == CUDA_SUCCESS);
+    if (!ctxRetained || cuCtxSetCurrent(impl->ctx) != CUDA_SUCCESS) {
+        lastError_ = "CUDA ctx setup failed";
+        if (ctxRetained) cuDevicePrimaryCtxRelease(impl->dev);
+        FreeLibrary(impl->dll); delete impl; return false;
     }
     NvOFFRUC_CREATE_PARAM cp{};
     cp.uiWidth = (uint32_t)width; cp.uiHeight = (uint32_t)height; cp.pDevice = nullptr;
     cp.eResourceType = CudaResource; cp.eSurfaceFormat = ARGBSurface;
     cp.eCUDAResourceType = CudaResourceCuDevicePtr;
     if (impl->pCreate(&cp, &impl->h) != NvOFFRUC_SUCCESS) {
-        lastError_ = "NvOFFRUCCreate failed"; cuDevicePrimaryCtxRelease(impl->dev); delete impl; return false;
+        lastError_ = "NvOFFRUCCreate failed";
+        cuDevicePrimaryCtxRelease(impl->dev); FreeLibrary(impl->dll); delete impl; return false;
     }
     const size_t bytes = (size_t)width * height * 4;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         if (cuMemAlloc(&impl->buf[i], bytes) != CUDA_SUCCESS) {
-            lastError_ = "cuMemAlloc failed"; impl->pDestroy(impl->h);
-            cuDevicePrimaryCtxRelease(impl->dev); delete impl; return false;
+            lastError_ = "cuMemAlloc failed";
+            for (int j = 0; j < i; ++j) cuMemFree(impl->buf[j]);
+            impl->pDestroy(impl->h);
+            cuDevicePrimaryCtxRelease(impl->dev); FreeLibrary(impl->dll); delete impl; return false;
         }
+    }
     NvOFFRUC_REGISTER_RESOURCE_PARAM reg{};
     reg.pArrResource[0] = &impl->buf[0]; reg.pArrResource[1] = &impl->buf[1];
     reg.pArrResource[2] = &impl->buf[2]; reg.uiCount = 3; reg.pD3D11FenceObj = nullptr;
     if (impl->pReg(impl->h, &reg) != NvOFFRUC_SUCCESS) {
         lastError_ = "RegisterResource failed";
         for (auto& b : impl->buf) cuMemFree(b);
-        impl->pDestroy(impl->h); cuDevicePrimaryCtxRelease(impl->dev); delete impl; return false;
+        impl->pDestroy(impl->h); cuDevicePrimaryCtxRelease(impl->dev); FreeLibrary(impl->dll); delete impl; return false;
     }
     impl_ = impl; width_ = width; height_ = height; ready_ = true; return true;
 }
@@ -139,18 +147,22 @@ bool Fruc::Interpolate(const uint8_t* prevBgra, const uint8_t* curBgra, int widt
     out.stFrameDataOutput.nTimeStamp = 0.5;
     if (impl->pProcess(impl->h, &in, &out) != NvOFFRUC_SUCCESS) { lastError_ = "Process(mid) failed"; return false; }
 
-    outMid.resize(bytes);
-    if (cuMemcpyDtoH(outMid.data(), impl->buf[0], bytes) != CUDA_SUCCESS) { lastError_ = "download failed"; return false; }
+    std::vector<uint8_t> tmp(bytes);
+    if (cuMemcpyDtoH(tmp.data(), impl->buf[0], bytes) != CUDA_SUCCESS) { lastError_ = "download failed"; return false; }
+    outMid.swap(tmp);
     return true;
 }
 
 void Fruc::Stop() {
     if (!impl_) { ready_ = false; return; }
     auto* impl = static_cast<FrucImpl*>(impl_);
-    if (impl->h) { NvOFFRUC_UNREGISTER_RESOURCE_PARAM u{};
+    if (impl->h) {
+        NvOFFRUC_UNREGISTER_RESOURCE_PARAM u{};
         u.pArrResource[0]=&impl->buf[0]; u.pArrResource[1]=&impl->buf[1]; u.pArrResource[2]=&impl->buf[2];
-        u.uiCount=3; impl->pUnreg(impl->h, &u); impl->pDestroy(impl->h); }
+        u.uiCount=3; impl->pUnreg(impl->h, &u);
+    }
     for (auto& b : impl->buf) if (b) cuMemFree(b);
+    if (impl->h) impl->pDestroy(impl->h);
     if (impl->ctx) cuDevicePrimaryCtxRelease(impl->dev);
     if (impl->dll) FreeLibrary(impl->dll);
     delete impl; impl_ = nullptr; ready_ = false;
