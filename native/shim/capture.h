@@ -48,6 +48,13 @@ public:
     bool SuperResActive() const;
     std::string SuperResError() const;
 
+    // Locks camera exposure to Manual at a normalized 0..1 value (mapped onto the camera's
+    // IAMCameraControl exposure range) so framerate holds steady in low light; disabled
+    // restores Auto. Thread-safe; worker applies on change. No-op if the camera lacks
+    // manual-exposure support.
+    void SetExposureLock(bool enabled, double value);
+    bool ExposureSupported() const; // true once an open camera reported manual-exposure support
+
     // Measured frames-per-second over a rolling window (status polling). Thread-safe to
     // call from the single status-poll thread; 0 until the first interval elapses.
     double MeasuredFps() const;

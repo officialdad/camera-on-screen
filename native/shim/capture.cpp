@@ -15,6 +15,7 @@
 #include <mfreadwrite.h>
 #include <mferror.h>
 #include <shlwapi.h>
+#include <dshow.h>  // IAMCameraControl, CameraControl_Exposure, CameraControl_Flags_Manual/_Auto
 
 // COM smart-pointer-free RAII via a tiny helper to avoid pulling in <wrl> / <comdef>.
 namespace {
@@ -55,6 +56,10 @@ struct CaptureState {
     std::atomic<bool>     superResActive{false};
     std::mutex            srErrMtx;            // leaf lock
     std::string           srError;
+
+    std::atomic<bool>     exposureLockEnabled{false}; // set by UI thread, read by worker
+    std::atomic<double>   exposureValue{0.0};         // 0..1 normalized, set by UI thread
+    std::atomic<bool>     exposureSupported{false};   // set by worker once camera range is known
 
     std::atomic<uint64_t> framesProduced{0}; // bumped by worker after each published frame
     FpsCounter            fpsCounter;         // read only by MeasuredFps (status-poll thread)
@@ -328,9 +333,53 @@ void Capture::WorkerLoop() {
         return;
     }
 
+    // Camera exposure control (issue #16). The device source behind the reader may expose
+    // IAMCameraControl; if it supports Manual exposure we can lock it to a fixed short value
+    // so framerate holds steady in low light. Held worker-local (COM apartment affinity),
+    // released before the reader. camControl stays null when unsupported -> feature greys out.
+    IAMCameraControl* camControl = nullptr;
+    long expMin = 0, expMax = 0, expStep = 1, expDef = 0, expCaps = 0;
+    {
+        IMFMediaSource* src = nullptr;
+        if (SUCCEEDED(reader->GetServiceForStream(
+                static_cast<DWORD>(MF_SOURCE_READER_MEDIASOURCE), GUID_NULL, IID_PPV_ARGS(&src)))
+            && src) {
+            if (SUCCEEDED(src->QueryInterface(IID_PPV_ARGS(&camControl))) && camControl) {
+                if (SUCCEEDED(camControl->GetRange(CameraControl_Exposure,
+                        &expMin, &expMax, &expStep, &expDef, &expCaps))
+                    && (expCaps & CameraControl_Flags_Manual) && expStep > 0 && expMax > expMin) {
+                    g_state.exposureSupported.store(true, std::memory_order_release);
+                } else {
+                    SafeRelease(camControl); // no usable manual-exposure range
+                }
+            }
+            SafeRelease(src);
+        }
+    }
+    bool   expAppliedEnabled = false; // last state pushed to the camera (starts in Auto)
+    double expAppliedValue   = -1.0;  // sentinel forces the first manual push
+
     std::vector<uint8_t> scratch;
 
     while (!g_state.stopRequested.load(std::memory_order_acquire)) {
+        // Apply exposure lock when the request changed (only touches the camera on change).
+        if (camControl) {
+            const bool   expWant = g_state.exposureLockEnabled.load(std::memory_order_acquire);
+            const double expVal  = g_state.exposureValue.load(std::memory_order_acquire);
+            if (expWant != expAppliedEnabled || (expWant && expVal != expAppliedValue)) {
+                if (expWant) {
+                    const double t = expVal < 0.0 ? 0.0 : (expVal > 1.0 ? 1.0 : expVal);
+                    long raw = expMin + static_cast<long>(t * (expMax - expMin) + 0.5);
+                    raw = expMin + ((raw - expMin) / expStep) * expStep; // snap to stepping delta
+                    camControl->Set(CameraControl_Exposure, raw, CameraControl_Flags_Manual);
+                } else {
+                    camControl->Set(CameraControl_Exposure, expDef, CameraControl_Flags_Auto);
+                }
+                expAppliedEnabled = expWant;
+                expAppliedValue   = expVal;
+            }
+        }
+
         DWORD streamIndex = 0, flags = 0;
         LONGLONG timestamp = 0;
         IMFSample* sample = nullptr;
@@ -469,6 +518,13 @@ void Capture::WorkerLoop() {
         }
     }
 
+    // Restore auto-exposure on shutdown so the camera isn't left pinned to manual for
+    // other apps, then release the control before the reader.
+    if (camControl) {
+        camControl->Set(CameraControl_Exposure, expDef, CameraControl_Flags_Auto);
+        SafeRelease(camControl);
+    }
+
     // Tear down all effects before releasing the reader (thread-affinity requirement).
     superRes.Stop();
     eyeContact.Stop();
@@ -519,6 +575,8 @@ void Capture::Stop() {
     }
     g_state.superResActive.store(false, std::memory_order_release);
     { std::lock_guard<std::mutex> e(g_state.srErrMtx); g_state.srError.clear(); }
+    // Exposure support is per open camera; clear it so a stopped session reads "unsupported".
+    g_state.exposureSupported.store(false, std::memory_order_release);
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
@@ -572,6 +630,14 @@ bool Capture::SuperResActive() const {
 }
 std::string Capture::SuperResError() const {
     std::lock_guard<std::mutex> e(g_state.srErrMtx); return g_state.srError;
+}
+
+void Capture::SetExposureLock(bool enabled, double value) {
+    g_state.exposureValue.store(value, std::memory_order_release);
+    g_state.exposureLockEnabled.store(enabled, std::memory_order_release);
+}
+bool Capture::ExposureSupported() const {
+    return g_state.exposureSupported.load(std::memory_order_acquire);
 }
 
 Capture::~Capture() {

@@ -13,6 +13,7 @@ public sealed class PInvokeShim : INativeShim
     {
         public int running; public double fps; public int gaze;
         public int green_screen_active; public int eye_contact_active;
+        public int exposure_supported;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string error;
     }
 
@@ -27,6 +28,8 @@ public sealed class PInvokeShim : INativeShim
         public int super_res_enabled;
         public int super_res_scale;
         public int super_res_quality_level;
+        public int exposure_lock_enabled;
+        public double exposure_value;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -84,6 +87,8 @@ public sealed class PInvokeShim : INativeShim
                 super_res_enabled = p.SuperResEnabled ? 1 : 0,
                 super_res_scale = p.SuperResScale,
                 super_res_quality_level = p.SuperResQualityLevel,
+                exposure_lock_enabled = p.ExposureLockEnabled ? 1 : 0,
+                exposure_value = p.ExposureValue,
             };
             cos_set_params(ref native);
         }
@@ -100,7 +105,8 @@ public sealed class PInvokeShim : INativeShim
             Running: s.running != 0, Fps: s.fps, Gaze: (GazeState)s.gaze,
             GreenScreenActive: s.green_screen_active != 0,
             EyeContactActive: s.eye_contact_active != 0,
-            Error: string.IsNullOrEmpty(s.error) ? null : s.error);
+            Error: string.IsNullOrEmpty(s.error) ? null : s.error,
+            ExposureSupported: s.exposure_supported != 0);
     }
 
     public bool TryGetFrame(byte[] buffer, out int width, out int height)

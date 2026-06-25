@@ -12,6 +12,7 @@ typedef struct {
     int   gaze;              // 0 Unknown,1 OnCamera,2 Redirected,3 RealEyes
     int   green_screen_active;
     int   eye_contact_active;
+    int   exposure_supported; // 1 if the open camera exposes manual exposure (known only while running)
     char  error[256];        // empty string = no error
 } CosStatus;
 
@@ -26,6 +27,8 @@ typedef struct {
     int    super_res_enabled;
     int    super_res_scale;           // 0=off, 15=1.5x, 20=2x (upscale modes only)
     int    super_res_quality_level;   // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
+    int    exposure_lock_enabled;     // 1 = manual exposure (locks fps); 0 = auto (default)
+    double exposure_value;            // 0..1 normalized; native maps to camera's IAMCameraControl range
 } CosParams;
 
 typedef struct {

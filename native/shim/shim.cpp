@@ -66,6 +66,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
     g_capture.SetEyeContact(p->eye_contact_enabled != 0);
     g_capture.SetSuperRes(p->super_res_enabled != 0, p->super_res_quality_level, p->super_res_scale);
+    g_capture.SetExposureLock(p->exposure_lock_enabled != 0, p->exposure_value);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }
@@ -78,6 +79,7 @@ COS_API void cos_get_status(CosStatus* out) {
     out->fps = g_running ? g_capture.MeasuredFps() : 0.0;
     out->green_screen_active = g_capture.GreenScreenActive() ? 1 : 0;
     out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
+    out->exposure_supported = g_capture.ExposureSupported() ? 1 : 0;
     std::string err = g_capture.GreenScreenError();
     if (err.empty()) err = g_capture.EyeContactError();
     if (err.empty()) err = g_capture.SuperResError();
