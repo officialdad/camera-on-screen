@@ -53,11 +53,10 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.Show();
         Vm = Services.BuildViewModel(_overlay);
         Vm.PropertyChanged += OnVmPropertyChanged;
-        // Apply the initial lock / click-through state loaded from config to the overlay.
-        _overlay.SetLocked(Vm.Locked);
-        _overlay.SetClickThrough(Vm.ClickThrough);
+        // Apply the initial state loaded from config to the overlay.
         _overlay.SetMirror(Vm.Mirror);
-        _overlay.SetZoom(Vm.Zoom);
+        // ponytail: overlay stays always-interactive (no SetLocked/SetClickThrough) and unzoomed
+        // (no SetZoom) — Lock/ClickThrough/Zoom were removed from the panel.
 
         // Global hotkeys. RegisterHotKey targets the overlay HWND, so WM_HOTKEY arrives at the
         // overlay proc and is forwarded here via HotkeyPressed → the service. Action handling is
@@ -159,12 +158,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         {
             switch (action)
             {
-                case HotkeyAction.ToggleLock: Vm.Locked = !Vm.Locked; break;
-                case HotkeyAction.ToggleClickThrough: Vm.ClickThrough = !Vm.ClickThrough; break;
                 case HotkeyAction.ToggleOverlayVisible: _overlay.ToggleVisible(); break;
                 case HotkeyAction.ToggleRunning:
                     if (Vm.IsRunning) Vm.StopCommand?.Execute(null); else Vm.StartCommand?.Execute(null);
                     break;
+                // ToggleLock/ToggleClickThrough: no-ops now (overlay always interactive); enum kept.
             }
         });
     }
@@ -271,13 +269,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotAvailableVisibility)));
         else if (e.PropertyName == nameof(MainViewModel.EyeContactAvailable))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EyeContactNotAvailableVisibility)));
-        else if (e.PropertyName == nameof(MainViewModel.Locked))
-            _overlay.SetLocked(Vm.Locked);
-        else if (e.PropertyName == nameof(MainViewModel.ClickThrough))
-            _overlay.SetClickThrough(Vm.ClickThrough);
         else if (e.PropertyName == nameof(MainViewModel.Mirror))
             _overlay.SetMirror(Vm.Mirror);
-        else if (e.PropertyName == nameof(MainViewModel.Zoom))
-            _overlay.SetZoom(Vm.Zoom);
+        // Locked/ClickThrough/Zoom branches removed — those props no longer exist.
     }
 }
