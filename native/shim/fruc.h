@@ -12,6 +12,8 @@ class Fruc {
 public:
     Fruc();
     ~Fruc();
+    Fruc(const Fruc&) = delete;
+    Fruc& operator=(const Fruc&) = delete;
     static bool Probe(std::string& detail);     // tries to LoadLibrary+Create FRUC
     bool Start(int width, int height);          // create FRUC + register CUDA buffers
     void Stop();
