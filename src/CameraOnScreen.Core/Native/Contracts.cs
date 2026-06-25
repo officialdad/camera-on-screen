@@ -17,7 +17,8 @@ public readonly record struct ShimStatus(
     GazeState Gaze,
     bool GreenScreenActive,
     bool EyeContactActive,
-    string? Error);
+    string? Error,
+    bool ExposureSupported = false); // true while a running camera exposes manual exposure (#16)
 
 public sealed record ShimParams(
     string? CameraId,
@@ -29,7 +30,9 @@ public sealed record ShimParams(
     double EyeContactLookAwayRange,
     bool SuperResEnabled = false,
     int SuperResScale = 0,             // 0=off, 15=1.5x, 20=2x (upscale modes only)
-    int SuperResQualityLevel = 1);     // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
+    int SuperResQualityLevel = 1,      // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
+    bool ExposureLockEnabled = false,  // lock camera exposure to Manual (#16) so fps holds steady
+    double ExposureValue = 0.0);       // 0..1 normalized exposure when locked (native maps to camera range)
 
 public interface INativeShim : IDisposable
 {

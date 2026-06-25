@@ -54,6 +54,16 @@
                                Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
                                Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
 
+                    <!-- Exposure lock (#16): pin the camera to Manual exposure so framerate holds in
+                         low light. Greyed until running AND the camera reports manual-exposure support
+                         (known only after Start, via status poll). Slider trades brightness vs fps. -->
+                    <ToggleSwitch Header="Lock exposure (steady FPS)"
+                                  IsEnabled="{x:Bind Vm.ExposureSupported, Mode=OneWay}"
+                                  IsOn="{x:Bind Vm.ExposureLock, Mode=TwoWay}"/>
+                    <Slider Header="Exposure" Minimum="0" Maximum="1" StepFrequency="0.05"
+                            IsEnabled="{x:Bind local:MainWindow.ExposureSliderEnabled(Vm.ExposureSupported, Vm.ExposureLock), Mode=OneWay}"
+                            Value="{x:Bind Vm.ExposureValue, Mode=TwoWay}"/>
+
                     <ToggleSwitch Header="Lock overlay"
                                   IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
                     <ToggleSwitch Header="Click-through"

@@ -108,6 +108,33 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void Exposure_lock_round_trips_through_params_config_and_status()
+    {
+        // #16: BuildParams carries the lock + value; ToAppConfig→LoadFrom persists them; and the
+        // status poll surfaces per-camera support for UI greying.
+        var vm = Build(GpuTier.Rtx, out _);
+        vm.ExposureLock = true;
+        vm.ExposureValue = 0.25;
+        var p = vm.BuildParams();
+        Assert.True(p.ExposureLockEnabled);
+        Assert.Equal(0.25, p.ExposureValue);
+
+        var cfg = vm.ToAppConfig(0, 0, 320, 240);
+        Assert.True(cfg.Effects.ExposureLock);
+        Assert.Equal(0.25, cfg.Effects.ExposureValue);
+
+        var fresh = Build(GpuTier.Rtx, out _);
+        fresh.LoadFrom(cfg);
+        Assert.True(fresh.ExposureLock);
+        Assert.Equal(0.25, fresh.ExposureValue);
+
+        Assert.False(fresh.ExposureSupported);
+        fresh.OnStatus(new ShimStatus(true, 30, GazeState.OnCamera, false, false, null,
+            ExposureSupported: true));
+        Assert.True(fresh.ExposureSupported);
+    }
+
+    [Fact]
     public void Start_sets_running_and_OnStatus_updates_fps()
     {
         var vm = Build(GpuTier.Rtx, out _);

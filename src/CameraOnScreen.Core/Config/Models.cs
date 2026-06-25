@@ -31,6 +31,8 @@ public sealed record EffectSettings
     public double EyeContactLookAwayRange { get; init; } = 0.5;
     public int SuperResMode { get; init; }        // 0=Off, 1=Denoise, 2=Deblur
     public int SuperResQuality { get; init; }     // 0=Low, 1=Med, 2=High, 3=Ultra
+    public bool ExposureLock { get; init; }       // #16: lock camera exposure (steady fps), off by default
+    public double ExposureValue { get; init; } = 0.5; // 0..1 normalized exposure when locked
 }
 
 public sealed record HotkeyBinding

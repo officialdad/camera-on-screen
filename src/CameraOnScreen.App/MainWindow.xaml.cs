@@ -251,6 +251,10 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     // argument (SuperResAvailable / SuperResModeIndex) raises PropertyChanged. Mode 0 = Off, 1 = Upscale.
     public static bool QualityEnabled(bool available, int modeIndex) => available && modeIndex != 0;
 
+    // Exposure slider is live only when the camera supports manual exposure AND the lock is on.
+    // x:Bind re-runs this when either ExposureSupported or ExposureLock raises PropertyChanged.
+    public static bool ExposureSliderEnabled(bool supported, bool locked) => supported && locked;
+
     public string StatusLine =>
         Vm.IsRunning ? $"Running — {Vm.Fps:F0} fps" : "Stopped";
 
