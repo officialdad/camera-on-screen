@@ -9,11 +9,6 @@ namespace CameraOnScreen.App;
 
 public sealed partial class MainWindow : Window, INotifyPropertyChanged
 {
-    // Compact control-panel size (in DIPs) — the panel only holds a few Auto-height rows, so the
-    // WinUI default (~1100×700) leaves it mostly empty. Scaled by the window DPI before Resize,
-    // which wants physical pixels. No layout redesign — sensible defaults only.
-    private const int PanelWidthDip = 400, PanelHeightDip = 720;
-
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     public MainViewModel Vm { get; }
@@ -69,6 +64,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.InteractionEnded += Save;
         this.Closed += OnWindowClosed;
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
         RightSizePanel();
 
         // ~30 Hz frame pump on the WinUI UI thread: pull the latest BGRA frame from the shim and
@@ -109,16 +106,23 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _ = Vm.ProbeCapabilitiesAsync();
     }
 
-    // Shrink the control panel from the WinUI default to a compact size that fits its rows.
-    // AppWindow.Resize takes physical pixels, so scale the DIP target by the window's DPI.
+    // Size the window to its content (DPI-scaled) instead of a magic number, so every control is
+    // visible at open. ScrollViewer is the fallback if the user shrinks the window.
     private void RightSizePanel()
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        double scale = GetDpiForWindow(hwnd) / 96.0;
-        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(
-            (int)(PanelWidthDip * scale), (int)(PanelHeightDip * scale)));
+        RootGrid.Loaded += (_, _) =>
+        {
+            RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            double scale = GetDpiForWindow(hwnd) / 96.0;
+            var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
+            int w = (int)(RootGrid.DesiredSize.Width * scale);
+            int h = (int)(RootGrid.DesiredSize.Height * scale);
+            appWindow.Resize(new Windows.Graphics.SizeInt32(w, h));
+            // OverlappedPresenter.PreferredMinimumWidth/Height do not exist in Windows App SDK 1.8;
+            // ScrollViewer is the shrink fallback. No WM_GETMINMAXINFO subclass — out of scope.
+        };
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
