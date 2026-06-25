@@ -32,6 +32,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactAvailable = orchestrator.EyeContactAvailable;
         EyeContactDetail = orchestrator.EyeContactDetail;
         SuperResAvailable = orchestrator.SuperResAvailable;
+        FrameInterpAvailable = orchestrator.FrameInterpAvailable;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
@@ -51,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactAvailable = _orchestrator.EyeContactAvailable;
         EyeContactDetail = _orchestrator.EyeContactDetail;
         SuperResAvailable = _orchestrator.SuperResAvailable;
+        FrameInterpAvailable = _orchestrator.FrameInterpAvailable;
     }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
@@ -64,11 +66,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
     [ObservableProperty] private int superResModeIndex;      // 0=Off, 1=Denoise, 2=Deblur
     [ObservableProperty] private int superResQualityIndex;   // 0=Low, 1=Med, 2=High, 3=Ultra
+    [ObservableProperty] private bool frameInterpEnabled;
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool superResAvailable;
+    [ObservableProperty] private bool frameInterpAvailable;
     [ObservableProperty] private bool exposureLock;             // #16: lock exposure to hold fps
     [ObservableProperty] private double exposureValue = 0.5;    // 0..1 normalized; only meaningful when locked
     [ObservableProperty] private bool exposureSupported;        // camera exposes manual exposure (status poll, while running)
@@ -151,6 +155,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
     partial void OnSuperResModeIndexChanged(int value) => ApplyLiveParams();
     partial void OnSuperResQualityIndexChanged(int value) => ApplyLiveParams();
+    partial void OnFrameInterpEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnExposureLockChanged(bool value) => ApplyLiveParams();
     partial void OnExposureValueChanged(double value) => ApplyLiveParams();
 
@@ -171,7 +176,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SuperResScale: 0,  // denoise/deblur: out == in, no upscale
         SuperResQualityLevel: QualityLevelFor(SuperResModeIndex, SuperResQualityIndex),
         ExposureLockEnabled: ExposureLock,
-        ExposureValue: ExposureValue);
+        ExposureValue: ExposureValue,
+        FrameInterpEnabled: FrameInterpEnabled);
 
     public void OnStatus(ShimStatus s)
     {

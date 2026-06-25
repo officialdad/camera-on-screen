@@ -340,6 +340,34 @@ public class MainViewModelTests
         Assert.Equal(3, vm.SuperResQualityIndex);
     }
 
+    // --- FrameInterp (Task 7) ---
+
+    private static (MainViewModel vm, FakeShim shim) NewRunningViewModel(bool frameInterpAvailable)
+    {
+        var shim = new FakeShim { FrameInterpAvailable = frameInterpAvailable };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        var vm = new MainViewModel(orch, shim);
+        vm.StartCommand.Execute(null);
+        return (vm, shim);
+    }
+
+    [Fact]
+    public void FrameInterp_pushes_params_when_running_and_available()
+    {
+        var (vm, fake) = NewRunningViewModel(frameInterpAvailable: true);
+        vm.FrameInterpEnabled = true;
+        Assert.True(fake.LastParams!.FrameInterpEnabled);
+    }
+
+    [Fact]
+    public void FrameInterp_forced_off_when_unavailable()
+    {
+        var (vm, fake) = NewRunningViewModel(frameInterpAvailable: false);
+        vm.FrameInterpEnabled = true;          // user toggles
+        Assert.False(fake.LastParams!.FrameInterpEnabled); // ApplyParams forces off
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
