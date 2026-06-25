@@ -198,4 +198,17 @@ public class OrchestratorTests
             SuperResEnabled: true, SuperResScale: 20));
         Assert.False(shim.LastParams!.SuperResEnabled);
     }
+
+    // --- Task 6: FRUC frame-interp flag ---
+
+    [Fact]
+    public void BuildParams_carries_FrameInterp_flag()
+    {
+        var shim = new FakeShim { FrameInterpAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        orch.ApplyParams(new ShimParams("cam", false, 0, 0, false, 0.5, 0.5,
+            FrameInterpEnabled: true));
+        Assert.True(shim.LastParams!.FrameInterpEnabled);
+    }
 }
