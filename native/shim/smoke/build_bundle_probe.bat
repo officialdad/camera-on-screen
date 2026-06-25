@@ -5,5 +5,5 @@ rem they point at C:\actions-runner\_sdk\...) and fall back to the dev defaults.
 if defined COS_VFX_SDK_DIR (set "VFX=%COS_VFX_SDK_DIR%") else (set "VFX=C:\dev\VideoFX")
 if defined COS_AR_SDK_DIR  (set "AR=%COS_AR_SDK_DIR%")  else (set "AR=C:\dev\Maxine-AR-SDK")
 set OUT=%~1
-cl /nologo /EHsc /std:c++17 /DCOS_HAS_MAXINE /DCOS_HAS_MAXINE_AR /I "%VFX%\nvvfx\include" /I "%VFX%\features\nvvfxgreenscreen\include" /I "%AR%\nvar\include" native\shim\smoke\bundle_probe.cpp native\shim\aigs.cpp native\shim\eyecontact.cpp native\shim\paths.cpp "%VFX%\nvvfx\src\nvVideoEffectsProxy.cpp" "%VFX%\nvvfx\src\nvCVImageProxy.cpp" "%AR%\nvar\src\nvARProxy.cpp" /Fo"native\shim\smoke\\" /Fe"%OUT%"
+cl /nologo /EHsc /std:c++17 /DCOS_HAS_MAXINE /DCOS_HAS_MAXINE_AR /I "%VFX%\nvvfx\include" /I "%VFX%\features\nvvfxgreenscreen\include" /I "%AR%\nvar\include" native\shim\smoke\bundle_probe.cpp native\shim\aigs.cpp native\shim\eyecontact.cpp native\shim\paths.cpp native\shim\vfx_paths.cpp "%VFX%\nvvfx\src\nvVideoEffectsProxy.cpp" "%VFX%\nvvfx\src\nvCVImageProxy.cpp" "%AR%\nvar\src\nvARProxy.cpp" /Fo"native\shim\smoke\\" /Fe"%OUT%"
 exit /b %ERRORLEVEL%
