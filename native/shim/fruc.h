@@ -19,11 +19,12 @@ public:
     static bool Probe(std::string& detail);     // tries to LoadLibrary+Create FRUC
     bool Start(int width, int height);          // create FRUC + register CUDA buffers
     void Stop();
-    // Synthesises the temporal-midpoint frame between prevBgra and curBgra (both w*h BGRA8).
-    // Writes w*h BGRA8 into outMid. Returns false on failure (outMid untouched). If FRUC
-    // reports frame repetition (no usable motion), outMid is a copy of curBgra and returns true.
-    bool Interpolate(const uint8_t* prevBgra, const uint8_t* curBgra, int width, int height,
-                     std::vector<uint8_t>& outMid);
+    // Feeds the next w*h BGRA frame into the streaming pipeline. Writes the temporal-midpoint
+    // frame between the PREVIOUSLY submitted frame and this one into outMid (w*h BGRA) and sets
+    // hasMid=true. On the FIRST call after Start (no previous frame) hasMid=false, outMid
+    // untouched, returns true (not an error). On FRUC frame-repetition outMid holds the repeated
+    // frame, hasMid=true. Returns false only on a real error (outMid untouched, hasMid=false).
+    bool Submit(const uint8_t* curBgra, int width, int height, std::vector<uint8_t>& outMid, bool& hasMid);
     bool IsReady() const { return ready_; }
     const std::string& LastError() const { return lastError_; }
 private:

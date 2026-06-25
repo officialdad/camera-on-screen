@@ -18,7 +18,12 @@ struct FrucImpl {
     PtrToFuncNvOFFRUCUnregisterResource pUnreg = nullptr;
     PtrToFuncNvOFFRUCProcess  pProcess  = nullptr;
     PtrToFuncNvOFFRUCDestroy  pDestroy  = nullptr;
+    int renderIdx = 1;   // ping-pong: (renderIdx+1)%2 -> 0 or 1 -> buf[1] or buf[2]
+    double lastTs = 0.0;
+    bool primed = false;
 };
+
+static const double kInterval = 1.0;
 
 // Resolves NvOFFRUC.dll: COS_FRUC_RUNTIME_DIR, else <shimDir>\maxine, else system PATH.
 // LOAD_WITH_ALTERED_SEARCH_PATH on full paths so cudart64_110.dll resolves beside the dll.
@@ -117,39 +122,38 @@ bool Fruc::Start(int width, int height) {
     impl_ = impl; width_ = width; height_ = height; ready_ = true; return true;
 }
 
-bool Fruc::Interpolate(const uint8_t* prevBgra, const uint8_t* curBgra, int width, int height,
-                       std::vector<uint8_t>& outMid) {
+bool Fruc::Submit(const uint8_t* curBgra, int width, int height,
+                  std::vector<uint8_t>& outMid, bool& hasMid) {
+    hasMid = false;
     if (!ready_) { lastError_ = "FRUC not started"; return false; }
     if (width != width_ || height != height_) { lastError_ = "frame size changed"; return false; }
     auto* impl = static_cast<FrucImpl*>(impl_);
-    cuCtxSetCurrent(impl->ctx);
+    if (cuCtxSetCurrent(impl->ctx) != CUDA_SUCCESS) { lastError_ = "cuCtxSetCurrent failed"; return false; }
     const size_t bytes = (size_t)width * height * 4;
-    // ponytail: BGRA uploaded as-is to FRUC ARGBSurface. Byte order is verified in Task 3's
-    // human visual gate; if colours swap, add a B<->R swizzle here (or use NV12Surface).
-    // Upload prev->render[0], cur->render[1]; FRUC interpolates into interpolate buf.
+    impl->renderIdx = (impl->renderIdx + 1) % 2;          // ping-pong buf[1]/buf[2]
+    const int rb = 1 + impl->renderIdx;
+    if (cuMemcpyHtoD(impl->buf[rb], curBgra, bytes) != CUDA_SUCCESS) { lastError_ = "upload failed"; return false; }
+    const double renderTs = impl->lastTs + kInterval;
     NvOFFRUC_PROCESS_IN_PARAMS  in{};
     NvOFFRUC_PROCESS_OUT_PARAMS out{};
     bool rep = false;
-    // Prime with prev, then process cur to get the midpoint. FRUC is stateful across calls.
-    cuMemcpyHtoD(impl->buf[1], prevBgra, bytes);
-    in.stFrameDataInput.pFrame = &impl->buf[1];
-    in.stFrameDataInput.nTimeStamp = 0.0;
+    in.stFrameDataInput.pFrame = &impl->buf[rb];
+    in.stFrameDataInput.nTimeStamp = renderTs;
     in.stFrameDataInput.nCuSurfacePitch = (size_t)width * 4;
     out.stFrameDataOutput.pFrame = &impl->buf[0];
-    out.stFrameDataOutput.nTimeStamp = 0.5;
+    out.stFrameDataOutput.nTimeStamp = renderTs - kInterval * 0.5;   // midpoint
     out.stFrameDataOutput.nCuSurfacePitch = (size_t)width * 4;
     out.stFrameDataOutput.bHasFrameRepetitionOccurred = &rep;
-    if (impl->pProcess(impl->h, &in, &out) != NvOFFRUC_SUCCESS) { lastError_ = "Process(prime) failed"; return false; }
-
-    cuMemcpyHtoD(impl->buf[2], curBgra, bytes);
-    in.stFrameDataInput.pFrame = &impl->buf[2];
-    in.stFrameDataInput.nTimeStamp = 1.0;
-    out.stFrameDataOutput.nTimeStamp = 0.5;
-    if (impl->pProcess(impl->h, &in, &out) != NvOFFRUC_SUCCESS) { lastError_ = "Process(mid) failed"; return false; }
-
+    const NvOFFRUC_STATUS st = impl->pProcess(impl->h, &in, &out);
+    impl->lastTs = renderTs;
+    const bool first = !impl->primed;
+    impl->primed = true;
+    if (st != NvOFFRUC_SUCCESS) { lastError_ = "Process failed"; return false; }
+    if (first) return true;                       // no previous frame yet -> hasMid stays false
     std::vector<uint8_t> tmp(bytes);
     if (cuMemcpyDtoH(tmp.data(), impl->buf[0], bytes) != CUDA_SUCCESS) { lastError_ = "download failed"; return false; }
     outMid.swap(tmp);
+    hasMid = true;
     return true;
 }
 
@@ -175,7 +179,7 @@ Fruc::~Fruc() {}
 bool Fruc::Probe(std::string& detail) { detail = "FRUC not built in (COS_HAS_FRUC unset)"; return false; }
 bool Fruc::Start(int, int) { lastError_ = "FRUC not built in"; return false; }
 void Fruc::Stop() { ready_ = false; }
-bool Fruc::Interpolate(const uint8_t*, const uint8_t*, int, int, std::vector<uint8_t>&) {
-    lastError_ = "FRUC not built in"; return false;
+bool Fruc::Submit(const uint8_t*, int, int, std::vector<uint8_t>&, bool& hasMid) {
+    hasMid = false; lastError_ = "FRUC not built in"; return false;
 }
 #endif // !COS_HAS_FRUC
