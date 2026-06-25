@@ -29,6 +29,8 @@ public sealed record EffectSettings
     public bool EyeContactEnabled { get; init; }
     public double EyeContactSensitivity { get; init; } = 0.5;
     public double EyeContactLookAwayRange { get; init; } = 0.5;
+    public int SuperResMode { get; init; }        // 0=Off, 1=Denoise, 2=Deblur
+    public int SuperResQuality { get; init; }     // 0=Low, 1=Med, 2=High, 3=Ultra
 }
 
 public sealed record HotkeyBinding

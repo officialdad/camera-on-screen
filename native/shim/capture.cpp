@@ -1,6 +1,7 @@
 #include "capture.h"
 #include "aigs.h"
 #include "eyecontact.h"
+#include "superres.h"
 
 #include <atomic>
 #include <chrono>
@@ -47,6 +48,13 @@ struct CaptureState {
     std::atomic<bool>     eyeContactActive{false};  // set by worker
     std::mutex            ecErrMtx;                  // leaf lock, never nested under mtx/lifecycle
     std::string           ecError;                   // guarded by ecErrMtx
+
+    std::atomic<bool>     superResEnabled{false};
+    std::atomic<int>      superResScale{20};   // 15 or 20
+    std::atomic<int>      superResQuality{1};  // VSR QualityLevel (mode): 1-4 / 8-11 / 12-15
+    std::atomic<bool>     superResActive{false};
+    std::mutex            srErrMtx;            // leaf lock
+    std::string           srError;
 
     std::atomic<uint64_t> framesProduced{0}; // bumped by worker after each published frame
     FpsCounter            fpsCounter;         // read only by MeasuredFps (status-poll thread)
@@ -302,6 +310,8 @@ void Capture::WorkerLoop() {
     // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
     Aigs aigs;
     EyeContact eyeContact;
+    SuperRes superRes;
+    int srAppliedQuality = 0, srAppliedScale = 0; // last (quality,scale) Start ran with; for live restart
 
     IMFSourceReader* reader = nullptr;
     int width = 0, height = 0;
@@ -369,6 +379,47 @@ void Capture::WorkerLoop() {
                 }
                 g_state.eyeContactActive.store(ecApplied, std::memory_order_release);
 
+                // Super Resolution runs BEFORE green screen: it sharpens/upscales the raw RGB,
+                // then green screen authors the final alpha matte on the result. (Running SR
+                // last clobbered the matte — NGX VSR does not preserve alpha — so a green-
+                // screened overlay went opaque/black.) SR may change the frame dimensions.
+                const bool srWant = g_state.superResEnabled.load(std::memory_order_acquire);
+                const int  srScale = g_state.superResScale.load(std::memory_order_acquire);
+                const int  srQuality = g_state.superResQuality.load(std::memory_order_acquire);
+                // QualityLevel + scale are baked at Start; restart the effect if either changed live.
+                if (srWant && superRes.IsReady() && (srQuality != srAppliedQuality || srScale != srAppliedScale))
+                    superRes.Stop();
+                if (srWant && !superRes.IsReady()) {
+                    if (!superRes.Start(srQuality, srScale)) {
+                        std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                        const std::string& ne = superRes.LastError();
+                        if (g_state.srError != ne) g_state.srError = ne;
+                    } else {
+                        srAppliedQuality = srQuality; srAppliedScale = srScale;
+                    }
+                } else if (!srWant && superRes.IsReady()) {
+                    superRes.Stop();
+                    std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                    if (!g_state.srError.empty()) g_state.srError.clear();
+                }
+
+                int curW = width, curH = height;
+                std::vector<uint8_t> srOut;
+                bool srApplied = false;
+                if (srWant && superRes.IsReady()) {
+                    srApplied = superRes.ProcessFrame(scratch.data(), width, height, srOut, curW, curH);
+                    std::lock_guard<std::mutex> e(g_state.srErrMtx);
+                    if (!srApplied) {
+                        const std::string& ne = superRes.LastError();
+                        if (g_state.srError != ne) g_state.srError = ne;
+                    } else if (!g_state.srError.empty()) { g_state.srError.clear(); }
+                }
+                g_state.superResActive.store(srApplied, std::memory_order_release);
+
+                // The "current" frame is the SR output if it ran, else the raw capture.
+                // Green screen composites onto it and writes the final premultiplied alpha.
+                std::vector<uint8_t>& cur = srApplied ? srOut : scratch;
+
                 // Lazily start/stop AIGS to match the enabled flag.
                 const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
                 if (want && !aigs.IsReady()) {
@@ -388,7 +439,7 @@ void Capture::WorkerLoop() {
                 if (want && aigs.IsReady()) {
                     const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
                     const double feather = g_state.matteFeather.load(std::memory_order_acquire);
-                    applied = aigs.ProcessFrame(scratch.data(), width, height, expand, feather);
+                    applied = aigs.ProcessFrame(cur.data(), curW, curH, expand, feather);
                     if (!applied) {
                         std::lock_guard<std::mutex> e(g_state.gsErrMtx);
                         const std::string& newErr = aigs.LastError();
@@ -401,12 +452,14 @@ void Capture::WorkerLoop() {
                 }
                 g_state.greenScreenActive.store(applied, std::memory_order_release);
 
-                std::lock_guard<std::mutex> lock(g_state.mtx);
-                g_state.frame.swap(scratch);
-                g_state.width = width;
-                g_state.height = height;
-                g_state.hasNewFrame = true;
-                g_state.framesProduced.fetch_add(1, std::memory_order_release);
+                {
+                    std::lock_guard<std::mutex> lock(g_state.mtx);
+                    g_state.frame.swap(cur);
+                    g_state.width = curW;
+                    g_state.height = curH;
+                    g_state.hasNewFrame = true;
+                    g_state.framesProduced.fetch_add(1, std::memory_order_release);
+                }
             }
             SafeRelease(sample);
         } else {
@@ -416,7 +469,8 @@ void Capture::WorkerLoop() {
         }
     }
 
-    // Tear down Eye Contact and AIGS before releasing the reader (thread-affinity requirement).
+    // Tear down all effects before releasing the reader (thread-affinity requirement).
+    superRes.Stop();
     eyeContact.Stop();
     aigs.Stop();
     SafeRelease(reader);
@@ -463,6 +517,8 @@ void Capture::Stop() {
         std::lock_guard<std::mutex> e(g_state.ecErrMtx);
         g_state.ecError.clear();
     }
+    g_state.superResActive.store(false, std::memory_order_release);
+    { std::lock_guard<std::mutex> e(g_state.srErrMtx); g_state.srError.clear(); }
 }
 
 bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
@@ -504,6 +560,18 @@ bool Capture::EyeContactActive() const {
 std::string Capture::EyeContactError() const {
     std::lock_guard<std::mutex> e(g_state.ecErrMtx);
     return g_state.ecError;
+}
+
+void Capture::SetSuperRes(bool enabled, int qualityLevel, int scaleX10) {
+    g_state.superResScale.store(scaleX10 == 15 ? 15 : 20, std::memory_order_release);
+    g_state.superResQuality.store(qualityLevel, std::memory_order_release);
+    g_state.superResEnabled.store(enabled, std::memory_order_release);
+}
+bool Capture::SuperResActive() const {
+    return g_state.superResActive.load(std::memory_order_acquire);
+}
+std::string Capture::SuperResError() const {
+    std::lock_guard<std::mutex> e(g_state.srErrMtx); return g_state.srError;
 }
 
 Capture::~Capture() {

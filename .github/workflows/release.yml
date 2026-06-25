@@ -25,6 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The runner host has an x86 .NET (no SDK) at "C:\Program Files (x86)\dotnet"
+      # that can shadow the x64 SDK on PATH -> `dotnet build` (inside build-installer.ps1)
+      # fails "No .NET SDKs were found". Prepend the x64 install for all later steps.
+      - name: Prefer x64 .NET on PATH
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\Program Files\dotnet\dotnet.exe") {
+            "C:\Program Files\dotnet" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
       # Self-hosted runner runs as NETWORK SERVICE, but _work is owned by Administrators,
       # so git's dubious-ownership guard blocks `gh release create --verify-tag` (which
       # shells out to git). Trust the workspace under THIS account's gitconfig — an

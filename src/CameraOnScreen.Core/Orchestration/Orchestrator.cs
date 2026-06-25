@@ -36,6 +36,9 @@ public sealed class Orchestrator
     /// <summary>Human-readable reason from the eye-contact probe. "Checking…" until probed.</summary>
     public string EyeContactDetail { get; private set; } = "Checking effect availability…";
 
+    /// <summary>True when the shim reports Super Resolution can run. False until <see cref="ProbeCapabilities"/>.</summary>
+    public bool SuperResAvailable { get; private set; }
+
     /// <summary>Runs the (blocking) native capability probe and records the result. Run this OFF the
     /// UI thread — the real probe does a ~1s TensorRT model load. The tier (RTX heuristic) is kept
     /// only for display; this probe is the authoritative effect gate.</summary>
@@ -46,6 +49,7 @@ public sealed class Orchestrator
         CapabilityDetail = caps.Detail;
         EyeContactAvailable = caps.EyeContactAvailable;
         EyeContactDetail = caps.EyeContactDetail;
+        SuperResAvailable = caps.SuperResAvailable;
     }
 
     /// <summary>The detected GPU tier — used for display only, not for effect gating.</summary>
@@ -69,6 +73,7 @@ public sealed class Orchestrator
         {
             GreenScreenEnabled = requested.GreenScreenEnabled && EffectsAvailable,
             EyeContactEnabled = requested.EyeContactEnabled && EyeContactAvailable,
+            SuperResEnabled = requested.SuperResEnabled && SuperResAvailable,
         };
         _shim.SetParams(effective);
     }

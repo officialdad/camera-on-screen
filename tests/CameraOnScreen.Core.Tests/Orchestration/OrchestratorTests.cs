@@ -187,4 +187,15 @@ public class OrchestratorTests
         orch.ProbeCapabilities();
         Assert.Equal("fake: ec unavailable", orch.EyeContactDetail);
     }
+
+    [Fact]
+    public void ApplyParams_forces_effects_off_when_unavailable()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false, SuperResAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        orch.ApplyParams(new ShimParams("cam", true, 0, 0, false, 0.5, 0.5,
+            SuperResEnabled: true, SuperResScale: 20));
+        Assert.False(shim.LastParams!.SuperResEnabled);
+    }
 }

@@ -42,6 +42,12 @@ public:
     bool EyeContactActive() const;        // true only while gaze redirection is transforming frames
     std::string EyeContactError() const;  // empty when none
 
+    // Toggles Super Resolution + VSR QualityLevel (mode) + scale (15=1.5x, 20=2x; upscale modes
+    // only). Thread-safe; worker owns the object.
+    void SetSuperRes(bool enabled, int qualityLevel, int scaleX10);
+    bool SuperResActive() const;
+    std::string SuperResError() const;
+
     // Measured frames-per-second over a rolling window (status polling). Thread-safe to
     // call from the single status-poll thread; 0 until the first interval elapses.
     double MeasuredFps() const;

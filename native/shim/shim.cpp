@@ -3,6 +3,7 @@
 #include "capture.h"
 #include "aigs.h"
 #include "eyecontact.h"
+#include "superres.h"
 
 #include <atomic>
 #include <cstring>
@@ -64,6 +65,7 @@ COS_API void cos_set_params(const CosParams* p) {
     g_capture.SetGreenScreen(p->green_screen_enabled != 0);
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
     g_capture.SetEyeContact(p->eye_contact_enabled != 0);
+    g_capture.SetSuperRes(p->super_res_enabled != 0, p->super_res_quality_level, p->super_res_scale);
 }
 
 COS_API void cos_start(void) { g_capture.Start(g_cameraId); g_running = true; }
@@ -78,6 +80,7 @@ COS_API void cos_get_status(CosStatus* out) {
     out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
     std::string err = g_capture.GreenScreenError();
     if (err.empty()) err = g_capture.EyeContactError();
+    if (err.empty()) err = g_capture.SuperResError();
     if (!err.empty()) {
         size_t n = err.size() < 255 ? err.size() : 255;
         std::memcpy(out->error, err.data(), n);
@@ -115,8 +118,11 @@ COS_API int cos_query_capabilities(CosCaps* out) {
     std::memcpy(out->ec_detail, ecDetail.data(), en);
     out->ec_detail[en] = '\0';
 
-    // Return 1 if either effect is available (the managed side reads the per-gate ints).
-    return (gsOk || ecOk) ? 1 : 0;
+    std::string srDetail;
+    out->super_res_available = SuperRes::Probe(srDetail) ? 1 : 0;
+
+    // Return 1 if any effect is available (the managed side reads the per-gate ints).
+    return (gsOk || ecOk || out->super_res_available) ? 1 : 0;
 }
 
 COS_API void cos_shutdown(void) {

@@ -20,6 +20,7 @@
 #include <psapi.h>
 #include "../aigs.h"
 #include "../eyecontact.h"
+#include "../superres.h"
 #include "../paths.h"
 
 static std::string ToLower(std::string s) {
@@ -31,15 +32,19 @@ int main() {
     // 1. Load + run both effects (same thread = CUDA affinity satisfied).
     Aigs gs;
     EyeContact ec;
+    SuperRes sr;
     const bool gsOk = gs.Start();
     const bool ecOk = ec.Start();
+    const bool srOk = sr.Start(1, 20); // quality 1 = VSR_Low upscale (pulls nvngx_vsr.dll closure)
     const int W = 1280, H = 720;
     std::vector<uint8_t> frame((size_t)W * H * 4, (uint8_t)128);
     if (gsOk) gs.ProcessFrame(frame.data(), W, H, 0.0, 0.0);
     if (ecOk) ec.ProcessFrame(frame.data(), W, H);
-    std::printf("# green-screen Start=%d  eye-contact Start=%d\n", gsOk ? 1 : 0, ecOk ? 1 : 0);
+    if (srOk) { std::vector<uint8_t> out; int ow = 0, oh = 0; sr.ProcessFrame(frame.data(), W, H, out, ow, oh); }
+    std::printf("# green-screen Start=%d  eye-contact Start=%d  super-res Start=%d\n", gsOk ? 1 : 0, ecOk ? 1 : 0, srOk ? 1 : 0);
     if (!gsOk) std::printf("# GS error: %s\n", gs.LastError().c_str());
     if (!ecOk) std::printf("# EC error: %s\n", ec.LastError().c_str());
+    if (!srOk) std::printf("# SR error: %s\n", sr.LastError().c_str());
 
     // 2. Enumerate modules loaded from <exe>\maxine\ .
     const std::string root = ToLower(ShimModuleDir()) + "\\maxine\\";
@@ -67,5 +72,6 @@ int main() {
     // 3. Clean up so worker objects release the CUDA stream before exit.
     gs.Stop();
     ec.Stop();
-    return (gsOk && ecOk) ? 0 : 1;
+    sr.Stop();
+    return (gsOk && ecOk && srOk) ? 0 : 1;
 }

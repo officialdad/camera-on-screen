@@ -31,6 +31,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CapabilityDetail = orchestrator.CapabilityDetail;
         EyeContactAvailable = orchestrator.EyeContactAvailable;
         EyeContactDetail = orchestrator.EyeContactDetail;
+        SuperResAvailable = orchestrator.SuperResAvailable;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
@@ -49,6 +50,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         CapabilityDetail = _orchestrator.CapabilityDetail;
         EyeContactAvailable = _orchestrator.EyeContactAvailable;
         EyeContactDetail = _orchestrator.EyeContactDetail;
+        SuperResAvailable = _orchestrator.SuperResAvailable;
     }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
@@ -60,10 +62,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool eyeContactEnabled;
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
+    [ObservableProperty] private int superResModeIndex;      // 0=Off, 1=Denoise, 2=Deblur
+    [ObservableProperty] private int superResQualityIndex;   // 0=Low, 1=Med, 2=High, 3=Ultra
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
+    [ObservableProperty] private bool superResAvailable;
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool locked;
     [ObservableProperty] private bool clickThrough;
@@ -73,6 +78,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
 
+    // VSR QualityLevel base per mode (Denoise=8, Deblur=12) + quality 0..3. Off => 0.
+    // Upscale (1-4) dropped: wasted on a downscaled overlay.
+    private static int QualityLevelFor(int mode, int quality) => mode switch
+    {
+        1 => 8 + quality, 2 => 12 + quality, _ => 0,
+    };
+
     public void LoadFrom(AppConfig config)
     {
         GreenScreenEnabled = config.Effects.GreenScreenEnabled;
@@ -81,6 +93,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
+        // Clamp to the live 3-mode range (0=Off,1=Denoise,2=Deblur): a config saved by an older
+        // build (4-mode, included Upscale) can carry an index past the combo's item count, which
+        // throws ArgumentException when the binding sets SelectedIndex → startup crash.
+        SuperResModeIndex = Math.Clamp(config.Effects.SuperResMode, 0, 2);
+        SuperResQualityIndex = Math.Clamp(config.Effects.SuperResQuality, 0, 3);
         Locked = config.Overlay.Locked;
         ClickThrough = config.Overlay.ClickThrough;
         Mirror = config.Overlay.Mirror;
@@ -107,7 +124,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             GreenScreenEnabled = GreenScreenEnabled, GreenScreenExpand = GreenScreenExpand,
             GreenScreenFeather = GreenScreenFeather,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
-            EyeContactLookAwayRange = EyeContactLookAwayRange
+            EyeContactLookAwayRange = EyeContactLookAwayRange,
+            SuperResMode = SuperResModeIndex,
+            SuperResQuality = SuperResQualityIndex,
         },
         Hotkeys = _hotkeys
     };
@@ -123,6 +142,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
+    partial void OnSuperResModeIndexChanged(int value) => ApplyLiveParams();
+    partial void OnSuperResQualityIndexChanged(int value) => ApplyLiveParams();
 
     private void ApplyLiveParams()
     {
@@ -136,7 +157,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         GreenScreenFeather: GreenScreenFeather,
         EyeContactEnabled: EyeContactEnabled,
         EyeContactSensitivity: EyeContactSensitivity,
-        EyeContactLookAwayRange: EyeContactLookAwayRange);
+        EyeContactLookAwayRange: EyeContactLookAwayRange,
+        SuperResEnabled: SuperResModeIndex != 0,
+        SuperResScale: 0,  // denoise/deblur: out == in, no upscale
+        SuperResQualityLevel: QualityLevelFor(SuperResModeIndex, SuperResQualityIndex));
 
     public void OnStatus(ShimStatus s)
     {

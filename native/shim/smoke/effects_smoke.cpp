@@ -1,0 +1,37 @@
+// Dev-box smoke (needs VFX SDK + RTX GPU). Build with the shim's include/lib setup.
+// Verifies SuperRes can start and process synthetic frames.
+//
+// Build (Developer PowerShell for VS 2022, from repo root):
+//   $env:COS_VFX_SDK_DIR = "C:\path\to\VideoFX"
+//   cl /EHsc /std:c++17 ^
+//      /I "%COS_VFX_SDK_DIR%\nvvfx\include" ^
+//      /DCOS_HAS_MAXINE ^
+//      native\shim\smoke\effects_smoke.cpp ^
+//      native\shim\superres.cpp ^
+//      native\shim\vfx_paths.cpp native\shim\paths.cpp ^
+//      "%COS_VFX_SDK_DIR%\nvvfx\src\nvVideoEffectsProxy.cpp" ^
+//      "%COS_VFX_SDK_DIR%\nvvfx\src\nvCVImageProxy.cpp"
+//   .\effects_smoke.exe
+//
+// Expected output (RTX GPU with models installed):
+//   SR ProcessFrame: ok -> 1280x960   (requires nvvfxvideosuperres NGC feature + models)
+// Without GPU/models, Probe prints the reason and exits 0 (deferred to human gate).
+#include <cassert>
+#include <cstdio>
+#include <vector>
+#include "../superres.h"
+
+int main() {
+    {
+        std::string d;
+        if (SuperRes::Probe(d)) {
+            SuperRes sr; assert(sr.Start(1, 20));  // quality 1 = VSR_Low upscale, scale 2x
+            std::vector<uint8_t> in(640 * 480 * 4, 64), out; int ow = 0, oh = 0;
+            bool ok = sr.ProcessFrame(in.data(), 640, 480, out, ow, oh);
+            std::printf("SR ProcessFrame: %s -> %dx%d\n", ok ? "ok" : "fail", ow, oh);
+            assert(ok && ow == 1280 && oh == 960);
+            sr.Stop();
+        } else { std::printf("SR unavailable: %s\n", d.c_str()); }
+    }
+    return 0;
+}

@@ -24,17 +24,19 @@ public sealed class PInvokeShim : INativeShim
         public double green_screen_feather;
         public int eye_contact_enabled; public double eye_contact_sensitivity;
         public double eye_contact_look_away_range;
+        public int super_res_enabled;
+        public int super_res_scale;
+        public int super_res_quality_level;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CosCaps
     {
         public int GreenScreenAvailable;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-        public byte[] Detail;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public byte[] Detail;
         public int EyeContactAvailable;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-        public byte[] EcDetail;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public byte[] EcDetail;
+        public int SuperResAvailable;
     }
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_init(IntPtr device);
@@ -79,6 +81,9 @@ public sealed class PInvokeShim : INativeShim
                 eye_contact_enabled = p.EyeContactEnabled ? 1 : 0,
                 eye_contact_sensitivity = p.EyeContactSensitivity,
                 eye_contact_look_away_range = p.EyeContactLookAwayRange,
+                super_res_enabled = p.SuperResEnabled ? 1 : 0,
+                super_res_scale = p.SuperResScale,
+                super_res_quality_level = p.SuperResQualityLevel,
             };
             cos_set_params(ref native);
         }
@@ -107,7 +112,8 @@ public sealed class PInvokeShim : INativeShim
         cos_query_capabilities(ref caps);
         return new ShimCapabilities(
             caps.GreenScreenAvailable != 0, ReadUtf8(caps.Detail, 0, 256),
-            caps.EyeContactAvailable != 0, ReadUtf8(caps.EcDetail, 0, 256));
+            caps.EyeContactAvailable != 0, ReadUtf8(caps.EcDetail, 0, 256),
+            caps.SuperResAvailable != 0);
     }
 
     public void Dispose() => cos_shutdown();
