@@ -16,6 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The runner host has an x86 .NET (no SDK) at "C:\Program Files (x86)\dotnet"
+      # that can shadow the x64 SDK on PATH -> `dotnet build` fails "No .NET SDKs were
+      # found". Prepend the x64 install so the SDK wins for all later steps.
+      - name: Prefer x64 .NET on PATH
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\Program Files\dotnet\dotnet.exe") {
+            "C:\Program Files\dotnet" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
       - name: Build native shim (SDK config, x64 Release)
         shell: pwsh
         run: |
