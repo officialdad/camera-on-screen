@@ -88,6 +88,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 _overlay.SetBounds(cur.x - _dragGrabDX, cur.y - _dragGrabDY, ow, oh);
             }
             Vm.PollStatusTick();
+            // Bump the pump to ~60 Hz while FRUC is active (16 ms), drop back to ~30 Hz otherwise.
+            // Only update when the interval actually changes to avoid redundant DispatcherQueue churn.
+            var want = (Vm.IsRunning && Vm.FrameInterpEnabled && Vm.FrameInterpAvailable)
+                ? TimeSpan.FromMilliseconds(16) : TimeSpan.FromMilliseconds(33);
+            if (_timer is not null && _timer.Interval != want) _timer.Interval = want;
         };
         _timer.Start();
 
