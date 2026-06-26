@@ -94,6 +94,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 _overlay.SetBounds(cur.x - _dragGrabDX, cur.y - _dragGrabDY, ow, oh);
             }
             Vm.PollStatusTick();
+            // Bump the pump to ~60 Hz while FRUC is active (16 ms), drop back to ~30 Hz otherwise.
+            // Only update when the interval actually changes to avoid redundant DispatcherQueue churn.
+            var want = (Vm.IsRunning && Vm.FrameInterpEnabled && Vm.FrameInterpAvailable)
+                ? TimeSpan.FromMilliseconds(16) : TimeSpan.FromMilliseconds(33);
+            if (_timer is not null && _timer.Interval != want) _timer.Interval = want;
             // Re-float topmost ~1 Hz so a fullscreen app (game/video/slideshow) that z-demotes the
             // overlay doesn't keep it sunk until an alt-tab. Cheap; SWP_NOACTIVATE never steals focus.
             if (++_topmostTick >= 30) { _topmostTick = 0; _overlay.EnsureTopmost(); }

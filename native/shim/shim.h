@@ -29,6 +29,7 @@ typedef struct {
     int    super_res_quality_level;   // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
     int    exposure_lock_enabled;     // 1 = manual exposure (locks fps); 0 = auto (default)
     double exposure_value;            // 0..1 normalized; native maps to camera's IAMCameraControl range
+    int    frame_interp_enabled;
 } CosParams;
 
 typedef struct {
@@ -37,6 +38,8 @@ typedef struct {
     int  eye_contact_available;  // 1 if Maxine GazeRedirection can run, else 0
     char ec_detail[256];         // eye-contact status/error (UTF-8, NUL-terminated)
     int  super_res_available;          // 1 if Maxine SuperRes can run
+    int  frame_interp_available;
+    char fi_detail[256];
 } CosCaps;
 
 COS_API int  cos_init(void* d3d11_device);

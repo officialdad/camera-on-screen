@@ -48,10 +48,14 @@ jobs:
           $hasGS  = $exports -match 'GreenScreen'   -or $strings -match 'GreenScreen'
           $hasGaze = $exports -match 'GazeRedirection' -or $strings -match 'GazeRedirection'
           $isStub = $strings -match 'not built in'
-          Write-Host "GreenScreen=$hasGS GazeRedirection=$hasGaze stub=$isStub"
+          # FRUC is OPTIONAL (legal gate open). Report its presence for visibility, but do NOT
+          # fail when it's stubbed — its stub string deliberately avoids the 'not built in' sentinel.
+          $hasFruc = $strings -match 'NvOFFRUC'
+          Write-Host "GreenScreen=$hasGS GazeRedirection=$hasGaze stub=$isStub FRUC=$hasFruc"
           if (-not $hasGS)   { throw "GreenScreen missing — green-screen effect not built in" }
           if (-not $hasGaze) { throw "GazeRedirection missing — eye-contact effect not built in" }
           if ($isStub)       { throw "shim is the passthrough STUB ('not built in' present)" }
+          if (-not $hasFruc) { Write-Host "::warning::FRUC built as stub (COS_FRUC_SDK_DIR unset on runner, or runner not restarted after .env change) — optional, not failing" }
 
       - name: Build App (copies shim, warnings = errors)
         shell: pwsh

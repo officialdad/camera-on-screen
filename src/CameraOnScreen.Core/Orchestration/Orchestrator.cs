@@ -39,6 +39,9 @@ public sealed class Orchestrator
     /// <summary>True when the shim reports Super Resolution can run. False until <see cref="ProbeCapabilities"/>.</summary>
     public bool SuperResAvailable { get; private set; }
 
+    /// <summary>True when the shim reports Frame Interpolation (FRUC) can run. False until <see cref="ProbeCapabilities"/>.</summary>
+    public bool FrameInterpAvailable { get; private set; }
+
     /// <summary>Runs the (blocking) native capability probe and records the result. Run this OFF the
     /// UI thread — the real probe does a ~1s TensorRT model load. The tier (RTX heuristic) is kept
     /// only for display; this probe is the authoritative effect gate.</summary>
@@ -50,6 +53,7 @@ public sealed class Orchestrator
         EyeContactAvailable = caps.EyeContactAvailable;
         EyeContactDetail = caps.EyeContactDetail;
         SuperResAvailable = caps.SuperResAvailable;
+        FrameInterpAvailable = caps.FrameInterpAvailable;
     }
 
     /// <summary>The detected GPU tier — used for display only, not for effect gating.</summary>
@@ -74,6 +78,7 @@ public sealed class Orchestrator
             GreenScreenEnabled = requested.GreenScreenEnabled && EffectsAvailable,
             EyeContactEnabled = requested.EyeContactEnabled && EyeContactAvailable,
             SuperResEnabled = requested.SuperResEnabled && SuperResAvailable,
+            FrameInterpEnabled = requested.FrameInterpEnabled && FrameInterpAvailable,
         };
         _shim.SetParams(effective);
     }

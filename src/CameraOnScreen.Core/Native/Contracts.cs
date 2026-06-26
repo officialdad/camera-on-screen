@@ -7,7 +7,8 @@ public readonly record struct CameraInfo(string Id, string Name);
 public sealed record ShimCapabilities(
     bool GreenScreenAvailable, string Detail,
     bool EyeContactAvailable = false, string EyeContactDetail = "",
-    bool SuperResAvailable = false);
+    bool SuperResAvailable = false,
+    bool FrameInterpAvailable = false);
 
 public enum GazeState { Unknown, OnCamera, Redirected, RealEyes }
 
@@ -32,7 +33,8 @@ public sealed record ShimParams(
     int SuperResScale = 0,             // 0=off, 15=1.5x, 20=2x (upscale modes only)
     int SuperResQualityLevel = 1,      // VSR QualityLevel: 1-4 upscale, 8-11 denoise, 12-15 deblur
     bool ExposureLockEnabled = false,  // lock camera exposure to Manual (#16) so fps holds steady
-    double ExposureValue = 0.0);       // 0..1 normalized exposure when locked (native maps to camera range)
+    double ExposureValue = 0.0,        // 0..1 normalized exposure when locked (native maps to camera range)
+    bool FrameInterpEnabled = false);  // FRUC: request frame interpolation (#13)
 
 public interface INativeShim : IDisposable
 {

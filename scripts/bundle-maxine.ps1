@@ -45,6 +45,18 @@ $mAr = Join-Path $maxine 'models\ar'
 New-Item -ItemType Directory -Force -Path $maxine, $mVfx, $mAr | Out-Null
 
 foreach ($d in $m.Dlls) { Copy-Required $MaxineStage $maxine $d }
+# Optional DLLs (e.g. FRUC): copy only when present in the stage; warn but do not throw if absent.
+# Null-guard covers older manifests that pre-date the OptionalDlls key.
+if ($m.OptionalDlls) {
+    foreach ($d in $m.OptionalDlls) {
+        $s = Join-Path $MaxineStage $d
+        if (Test-Path -LiteralPath $s) {
+            Copy-Item -LiteralPath $s -Destination (Join-Path $maxine $d) -Force
+        } else {
+            Write-Warning "optional DLL not in stage, skipping (bundle continues without it): $d"
+        }
+    }
+}
 foreach ($g in $m.VfxModelGlobs) { Copy-Glob (Join-Path $MaxineStage 'models\vfx') $mVfx $g }
 foreach ($g in $m.ArModelGlobs) { Copy-Glob (Join-Path $MaxineStage 'models\ar')  $mAr $g }
 # License notices are REQUIRED, not best-effort -- a shipped bundle must never lack them.

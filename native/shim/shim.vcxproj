@@ -28,6 +28,12 @@
     <CosArSdkDir Condition="'$(CosArSdkDir)' == ''">$(COS_AR_SDK_DIR)</CosArSdkDir>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- FRUC SDK dir = NVIDIA Optical Flow SDK root (NvOFFRUC). Empty => stub. -->
+    <CosFrucSdkDir Condition="'$(CosFrucSdkDir)' == ''">$(COS_FRUC_SDK_DIR)</CosFrucSdkDir>
+    <CosCudaDir Condition="'$(CosCudaDir)'==''">C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2</CosCudaDir>
+  </PropertyGroup>
+
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
   <PropertyGroup Label="Configuration">
@@ -87,12 +93,26 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <ItemDefinitionGroup Condition="'$(CosFrucSdkDir)' != ''">
+    <ClCompile>
+      <PreprocessorDefinitions>COS_HAS_FRUC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(CosFrucSdkDir)\NvOFFRUC\Interface;$(CosCudaDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(CosCudaDir)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- cuda.lib pulls in static LIBCMT; suppress the conflict with the DLL runtime (MDd/MD). -->
+      <IgnoreSpecificDefaultLibraries>LIBCMT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+    </Link>
+  </ItemDefinitionGroup>
+
   <ItemGroup>
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
     <ClCompile Include="eyecontact.cpp" />
     <ClCompile Include="superres.cpp" />
+    <ClCompile Include="fruc.cpp" />
     <ClCompile Include="paths.cpp" />
     <ClCompile Include="vfx_paths.cpp" />
   </ItemGroup>
@@ -119,6 +139,7 @@
     <ClInclude Include="aigs.h" />
     <ClInclude Include="eyecontact.h" />
     <ClInclude Include="superres.h" />
+    <ClInclude Include="fruc.h" />
     <ClInclude Include="paths.h" />
     <ClInclude Include="vfx_paths.h" />
   </ItemGroup>

@@ -5,7 +5,7 @@
     #
     # The Dlls list was PRODUCED by running native/shim/smoke/trace_closure against the assembled
     # co-versioned stage on an RTX 3090 (sm86) and enumerating the modules actually loaded from
-    # maxine\ (all three effects Start=1, 22 modules). Re-run the trace and update this list on any
+    # maxine\ (all four effects Start=1, 22 mandatory modules; FRUC DLLs in OptionalDlls, best-effort). Re-run the trace and update this list on any
     # SDK bump. See docs/superpowers/specs/2026-06-23-camera-on-screen-m5-multigpu-findings.md.
     #
     # VSR (issue #15) added 3 DLLs (static-import closure of nvVFXVideoSuperRes.dll via dumpbin):
@@ -20,8 +20,8 @@
     # root) whose validity is proven by bundle_probe / trace_closure (single NVCVImage.dll, both
     # TRT-10.9 effects load). Physical co-version is enforced at assembly time, not by the bundler.
 
-    # Every DLL in the gaze + green-screen load closure (trace_closure, sm86). All live in the
-    # stage root. Dispatcher + per-feature DLLs are explicit (NVVideoEffects/nvARPose are the
+    # Every DLL in the gaze + green-screen + VSR load closure (trace_closure, sm86). All live in
+    # the stage root. Dispatcher + per-feature DLLs are explicit (NVVideoEffects/nvARPose are the
     # dispatchers; nvVFXGreenScreen + the three nvAR* feature DLLs are loaded by them at runtime).
     # nvARFaceExpressions is intentionally absent (not in the gaze closure; emotion recognition is
     # also disallowed by the AI Product-Specific Terms s8.17).
@@ -48,6 +48,16 @@
         'nvARGazeRedirection.dll'   # AR gaze feature
         'nvARFaceBoxDetection.dll'  # AR gaze dep
         'nvARLandmarkDetection.dll' # AR gaze dep
+    )
+
+    # FRUC (frame-rate upscaling, issue #13): copied best-effort only when staged by
+    # assemble-maxine-stage.ps1 with COS_FRUC_SDK_DIR set. If absent from the stage the bundle
+    # proceeds without them and the app runs as a plain overlay (FRUC toggle unavailable).
+    # Redistribution pending legal gate. NvOFFRUC requires CUDA 11 -- cudart64_110.dll is a
+    # distinct name from cudart64_12.dll (CUDA 12) and they coexist without conflict.
+    OptionalDlls = @(
+        'NvOFFRUC.dll'              # FRUC frame-rate upscaler (issue #13)
+        'cudart64_110.dll'          # CUDA 11 runtime required by NvOFFRUC (coexists with cudart64_12.dll)
     )
 
     # Model engines, copied from the stage's models\{vfx,ar}. Broad per-effect globs so the bundle

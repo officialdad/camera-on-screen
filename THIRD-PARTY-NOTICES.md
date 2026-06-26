@@ -80,6 +80,39 @@ format (® on first NVIDIA reference, ™ on the product mark, no debranding).
 > string via the portal or `maxinesdk-support@nvidia.com`, and update
 > `AppInfo.MaxineAttribution` (single source of truth) if it differs.
 
+## NVIDIA Optical Flow SDK
+
+This product builds against, and at runtime loads, the NVIDIA Optical Flow SDK for its FRUC
+(AI frame-rate upscaling, 30→60 fps) feature:
+
+- **NVIDIA Optical Flow SDK v5.0.7** — `NvOFFRUC.dll` (frame-rate upscaler) and its CUDA 11
+  runtime dependency `cudart64_110.dll`.
+
+Redistribution is governed by the **NVIDIA DesignWorks SDK License** (`LicenseAgreement.pdf`,
+v. May 10 2022, included with the Optical Flow SDK download from
+<https://developer.nvidia.com/opticalflow-sdk>). These binaries are redistributed **only as part
+of this application bundle**, never standalone, consistent with that license's distribution
+conditions (an application with material additional functionality; the SDK portions accessed only
+by this application).
+
+Conditions met by this distribution:
+
+- **Not standalone.** `NvOFFRUC.dll` ships only inside the Camera-on-Screen installer alongside the
+  application, never offered for separate download.
+- **Material additional functionality.** Camera-on-Screen is a webcam desktop-overlay application;
+  FRUC is one optional effect within it.
+- **Accessed only by this application.** The DLL lives in the app's private `maxine\` directory.
+- **No NVIDIA endorsement implied**, no proprietary notices removed, no reverse engineering.
+
+End-user requirement: an NVIDIA GPU with a current driver (**≥ 528.24** on Windows) for the Optical
+Flow hardware engine. The CUDA 11 runtime (`cudart64_110.dll`) FRUC needs is bundled, so no separate
+CUDA Toolkit install is required. On machines without a suitable GPU/driver the effect simply greys
+out (the rest of the app runs normally).
+
+> Note: redistribution rests on the DesignWorks SDK License's "distributable portions … as part of
+> your application" terms (§1–2). For absolute certainty, written confirmation from NVIDIA can be
+> obtained per the license's amendment clause (§18); the conditions above are the basis relied upon.
+
 ## Trademarks
 
 NVIDIA, Maxine, RTX, GeForce, TensorRT, and CUDA are trademarks and/or

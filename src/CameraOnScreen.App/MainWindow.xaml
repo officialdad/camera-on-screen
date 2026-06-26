@@ -87,6 +87,12 @@
                                 <ComboBoxItem Content="High"/>
                                 <ComboBoxItem Content="Ultra"/>
                             </ComboBox>
+                            <!-- Frame interpolation (#13): AI FRUC doubles perceived fps to ~60 by
+                                 synthesising intermediate frames. Greyed until the probe confirms the
+                                 Optical Flow SDK is available on this GPU. -->
+                            <ToggleSwitch Header="Smooth 60 fps (AI)"
+                                          IsEnabled="{x:Bind Vm.FrameInterpAvailable, Mode=OneWay}"
+                                          IsOn="{x:Bind Vm.FrameInterpEnabled, Mode=TwoWay}"/>
                             <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
                                        Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
                                        TextWrapping="Wrap"

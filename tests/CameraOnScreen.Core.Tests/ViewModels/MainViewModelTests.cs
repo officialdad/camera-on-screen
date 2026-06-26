@@ -322,6 +322,51 @@ public class MainViewModelTests
         Assert.Equal(3, vm.SuperResQualityIndex);
     }
 
+    // --- FrameInterp (Task 7) ---
+
+    private static (MainViewModel vm, FakeShim shim) NewRunningViewModel(bool frameInterpAvailable)
+    {
+        var shim = new FakeShim { FrameInterpAvailable = frameInterpAvailable };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        var vm = new MainViewModel(orch, shim);
+        vm.StartCommand.Execute(null);
+        return (vm, shim);
+    }
+
+    [Fact]
+    public void FrameInterp_pushes_params_when_running_and_available()
+    {
+        var (vm, fake) = NewRunningViewModel(frameInterpAvailable: true);
+        vm.FrameInterpEnabled = true;
+        Assert.True(fake.LastParams!.FrameInterpEnabled);
+    }
+
+    [Fact]
+    public void FrameInterp_forced_off_when_unavailable()
+    {
+        var (vm, fake) = NewRunningViewModel(frameInterpAvailable: false);
+        vm.FrameInterpEnabled = true;          // user toggles
+        Assert.False(fake.LastParams!.FrameInterpEnabled); // ApplyParams forces off
+    }
+
+    [Fact]
+    public void FrameInterp_config_round_trips_through_config()
+    {
+        // #13: FrameInterpEnabled must survive ToAppConfig → LoadFrom (same as SuperResEnabled).
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
+        {
+            FrameInterpEnabled = true
+        };
+        var cfg = vm.ToAppConfig(0, 0, 320, 240);
+        Assert.True(cfg.Effects.FrameInterpEnabled);
+
+        var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm2.LoadFrom(cfg);
+        Assert.True(vm2.FrameInterpEnabled);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
