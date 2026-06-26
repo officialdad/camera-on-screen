@@ -5,7 +5,7 @@
 <h1 align="center">Camera-on-Screen</h1>
 
 <p align="center">
-  Put your webcam on top of your screen — live, draggable, captured in one pass.
+  I made this because I'm too lazy to do any post editing.
 </p>
 
 <p align="center">
@@ -14,43 +14,46 @@
 
 ---
 
-A transparent, always-on-top webcam overlay for Windows. It floats your live
-camera over everything else, so any screen recorder captures you and your screen
-together — no editing afterward. Optional NVIDIA **AI Green Screen** (background
-removal) and **AI Eye Contact** effects run in real time.
+An always-on-top webcam overlay for Windows. It floats your live
+camera feed over everything else, so any screen recorder or screen sharing session
+captures you and your screen together in real-time. Useful for teaching too.
 
-> **You need:** Windows + an **NVIDIA RTX GPU** with a recent driver for the AI
-> effects. On other hardware the overlay still works — the AI effects are just
-> turned off.
+Included NVIDIA powered features such as
+- **AI Green Screen** (background removal)
+- **AI Eye Contact** (gaze redirection).
+- **AI Interpolation** (doubles webcam FPS)
+
+> **You need:** Windows + an **NVIDIA RTX GPU** for the AI effects.
+> On other hardware the overlay still works without the AI effects.
 
 ## Install
 
 1. Download the latest `CameraOnScreen-Setup-<ver>-x64.exe` from
    [**Releases**](https://github.com/officialdad/camera-on-screen/releases).
 2. Run it. It installs **per-user** (no admin), adds a Start Menu shortcut, and
-   bundles everything it needs — no extra downloads.
-3. Windows SmartScreen may warn (the installer is unsigned): click
+   bundles everything it needs - no extra downloads.
+3. Windows SmartScreen will warn (the installer is unsigned): click
    **More info → Run anyway**.
 
 Uninstall from **Settings → Apps** as usual. Your preferences are kept at
 `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 
 > The AI effects ship with models for **RTX 20/30/40-series and Blackwell**
-> GPUs, but are only verified on **RTX 30-series (Ampere)** so far — other RTX
+> GPUs, but are only verified on **RTX 30-series & 20-series** so far - other RTX
 > architectures load best-effort. On non-RTX hardware the app still installs and
 > runs as a plain webcam overlay.
 
 ## Using it
 
-- **Move it** — drag the centre **+** handle.
-- **Resize it** — scroll the mouse wheel over the overlay.
-- **Mirror / zoom** — toggle in the control panel.
-- **AI Green Screen** — removes your background with adjustable edge expand /
-  feather (RTX only).
-- **AI Eye Contact** — gently redirects your gaze toward the camera (RTX only).
+- **Move it** - drag the centre **+** handle.
+- **Resize it** - scroll the mouse wheel over the overlay.
+- **Mirror / zoom** - toggle in the control panel.
+- **AI Green Screen** - removes your background with adjustable edge expand /
+  feather.
+- **AI Eye Contact** - gently redirects your gaze toward the camera.
 
-Then record with OBS, Game Bar, or any screen recorder — the overlay shows up
-live in the capture.
+Then record with NVIDIA ShadowPlay, Game Bar or stream live with the overlay
+always visible on real time in the capture.
 
 ## Contributing
 
@@ -60,7 +63,7 @@ how to build, the RTX/Maxine requirements, and the bar PRs need to clear.
 ## License
 
 [MIT](LICENSE). The bundled NVIDIA Maxine runtime is governed separately under
-the NVIDIA Maxine SDK License — see
+the NVIDIA Maxine SDK License - see
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). NVIDIA, Maxine, and RTX are
 trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
 
@@ -76,15 +79,15 @@ trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
 - The C# side owns all windowing/compositing (a layered DirectComposition
   overlay); the shim only captures and applies effects.
 
-## NVIDIA Maxine SDKs (not in this repo)
+## NVIDIA Maxine SDKs
 
 The AI effects use the **NVIDIA Maxine Video Effects SDK** (green screen) and
 **NVIDIA Maxine AR SDK** (eye contact). These are **not bundled** in the
-repository — download them from <https://developer.nvidia.com/maxine> and point
+repository - download them from <https://developer.nvidia.com/maxine> and point
 the build at them. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 The two SDKs each pin an exact CUDA + TensorRT runtime and **cannot mix** in one
-process. Use a co-versioned pair — verified: **VFX 1.2.0.0 + AR 1.1.1.0** (shared
+process. Use a co-versioned pair - verified: **VFX 1.2.0.0 + AR 1.1.1.0** (shared
 TensorRT 10.9 / CUDA 12.x).
 
 ## Build
@@ -93,7 +96,7 @@ Prerequisites: .NET 8 SDK, VS2022 Build Tools + MSVC v143. The native shim must
 be built **before** the App.
 
 ```powershell
-# 1. Native shim (PowerShell — Bash mangles MSBuild /p: switches).
+# 1. Native shim (PowerShell - Bash mangles MSBuild /p: switches).
 $env:COS_VFX_SDK_DIR = "<path-to-VideoFX-SDK>"
 $env:COS_AR_SDK_DIR  = "<path-to-Maxine-AR-SDK-clone>"
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
@@ -113,17 +116,8 @@ runtime env vars needed to actually run the effects, see
 
 ## CI / Release
 
-Every PR is gated by GitHub Actions on a **self-hosted RTX runner** — full
+Every PR is gated by GitHub Actions on a **self-hosted RTX runner** - full
 co-versioned Maxine build, a stale-stub export verify, the App build, and Core
 unit tests, all with warnings treated as errors. A second workflow builds the
 installer and publishes a GitHub release on a `v*` tag. See
 [`docs/ci/self-hosted-runner.md`](docs/ci/self-hosted-runner.md).
-
-## Status
-
-M1–M5 complete: Core, overlay passthrough, AI Green Screen, AI Eye Contact,
-app-relative SDK discovery, the runtime/model **bundler**, the **installer** (a
-per-user Inno Setup `.exe`), license compliance, and the tag-triggered release
-pipeline — all verified on an RTX 3090. The multi-GPU model bundle (RTX
-20/30/40-series + Blackwell, sm75/86/89/100) ships too, verified on Ampere
-(sm86); other architectures are best-effort pending verification on real silicon.
