@@ -90,7 +90,7 @@ public sealed class OverlayWindow : IDisposable
         }
 
         _hwnd = CreateWindowEx(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW,
             "CosOverlay", "CameraOnScreen Overlay", WS_POPUP,
             x, y, width, height, IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
         if (_hwnd == IntPtr.Zero)
@@ -131,6 +131,19 @@ public sealed class OverlayWindow : IDisposable
     public void Show() => ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
 
     /// <summary>
+    /// Re-assert top z-position. The window keeps WS_EX_TOPMOST style forever, but Windows demotes
+    /// its actual z-band whenever another app goes fullscreen-exclusive/optimized (games, video
+    /// players, slideshow) or a new topmost window inserts above — and never re-floats it, so the
+    /// overlay sinks until an unrelated z-order shuffle (alt-tab). Called on a ~1 Hz cadence from the
+    /// frame pump. SWP_NOACTIVATE so it never steals focus; SWP_NOMOVE|SWP_NOSIZE so it only touches z.
+    /// </summary>
+    public void EnsureTopmost()
+    {
+        if (_disposed) return;
+        SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    /// <summary>
     /// Toggle overlay visibility (Task 14, ToggleOverlayVisible hotkey). Hides via SW_HIDE, shows
     /// via SW_SHOWNOACTIVATE so showing never steals focus from the foreground app.
     /// </summary>
@@ -139,6 +152,8 @@ public sealed class OverlayWindow : IDisposable
         if (_disposed) return;
         _visible = !_visible;
         ShowWindow(_hwnd, _visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+        // Re-show does not restore top z if it was demoted while hidden — re-float explicitly.
+        if (_visible) EnsureTopmost();
     }
 
     // ---- Task 13 public API ---------------------------------------------------------------

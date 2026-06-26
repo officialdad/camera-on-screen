@@ -2,8 +2,10 @@
     x:Class="CameraOnScreen.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:CameraOnScreen.App">
-    <Grid>
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:CameraOnScreen.App"
+    Title="Camera On Screen">
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -11,82 +13,93 @@
 
         <!-- Controls scroll; the license-required footer (row 1) stays pinned outside. -->
         <ScrollViewer Grid.Row="0" Padding="16">
-            <StackPanel Spacing="12">
-                <ComboBox Header="Camera"
-                          ItemsSource="{x:Bind Vm.Cameras}"
-                          SelectedItem="{x:Bind Vm.SelectedCamera, Mode=TwoWay}"
-                          DisplayMemberPath="Name" Width="280"/>
+            <StackPanel Spacing="16">
 
+                <muxc:InfoBar Severity="Informational" IsOpen="True" IsClosable="False"
+                              Title="Overlay tips"
+                              Message="Scroll over the overlay to resize it · drag the + handle to move it."/>
+
+                <!-- CAMERA -->
                 <StackPanel Spacing="8">
-                    <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
-                                  IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
-                    <Slider Header="Green-screen Expand" Minimum="0" Maximum="1" StepFrequency="0.05"
-                            IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
-                            Value="{x:Bind Vm.GreenScreenExpand, Mode=TwoWay}"/>
-                    <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
-                            IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
-                            Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
-                    <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EyeContactAvailable, Mode=OneWay}"
-                                  IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
-                    <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
-                               Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
-                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
-
-                    <!-- AI Sharpness (VSR): Denoise (QualityLevel 8-11) or Deblur (12-15), both at
-                         native res. Upscale dropped — wasted on a downscaled overlay. Quality picks
-                         the tier (Low..Ultra). -->
-                    <ComboBox Header="AI Sharpness"
-                              IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
-                              SelectedIndex="{x:Bind Vm.SuperResModeIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="Off"/>
-                        <ComboBoxItem Content="Denoise"/>
-                        <ComboBoxItem Content="Deblur"/>
-                    </ComboBox>
-                    <ComboBox Header="Quality"
-                              IsEnabled="{x:Bind local:MainWindow.QualityEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
-                              SelectedIndex="{x:Bind Vm.SuperResQualityIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="Low"/>
-                        <ComboBoxItem Content="Medium"/>
-                        <ComboBoxItem Content="High"/>
-                        <ComboBoxItem Content="Ultra"/>
-                    </ComboBox>
-                    <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
-                               Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
-                               Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
-
-                    <!-- Frame interpolation (#13): AI FRUC doubles perceived fps to ~60 by
-                         synthesising intermediate frames. Greyed until the probe confirms the
-                         Optical Flow SDK is available on this GPU. -->
-                    <ToggleSwitch Header="Smooth 60 fps (AI)"
-                                  IsEnabled="{x:Bind Vm.FrameInterpAvailable, Mode=OneWay}"
-                                  IsOn="{x:Bind Vm.FrameInterpEnabled, Mode=TwoWay}"/>
-
-                    <!-- Exposure lock (#16): pin the camera to Manual exposure so framerate holds in
-                         low light. Greyed until running AND the camera reports manual-exposure support
-                         (known only after Start, via status poll). Slider trades brightness vs fps. -->
-                    <ToggleSwitch Header="Lock exposure (steady FPS)"
-                                  IsEnabled="{x:Bind Vm.ExposureSupported, Mode=OneWay}"
-                                  IsOn="{x:Bind Vm.ExposureLock, Mode=TwoWay}"/>
-                    <Slider Header="Exposure" Minimum="0" Maximum="1" StepFrequency="0.05"
-                            IsEnabled="{x:Bind local:MainWindow.ExposureSliderEnabled(Vm.ExposureSupported, Vm.ExposureLock), Mode=OneWay}"
-                            Value="{x:Bind Vm.ExposureValue, Mode=TwoWay}"/>
-
-                    <ToggleSwitch Header="Lock overlay"
-                                  IsOn="{x:Bind Vm.Locked, Mode=TwoWay}"/>
-                    <ToggleSwitch Header="Click-through"
-                                  IsOn="{x:Bind Vm.ClickThrough, Mode=TwoWay}"/>
-                    <ToggleSwitch Header="Mirror (selfie view)"
-                                  IsOn="{x:Bind Vm.Mirror, Mode=TwoWay}"/>
-                    <Slider Header="Zoom" Minimum="1" Maximum="3" StepFrequency="0.1"
-                            Value="{x:Bind Vm.Zoom, Mode=TwoWay}"/>
+                    <TextBlock Text="Camera" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="12">
+                            <ComboBox Header="Camera"
+                                      ItemsSource="{x:Bind Vm.Cameras}"
+                                      SelectedItem="{x:Bind Vm.SelectedCamera, Mode=TwoWay}"
+                                      DisplayMemberPath="Name" HorizontalAlignment="Stretch"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Start" Command="{x:Bind Vm.StartCommand}"
+                                        AutomationProperties.Name="Start capture"/>
+                                <Button Content="Stop" Command="{x:Bind Vm.StopCommand}"
+                                        AutomationProperties.Name="Stop capture"/>
+                                <TextBlock Text="{x:Bind StatusLine, Mode=OneWay}"
+                                           VerticalAlignment="Center"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                            <ToggleSwitch Header="Mirror (selfie view)"
+                                          IsOn="{x:Bind Vm.Mirror, Mode=TwoWay}"/>
+                            <ToggleSwitch Header="Lock exposure (steady FPS)"
+                                          IsEnabled="{x:Bind Vm.ExposureSupported, Mode=OneWay}"
+                                          IsOn="{x:Bind Vm.ExposureLock, Mode=TwoWay}"/>
+                            <Slider Header="Exposure" Minimum="0" Maximum="1" StepFrequency="0.05"
+                                    IsEnabled="{x:Bind local:MainWindow.ExposureSliderEnabled(Vm.ExposureSupported, Vm.ExposureLock), Mode=OneWay}"
+                                    Value="{x:Bind Vm.ExposureValue, Mode=TwoWay}"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="Start" Command="{x:Bind Vm.StartCommand}"/>
-                    <Button Content="Stop" Command="{x:Bind Vm.StopCommand}"/>
+                <!-- AI EFFECTS -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="AI Effects" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="12">
+                            <ToggleSwitch Header="AI Green Screen" IsEnabled="{x:Bind Vm.EffectsAvailable, Mode=OneWay}"
+                                          IsOn="{x:Bind Vm.GreenScreenEnabled, Mode=TwoWay}"/>
+                            <Slider Header="Green-screen Expand" Minimum="0" Maximum="1" StepFrequency="0.05"
+                                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                                    Value="{x:Bind Vm.GreenScreenExpand, Mode=TwoWay}"/>
+                            <Slider Header="Green-screen Feather" Minimum="0" Maximum="1" StepFrequency="0.05"
+                                    IsEnabled="{x:Bind Vm.GreenScreenEnabled, Mode=OneWay}"
+                                    Value="{x:Bind Vm.GreenScreenFeather, Mode=TwoWay}"/>
+                            <ToggleSwitch Header="Eye Contact" IsEnabled="{x:Bind Vm.EyeContactAvailable, Mode=OneWay}"
+                                          IsOn="{x:Bind Vm.EyeContactEnabled, Mode=TwoWay}"/>
+                            <TextBlock Text="{x:Bind Vm.EyeContactDetail, Mode=OneWay}"
+                                       Visibility="{x:Bind EyeContactNotAvailableVisibility, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                            <ComboBox Header="AI Sharpness"
+                                      IsEnabled="{x:Bind Vm.SuperResAvailable, Mode=OneWay}"
+                                      SelectedIndex="{x:Bind Vm.SuperResModeIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Off"/>
+                                <ComboBoxItem Content="Denoise"/>
+                                <ComboBoxItem Content="Deblur"/>
+                            </ComboBox>
+                            <ComboBox Header="Quality"
+                                      IsEnabled="{x:Bind local:MainWindow.QualityEnabled(Vm.SuperResAvailable, Vm.SuperResModeIndex), Mode=OneWay}"
+                                      SelectedIndex="{x:Bind Vm.SuperResQualityIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Low"/>
+                                <ComboBoxItem Content="Medium"/>
+                                <ComboBoxItem Content="High"/>
+                                <ComboBoxItem Content="Ultra"/>
+                            </ComboBox>
+                            <!-- Frame interpolation (#13): AI FRUC doubles perceived fps to ~60 by
+                                 synthesising intermediate frames. Greyed until the probe confirms the
+                                 Optical Flow SDK is available on this GPU. -->
+                            <ToggleSwitch Header="Smooth 60 fps (AI)"
+                                          IsEnabled="{x:Bind Vm.FrameInterpAvailable, Mode=OneWay}"
+                                          IsOn="{x:Bind Vm.FrameInterpEnabled, Mode=TwoWay}"/>
+                            <TextBlock Text="{x:Bind Vm.CapabilityDetail, Mode=OneWay}"
+                                       Visibility="{x:Bind NotAvailableVisibility, Mode=OneWay}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-
-                <TextBlock Text="{x:Bind StatusLine, Mode=OneWay}"/>
             </StackPanel>
         </ScrollViewer>
 

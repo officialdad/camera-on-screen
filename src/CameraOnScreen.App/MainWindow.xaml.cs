@@ -9,11 +9,6 @@ namespace CameraOnScreen.App;
 
 public sealed partial class MainWindow : Window, INotifyPropertyChanged
 {
-    // Compact control-panel size (in DIPs) — the panel only holds a few Auto-height rows, so the
-    // WinUI default (~1100×700) leaves it mostly empty. Scaled by the window DPI before Resize,
-    // which wants physical pixels. No layout redesign — sensible defaults only.
-    private const int PanelWidthDip = 400, PanelHeightDip = 720;
-
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     public MainViewModel Vm { get; }
@@ -25,8 +20,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     // resize. TryGetFrame writes the actual size; cos_get_frame rejects frames larger than this.
     private readonly byte[] _frameBuf = new byte[3840 * 2160 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
+    private int _topmostTick; // re-assert HWND_TOPMOST every ~1s (30 ticks @ 33ms) — see EnsureTopmost
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
     private Overlay.OverlayMouseHook? _mouseHook;
+    private Microsoft.UI.Windowing.AppWindow? _appWindow; // this control-panel window, for size restore/persist
+    // Last control-panel size (physical px) loaded from config; 0 => first launch (size to content).
+    private readonly double _savedPanelW, _savedPanelH;
     // Hook-driven drag state (all touched on the UI thread inside the hook callback).
     private bool _dragging;
     // Cursor-minus-origin offset captured at drag start. The drag MOVE is driven by the frame-pump
@@ -47,17 +46,18 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // (e.g. first run, corrupt config, or a config written before geometry was persisted).
         var config = _store.Load();
         var (x, y, w, h) = ResolveStartupBounds(config.Overlay);
+        _savedPanelW = config.PanelWidth;
+        _savedPanelH = config.PanelHeight;
 
         // Build the overlay BEFORE the VM so its D3D device pointer exists when shim.Init runs.
         _overlay = new Overlay.OverlayWindow(x, y, w, h);
         _overlay.Show();
         Vm = Services.BuildViewModel(_overlay);
         Vm.PropertyChanged += OnVmPropertyChanged;
-        // Apply the initial lock / click-through state loaded from config to the overlay.
-        _overlay.SetLocked(Vm.Locked);
-        _overlay.SetClickThrough(Vm.ClickThrough);
+        // Apply the initial state loaded from config to the overlay.
         _overlay.SetMirror(Vm.Mirror);
-        _overlay.SetZoom(Vm.Zoom);
+        // ponytail: overlay stays always-interactive (no SetLocked/SetClickThrough) and unzoomed
+        // (no SetZoom) — Lock/ClickThrough/Zoom were removed from the panel.
 
         // Global hotkeys. RegisterHotKey targets the overlay HWND, so WM_HOTKEY arrives at the
         // overlay proc and is forwarded here via HotkeyPressed → the service. Action handling is
@@ -70,6 +70,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _overlay.InteractionEnded += Save;
         this.Closed += OnWindowClosed;
         InitializeComponent();
+        // Default Windows title bar (system chrome). Cache the AppWindow for size restore/persist,
+        // and persist (debounced) whenever the user resizes the panel.
+        var panelHwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(
+            Microsoft.UI.Win32Interop.GetWindowIdFromWindow(panelHwnd));
+        _appWindow.Changed += OnAppWindowChanged;
         RightSizePanel();
 
         // ~30 Hz frame pump on the WinUI UI thread: pull the latest BGRA frame from the shim and
@@ -93,6 +99,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             var want = (Vm.IsRunning && Vm.FrameInterpEnabled && Vm.FrameInterpAvailable)
                 ? TimeSpan.FromMilliseconds(16) : TimeSpan.FromMilliseconds(33);
             if (_timer is not null && _timer.Interval != want) _timer.Interval = want;
+            // Re-float topmost ~1 Hz so a fullscreen app (game/video/slideshow) that z-demotes the
+            // overlay doesn't keep it sunk until an alt-tab. Cheap; SWP_NOACTIVATE never steals focus.
+            if (++_topmostTick >= 30) { _topmostTick = 0; _overlay.EnsureTopmost(); }
         };
         _timer.Start();
 
@@ -115,16 +124,35 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _ = Vm.ProbeCapabilitiesAsync();
     }
 
-    // Shrink the control panel from the WinUI default to a compact size that fits its rows.
-    // AppWindow.Resize takes physical pixels, so scale the DIP target by the window's DPI.
+    // Restore the last panel size (physical px) so it reopens as the user left it. First launch
+    // (no saved size): size to content once so every control is visible. ponytail: stored/restored
+    // in physical pixels — a cross-DPI restore (different-scaling monitor between sessions) is
+    // approximate; the user can resize and it re-persists. ScrollViewer is the shrink fallback.
     private void RightSizePanel()
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        double scale = GetDpiForWindow(hwnd) / 96.0;
-        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(
-            (int)(PanelWidthDip * scale), (int)(PanelHeightDip * scale)));
+        if (_savedPanelW > 0 && _savedPanelH > 0)
+        {
+            _appWindow!.Resize(new Windows.Graphics.SizeInt32((int)_savedPanelW, (int)_savedPanelH));
+            return;
+        }
+        RootGrid.Loaded += (_, _) =>
+        {
+            RootGrid.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            double scale = GetDpiForWindow(hwnd) / 96.0;
+            int w = (int)(RootGrid.DesiredSize.Width * scale);
+            int h = (int)(RootGrid.DesiredSize.Height * scale);
+            if (w > 0 && h > 0)
+                _appWindow!.Resize(new Windows.Graphics.SizeInt32(w, h));
+        };
+    }
+
+    // Persist the panel size when the user resizes it (debounced via _saveTimer, same as wheel-resize).
+    // _saveTimer is created later in the ctor, so the startup Resize's notification no-ops via `?.`.
+    private void OnAppWindowChanged(Microsoft.UI.Windowing.AppWindow sender,
+        Microsoft.UI.Windowing.AppWindowChangedEventArgs args)
+    {
+        if (args.DidSizeChange) { _saveTimer?.Stop(); _saveTimer?.Start(); }
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
@@ -142,7 +170,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // double-save while teardown is in progress.
         _overlay.InteractionEnded -= Save;
         _overlay.HotkeyPressed -= _hotkeys.OnHotkeyMessage;
-        Save(); // final persist with the closing geometry/state
+        if (_appWindow != null) _appWindow.Changed -= OnAppWindowChanged;
+        Save(); // final persist with the closing geometry/state + panel size
         _hotkeys.Dispose(); // unregister all hotkeys
         Vm.PropertyChanged -= OnVmPropertyChanged;
         Vm.Dispose();
@@ -151,10 +180,19 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 
     // Choose startup geometry: restore saved bounds only when the saved size is usable (>0);
     // otherwise fall back to defaults. Win32 ctor wants ints, so cast the double settings down.
-    private static (int x, int y, int w, int h) ResolveStartupBounds(OverlaySettings s) =>
-        s.Width > 0 && s.Height > 0
-            ? ((int)s.X, (int)s.Y, (int)s.Width, (int)s.Height)
-            : (DefaultX, DefaultY, DefaultW, DefaultH);
+    private static (int x, int y, int w, int h) ResolveStartupBounds(OverlaySettings s)
+    {
+        if (s.Width <= 0 || s.Height <= 0)
+            return (DefaultX, DefaultY, DefaultW, DefaultH);
+        int x = (int)s.X, y = (int)s.Y, w = (int)s.Width, h = (int)s.Height;
+        // The saved display may be off/disconnected now, leaving the rect on no live monitor — the
+        // overlay would restore off-screen (invisible until you reconnect that display). If the rect
+        // intersects no monitor, drop the dead position back to defaults (on primary), keeping size.
+        var rc = new Overlay.Interop.RECT { left = x, top = y, right = x + w, bottom = y + h };
+        if (Overlay.Interop.MonitorFromRect(ref rc, Overlay.Interop.MONITOR_DEFAULTTONULL) == IntPtr.Zero)
+            return (DefaultX, DefaultY, w, h);
+        return (x, y, w, h);
+    }
 
     // Map a global hotkey to a behavior. Hotkey messages can arrive off the UI thread, and these
     // toggles touch UI-bound VM observable props, so marshal onto the dispatcher.
@@ -164,12 +202,11 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         {
             switch (action)
             {
-                case HotkeyAction.ToggleLock: Vm.Locked = !Vm.Locked; break;
-                case HotkeyAction.ToggleClickThrough: Vm.ClickThrough = !Vm.ClickThrough; break;
                 case HotkeyAction.ToggleOverlayVisible: _overlay.ToggleVisible(); break;
                 case HotkeyAction.ToggleRunning:
                     if (Vm.IsRunning) Vm.StopCommand?.Execute(null); else Vm.StartCommand?.Execute(null);
                     break;
+                // ToggleLock/ToggleClickThrough: no-ops now (overlay always interactive); enum kept.
             }
         });
     }
@@ -243,7 +280,12 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private void Save()
     {
         var (x, y, w, h) = _overlay.GetBounds();
-        _store.Save(Vm.ToAppConfig(x, y, w, h));
+        var cfg = Vm.ToAppConfig(x, y, w, h);
+        // Also persist the control-panel window size (physical px) so it restores on next launch.
+        var size = _appWindow?.Size ?? default;
+        if (size.Width > 0 && size.Height > 0)
+            cfg = cfg with { PanelWidth = size.Width, PanelHeight = size.Height };
+        _store.Save(cfg);
     }
 
     public Visibility NotAvailableVisibility =>
@@ -276,13 +318,8 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotAvailableVisibility)));
         else if (e.PropertyName == nameof(MainViewModel.EyeContactAvailable))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EyeContactNotAvailableVisibility)));
-        else if (e.PropertyName == nameof(MainViewModel.Locked))
-            _overlay.SetLocked(Vm.Locked);
-        else if (e.PropertyName == nameof(MainViewModel.ClickThrough))
-            _overlay.SetClickThrough(Vm.ClickThrough);
         else if (e.PropertyName == nameof(MainViewModel.Mirror))
             _overlay.SetMirror(Vm.Mirror);
-        else if (e.PropertyName == nameof(MainViewModel.Zoom))
-            _overlay.SetZoom(Vm.Zoom);
+        // Locked/ClickThrough/Zoom branches removed — those props no longer exist.
     }
 }

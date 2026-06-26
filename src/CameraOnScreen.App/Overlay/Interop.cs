@@ -9,6 +9,8 @@ internal static class Interop
     public const int WS_EX_TOPMOST = 0x00000008;
     public const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
     public const int WS_EX_TRANSPARENT = 0x00000020;
+    // Tool window: keeps the overlay out of the alt-tab switcher and taskbar (it's chrome, not an app).
+    public const int WS_EX_TOOLWINDOW = 0x00000080;
 
     // CharSet.Unicode is REQUIRED here: RegisterClassEx/CreateWindowEx are declared CharSet.Unicode
     // (-> the W exports), but DllImport's CharSet does NOT control how a by-ref struct's string
@@ -61,9 +63,12 @@ internal static class Interop
     public const int SW_HIDE = 0;
     public const int SW_SHOWNOACTIVATE = 4;
     // SetWindowPos flags: keep current Z-order/activation, only change position+size.
+    public const uint SWP_NOSIZE     = 0x0001;
     public const uint SWP_NOMOVE     = 0x0002;
     public const uint SWP_NOZORDER   = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
+    // Re-float a window that keeps WS_EX_TOPMOST style but was z-demoted (fullscreen app, etc.).
+    public static readonly IntPtr HWND_TOPMOST = new(-1);
     [DllImport("kernel32.dll")] public static extern IntPtr GetModuleHandle(string? name);
 
     // ---- Low-level mouse hook (wheel-over-overlay resize) ------------------------------------
@@ -115,6 +120,12 @@ internal static class Interop
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    // Returns the monitor with the largest intersection with rc, or NULL (DEFAULTTONULL) if rc
+    // intersects no live monitor — used to detect saved geometry on a now-off/disconnected display.
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromRect(ref RECT lprc, uint dwFlags);
+    public const uint MONITOR_DEFAULTTONULL = 0;
 
     [DllImport("user32.dll")]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);

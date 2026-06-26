@@ -147,30 +147,27 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void LoadFrom_propagates_locked_and_clickthrough()
+    public void LoadFrom_propagates_mirror()
     {
         var vm = Build(GpuTier.Rtx, out _);
         var config = new AppConfig
         {
-            Overlay = new OverlaySettings { Locked = true, ClickThrough = true }
+            Overlay = new OverlaySettings { Mirror = true }
         };
         vm.LoadFrom(config);
-        Assert.True(vm.Locked);
-        Assert.True(vm.ClickThrough);
+        Assert.True(vm.Mirror);
     }
 
     [Fact]
     public void ToAppConfig_captures_geometry_and_effects()
     {
         var vm = Build(GpuTier.Rtx, out _);
-        vm.GreenScreenEnabled = true; vm.Locked = true;
+        vm.GreenScreenEnabled = true;
         var cfg = vm.ToAppConfig(10, 20, 300, 400);
         Assert.Equal(10, cfg.Overlay.X);
         Assert.Equal(20, cfg.Overlay.Y);
         Assert.Equal(300, cfg.Overlay.Width);
         Assert.Equal(400, cfg.Overlay.Height);
-        Assert.True(cfg.Overlay.Locked);
-        Assert.False(cfg.Overlay.ClickThrough);
         Assert.True(cfg.Effects.GreenScreenEnabled);
         Assert.Null(cfg.CameraId);
     }
@@ -194,27 +191,12 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void LoadFrom_propagates_mirror_and_zoom()
-    {
-        var vm = Build(GpuTier.Rtx, out _);
-        var config = new AppConfig
-        {
-            Overlay = new OverlaySettings { Mirror = true, Zoom = 2.0 }
-        };
-        vm.LoadFrom(config);
-        Assert.True(vm.Mirror);
-        Assert.Equal(2.0, vm.Zoom);
-    }
-
-    [Fact]
-    public void ToAppConfig_captures_mirror_and_zoom()
+    public void ToAppConfig_captures_mirror()
     {
         var vm = Build(GpuTier.Rtx, out _);
         vm.Mirror = true;
-        vm.Zoom = 1.5;
         var cfg = vm.ToAppConfig(10, 20, 300, 400);
         Assert.True(cfg.Overlay.Mirror);
-        Assert.Equal(1.5, cfg.Overlay.Zoom);
     }
 
     [Fact]
