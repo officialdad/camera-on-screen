@@ -12,7 +12,7 @@ public class ModelsTests
     [Fact]
     public void Flags_modifiers_round_trip_as_names()
     {
-        var config = new AppConfig(); // defaults include Control|Alt on all 4 hotkeys
+        var config = new AppConfig(); // defaults include Control|Alt on all hotkeys
         var json = ConfigSerializer.Serialize(config);
         _output.WriteLine("Serialized JSON snippet (Modifiers):");
         _output.WriteLine(json);
@@ -37,7 +37,7 @@ public class ModelsTests
         Assert.Equal(OverlayShape.Full, c.Overlay.Shape);
         Assert.True(c.Effects.GreenScreenEnabled);
         Assert.False(c.Effects.EyeContactEnabled);
-        Assert.Equal(4, c.Hotkeys.Count); // one per HotkeyAction
+        Assert.Equal(2, c.Hotkeys.Count); // ToggleOverlayVisible, ToggleRunning (Lock/ClickThrough are dead)
     }
 
     [Fact]

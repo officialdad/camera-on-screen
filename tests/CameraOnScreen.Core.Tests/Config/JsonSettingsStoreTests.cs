@@ -104,4 +104,24 @@ public class JsonSettingsStoreTests
             if (File.Exists(path)) File.Delete(path);
         }
     }
+
+    [Fact]
+    public void Save_then_load_round_trips_panel_size()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cos-cfg-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new JsonSettingsStore(path);
+            store.Save(new AppConfig { PanelWidth = 460, PanelHeight = 815 });
+
+            var loaded = store.Load();
+
+            Assert.Equal(460, loaded.PanelWidth);
+            Assert.Equal(815, loaded.PanelHeight);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
 }
