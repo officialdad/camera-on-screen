@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     // resize. TryGetFrame writes the actual size; cos_get_frame rejects frames larger than this.
     private readonly byte[] _frameBuf = new byte[3840 * 2160 * 4];
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _timer;
+    private int _topmostTick; // re-assert HWND_TOPMOST every ~1s (30 ticks @ 33ms) — see EnsureTopmost
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
     private Overlay.OverlayMouseHook? _mouseHook;
     // Hook-driven drag state (all touched on the UI thread inside the hook callback).
@@ -88,6 +89,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 _overlay.SetBounds(cur.x - _dragGrabDX, cur.y - _dragGrabDY, ow, oh);
             }
             Vm.PollStatusTick();
+            // Re-float topmost ~1 Hz so a fullscreen app (game/video/slideshow) that z-demotes the
+            // overlay doesn't keep it sunk until an alt-tab. Cheap; SWP_NOACTIVATE never steals focus.
+            if (++_topmostTick >= 30) { _topmostTick = 0; _overlay.EnsureTopmost(); }
         };
         _timer.Start();
 
@@ -146,10 +150,19 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 
     // Choose startup geometry: restore saved bounds only when the saved size is usable (>0);
     // otherwise fall back to defaults. Win32 ctor wants ints, so cast the double settings down.
-    private static (int x, int y, int w, int h) ResolveStartupBounds(OverlaySettings s) =>
-        s.Width > 0 && s.Height > 0
-            ? ((int)s.X, (int)s.Y, (int)s.Width, (int)s.Height)
-            : (DefaultX, DefaultY, DefaultW, DefaultH);
+    private static (int x, int y, int w, int h) ResolveStartupBounds(OverlaySettings s)
+    {
+        if (s.Width <= 0 || s.Height <= 0)
+            return (DefaultX, DefaultY, DefaultW, DefaultH);
+        int x = (int)s.X, y = (int)s.Y, w = (int)s.Width, h = (int)s.Height;
+        // The saved display may be off/disconnected now, leaving the rect on no live monitor — the
+        // overlay would restore off-screen (invisible until you reconnect that display). If the rect
+        // intersects no monitor, drop the dead position back to defaults (on primary), keeping size.
+        var rc = new Overlay.Interop.RECT { left = x, top = y, right = x + w, bottom = y + h };
+        if (Overlay.Interop.MonitorFromRect(ref rc, Overlay.Interop.MONITOR_DEFAULTTONULL) == IntPtr.Zero)
+            return (DefaultX, DefaultY, w, h);
+        return (x, y, w, h);
+    }
 
     // Map a global hotkey to a behavior. Hotkey messages can arrive off the UI thread, and these
     // toggles touch UI-bound VM observable props, so marshal onto the dispatcher.
