@@ -174,12 +174,15 @@ void Fruc::Stop() {
 #endif // COS_HAS_FRUC
 
 #ifndef COS_HAS_FRUC
+// FRUC is OPTIONAL (legal gate open; ships as an optional bundler tier). These stub messages must
+// NOT contain the substring "not built in" -- the CI export-verify uses that phrase to detect a
+// stubbed REQUIRED effect (green screen / gaze), and an optional-FRUC stub must not false-trip it.
 Fruc::Fruc() {}
 Fruc::~Fruc() {}
-bool Fruc::Probe(std::string& detail) { detail = "FRUC not built in (COS_HAS_FRUC unset)"; return false; }
-bool Fruc::Start(int, int) { lastError_ = "FRUC not built in"; return false; }
+bool Fruc::Probe(std::string& detail) { detail = "FRUC unavailable (COS_HAS_FRUC unset)"; return false; }
+bool Fruc::Start(int, int) { lastError_ = "FRUC unavailable (COS_HAS_FRUC unset)"; return false; }
 void Fruc::Stop() { ready_ = false; }
 bool Fruc::Submit(const uint8_t*, int, int, std::vector<uint8_t>&, bool& hasMid) {
-    hasMid = false; lastError_ = "FRUC not built in"; return false;
+    hasMid = false; lastError_ = "FRUC unavailable (COS_HAS_FRUC unset)"; return false;
 }
 #endif // !COS_HAS_FRUC
