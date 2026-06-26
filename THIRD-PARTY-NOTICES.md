@@ -94,9 +94,8 @@ This product builds against, and at runtime loads, the NVIDIA Optical Flow SDK f
 > has **not yet been confirmed by a human reviewer**. These binaries **must not be included in a
 > distributed installer** until this gate is cleared.
 >
-> The SDK license agreement is at:
-> `C:\actions-runner\_sdk\Optical_Flow_SDK_5.0.7\Optical_Flow_SDK_5.0.7\LicenseAgreement.pdf`
-> (also available with the SDK download from the NVIDIA developer site).
+> The SDK license agreement is the `LicenseAgreement.pdf` included in the NVIDIA Optical Flow SDK
+> download from <https://developer.nvidia.com/opticalflow-sdk>.
 >
 > A reviewer must confirm: (1) whether the EULA permits no-charge binary redistribution of
 > `NvOFFRUC.dll` and `cudart64_110.dll` in a per-user installer; (2) whether any copy-of-agreement,

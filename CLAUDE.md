@@ -85,7 +85,6 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 
 ## Maxine SDKs (not in repo; redistribution governed by the 2025 NVIDIA Software License + Open/Community Model Licenses)
 
-- **FRUC** (frame-rate upscaling, 30→60 fps) uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll`) — a **separate product** from Maxine VFX/AR; build via `COS_FRUC_SDK_DIR`; compiled behind `COS_HAS_FRUC`. Runtime: `COS_FRUC_RUNTIME_DIR` else `<app>\maxine\`. Redistribution of `NvOFFRUC.dll` + `cudart64_110.dll` under the OF SDK EULA is a **pending human legal gate** (see `THIRD-PARTY-NOTICES.md`).
 - **VFX** green screen (`nvvfxgreenscreen`) and **AR** eye contact (gaze) are separate NVIDIA products. No import `.lib` — link via the SDKs' proxy stubs (`nvVideoEffectsProxy.cpp`, `nvCVImageProxy.cpp`, `nvARProxy.cpp`) compiled into the shim. Models are prebuilt per-arch TensorRT engines; the bundle ships **sm75/86/89/100** (Turing/Ampere/Ada/Blackwell) — fetched from NGC by arch. **sm86 is the only arch verified on real silicon (RTX 3090); the others ship best-effort and grey out gracefully if an engine fails to deserialize.**
 - **VFX feature catalog — verify availability + the REAL API BEFORE coding an effect (cost ~6 wasted tasks once).** Authoritative installable set: `<VFX_SDK>\features\install_feature.ps1 -list_features` (NGC key via `NGC_CLI_API_KEY`). VFX 1.2.0.0 = `aigsrelighting, backgroundblur, denoising, greenscreen, relighting, transfer, upscale, videosuperres` (8). **There is NO `nvvfxartifactreduction`** — it's in the script's help text but NOT the catalog (removed since older VFX SDKs); coding against it = a dead, always-unavailable effect. **Super Resolution = NGX VSR** (`nvvfxvideosuperres`; ships `nvngx_vsr.dll`, NOT a per-arch TRT engine — "no models" is normal): real header `features\nvvfxvideosuperres\include\nvVFXVideoSuperRes.h` → selector `NVVFX_FX_VIDEO_SUPER_RES "VideoSuperRes"` + param `NVVFX_QUALITY_LEVEL` (NOT `"SuperRes"`/`NVVFX_MODE`/scale-from-dims). A feature's real selector + params + image format live ONLY in its per-feature header (`features\<name>\include\*.h`), installed on demand — never infer them; if the NGC key is the gate, get it up front.
 - **App-relative discovery** (`paths.{h,cpp}` `ShimModuleDir()` via `GetModuleHandleExW(FROM_ADDRESS)`, CWD-independent): both resolvers gain an `<app>\maxine\` tier so a shipped app finds the runtimes beside the exe with no env vars. Single shared co-versioned `maxine\` root (one TRT/CUDA runtime, dispatcher + feature DLLs, `models\vfx` + `models\ar`).
@@ -101,6 +100,10 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
   the app PRI + compiled XAML (`CameraOnScreen.App.pri`, `App.xbf`, `MainWindow.xbf`), so the
   packaged exe dies at launch with `XamlParseException 0x802B000A` at `MainWindow.InitializeComponent`.
   `build -p:SelfContained=true` bundles the .NET runtime *and* keeps the XAML resources.
+
+### FRUC / Optical Flow SDK (separate product; redistribution = OPEN legal gate)
+
+- **FRUC** (frame-rate upscaling, 30→60 fps) uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll`) — a **separate product** from Maxine VFX/AR, not governed by the Maxine license above; build via `COS_FRUC_SDK_DIR`; compiled behind `COS_HAS_FRUC`. Runtime: `COS_FRUC_RUNTIME_DIR` else `<app>\maxine\`. Redistribution of `NvOFFRUC.dll` + `cudart64_110.dll` under the OF SDK EULA is a **pending human legal gate** (see `THIRD-PARTY-NOTICES.md`).
 
 ## CI/CD
 
