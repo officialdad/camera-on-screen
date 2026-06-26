@@ -5,7 +5,7 @@
     #
     # The Dlls list was PRODUCED by running native/shim/smoke/trace_closure against the assembled
     # co-versioned stage on an RTX 3090 (sm86) and enumerating the modules actually loaded from
-    # maxine\ (all three effects Start=1, 22 modules). Re-run the trace and update this list on any
+    # maxine\ (all four effects Start=1, 24 modules). Re-run the trace and update this list on any
     # SDK bump. See docs/superpowers/specs/2026-06-23-camera-on-screen-m5-multigpu-findings.md.
     #
     # VSR (issue #15) added 3 DLLs (static-import closure of nvVFXVideoSuperRes.dll via dumpbin):

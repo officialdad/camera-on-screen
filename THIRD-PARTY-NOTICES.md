@@ -80,6 +80,30 @@ format (® on first NVIDIA reference, ™ on the product mark, no debranding).
 > string via the portal or `maxinesdk-support@nvidia.com`, and update
 > `AppInfo.MaxineAttribution` (single source of truth) if it differs.
 
+## NVIDIA Optical Flow SDK
+
+This product builds against, and at runtime loads, the NVIDIA Optical Flow SDK for its FRUC
+(AI frame-rate upscaling, 30→60 fps) feature:
+
+- **NVIDIA Optical Flow SDK v5.0.7** — `NvOFFRUC.dll` (frame-rate upscaler) and its CUDA 11
+  runtime dependency `cudart64_110.dll`.
+
+> **REDISTRIBUTION NOT YET HUMAN-VERIFIED — LEGAL GATE REQUIRED.**
+> Unlike the Maxine SDKs above (redistribution cleared after human review), the right to
+> redistribute `NvOFFRUC.dll` and `cudart64_110.dll` under the NVIDIA Optical Flow SDK license
+> has **not yet been confirmed by a human reviewer**. These binaries **must not be included in a
+> distributed installer** until this gate is cleared.
+>
+> The SDK license agreement is at:
+> `C:\actions-runner\_sdk\Optical_Flow_SDK_5.0.7\Optical_Flow_SDK_5.0.7\LicenseAgreement.pdf`
+> (also available with the SDK download from the NVIDIA developer site).
+>
+> A reviewer must confirm: (1) whether the EULA permits no-charge binary redistribution of
+> `NvOFFRUC.dll` and `cudart64_110.dll` in a per-user installer; (2) whether any copy-of-agreement,
+> attribution, or branding obligations apply; and (3) whether the CUDA 11 runtime bundled with the
+> OF SDK carries its own redistribution terms. Update this entry and `maxine-manifest.psd1` once
+> cleared (mirroring the Maxine entry structure above).
+
 ## Trademarks
 
 NVIDIA, Maxine, RTX, GeForce, TensorRT, and CUDA are trademarks and/or
