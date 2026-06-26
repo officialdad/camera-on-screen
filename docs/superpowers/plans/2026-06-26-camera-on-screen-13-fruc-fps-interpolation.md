@@ -8,6 +8,18 @@
 
 **Tech Stack:** C++17 shim (Media Foundation + CUDA driver API + NvOFFRUC), C# .NET 8 / WinUI 3 app, xUnit Core tests, PowerShell bundler.
 
+## REVISION 2026-06-26 (post Task-3 gate)
+
+Task 3's smoke proved the original `Interpolate(prev, cur)` "prime-every-call" model is **wrong**: it resets timestamps each call, but `NvOFFRUC` is a **stateful streaming** pipeline on a monotonic timeline, so re-priming triggers frame-repetition (`mid == prev`). **Authoritative API is now streaming feed-once:**
+
+```cpp
+// Feed each frame ONCE; FRUC holds the previous frame internally. Output = midpoint between the
+// PREVIOUS submitted frame and this one. hasMid=false on the first call (no previous frame yet).
+bool Fruc::Submit(const uint8_t* curBgra, int width, int height, std::vector<uint8_t>& outMid, bool& hasMid);
+```
+
+Timestamp convention (verbatim from the SDK sample, `FrameGenerator.cpp`): input ts is monotonic with `interval = 1.0`; output (interpolated) ts = `inputTs - interval*0.5` (midpoint, `DEFAULT_FRUC_SPEED = 0.5`). Ping-pong the two render buffers (`buf[1]`/`buf[2]`) per call so FRUC's previous input stays valid. This **also ~halves latency** (one `Process`/call, not two) and **simplifies Task 5** (the worker no longer keeps `prevComposite` — FRUC owns the history; it just calls `Submit(cur)` and publishes `mid` then `cur`). Tasks 1, 2, 3, 5 below are superseded by this where they say `Interpolate(prev,cur)`.
+
 ## Global Constraints
 
 - **Windows + NVIDIA RTX only.** Without FRUC available the feature greys out; the app must run unchanged (passthrough).
