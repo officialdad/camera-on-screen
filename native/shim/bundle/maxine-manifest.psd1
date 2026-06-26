@@ -20,11 +20,13 @@
     # root) whose validity is proven by bundle_probe / trace_closure (single NVCVImage.dll, both
     # TRT-10.9 effects load). Physical co-version is enforced at assembly time, not by the bundler.
 
-    # Every DLL in the gaze + green-screen load closure (trace_closure, sm86). All live in the
-    # stage root. Dispatcher + per-feature DLLs are explicit (NVVideoEffects/nvARPose are the
+    # Every DLL in the gaze + green-screen + FRUC load closure (trace_closure, sm86). All live in
+    # the stage root. Dispatcher + per-feature DLLs are explicit (NVVideoEffects/nvARPose are the
     # dispatchers; nvVFXGreenScreen + the three nvAR* feature DLLs are loaded by them at runtime).
     # nvARFaceExpressions is intentionally absent (not in the gaze closure; emotion recognition is
     # also disallowed by the AI Product-Specific Terms s8.17).
+    # FRUC (NvOFFRUC) requires CUDA 11 -- cudart64_110.dll is a distinct name from cudart64_12.dll
+    # (CUDA 12) and they coexist in the same process without conflict (different DLL names).
     Dlls = @(
         'cudart64_12.dll'
         'libcrypto-3-x64.dll'
@@ -48,6 +50,8 @@
         'nvARGazeRedirection.dll'   # AR gaze feature
         'nvARFaceBoxDetection.dll'  # AR gaze dep
         'nvARLandmarkDetection.dll' # AR gaze dep
+        'NvOFFRUC.dll'              # FRUC frame-rate upscaler (issue #13)
+        'cudart64_110.dll'          # CUDA 11 runtime required by NvOFFRUC (coexists with cudart64_12.dll)
     )
 
     # Model engines, copied from the stage's models\{vfx,ar}. Broad per-effect globs so the bundle

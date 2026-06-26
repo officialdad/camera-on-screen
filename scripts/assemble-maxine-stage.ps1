@@ -21,10 +21,15 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$OutStage,
-    [string]$VfxSdk = $env:COS_VFX_SDK_DIR,
-    [string]$ArSdk  = $env:COS_AR_SDK_DIR,
+    [string]$VfxSdk  = $env:COS_VFX_SDK_DIR,
+    [string]$ArSdk   = $env:COS_AR_SDK_DIR,
     # Root holding the four per-feature lib packages, each as <root>\<name>\<name>\{bin,license}.
     [Parameter(Mandatory)][string]$ArFeatureLibs,
+    # Optional: Optical Flow SDK root (COS_FRUC_SDK_DIR). Provides NvOFFRUC.dll + cudart64_110.dll
+    # for frame-rate upscaling (issue #13). If unset or path missing, a warning is emitted and the
+    # FRUC DLLs are skipped -- the stage will lack them and bundle-maxine.ps1 will fail if they are
+    # listed in the manifest. Required on the release host; optional for VFX/AR-only dev staging.
+    [string]$FrucSdk = $env:COS_FRUC_SDK_DIR,
     [int[]]$Arches = @(75, 86, 89, 100),
     [switch]$SkipEngineFetch,
     [switch]$DryRun
@@ -62,6 +67,8 @@ if ($DryRun) {
     Write-Host "  nvARPose.dll <- $ArSdk\bin"
     foreach ($f in $arFeatures) { Write-Host "  $($f.dll) <- $(Feature-Dir $f.name)\bin" }
     foreach ($l in $licenses) { Write-Host "  license: $($l.dst) <- $($l.src)" }
+    $frucBin = if ($FrucSdk) { "$FrucSdk\NvOFFRUC\NvOFFRUCSample\bin\win64" } else { '(COS_FRUC_SDK_DIR unset -- FRUC DLLs will be skipped)' }
+    Write-Host "  NvOFFRUC.dll + cudart64_110.dll <- $frucBin"
     Write-Host "  engines: fetch arches $($Arches -join ',') -> models\{vfx,ar}  (SkipEngineFetch=$SkipEngineFetch)"
     return
 }
@@ -86,6 +93,18 @@ Copy-One (Join-Path $VfxSdk 'features\nvvfxvideosuperres\bin\nvngx_vsr.dll') $Ou
 # 3. AR dispatcher + the three gaze feature DLLs (AR-unique only -- shared DLLs already from VFX).
 Copy-One (Join-Path $ArSdk 'bin\nvARPose.dll') $OutStage
 foreach ($f in $arFeatures) { Copy-One (Join-Path (Feature-Dir $f.name) (Join-Path 'bin' $f.dll)) $OutStage }
+# 3b. FRUC frame-rate upscaler DLLs (issue #13). Optional: warn + skip if COS_FRUC_SDK_DIR unset.
+#     NvOFFRUC.dll uses CUDA 11 (cudart64_110.dll), distinct from cudart64_12.dll -- both coexist.
+#     LOAD_WITH_ALTERED_SEARCH_PATH in fruc.cpp resolves cudart64_110.dll beside NvOFFRUC.dll.
+if (-not $FrucSdk) {
+    Write-Warning "COS_FRUC_SDK_DIR not set -- skipping FRUC DLLs (NvOFFRUC.dll, cudart64_110.dll). bundle-maxine.ps1 will fail if they are listed in the manifest."
+} elseif (-not (Test-Path -LiteralPath $FrucSdk)) {
+    Write-Warning "COS_FRUC_SDK_DIR path not found: '$FrucSdk' -- skipping FRUC DLLs. bundle-maxine.ps1 will fail if they are listed in the manifest."
+} else {
+    $frucBin = Join-Path $FrucSdk 'NvOFFRUC\NvOFFRUCSample\bin\win64'
+    Copy-One (Join-Path $frucBin 'NvOFFRUC.dll')      $OutStage
+    Copy-One (Join-Path $frucBin 'cudart64_110.dll')   $OutStage
+}
 # 4. License notices.
 foreach ($l in $licenses) { Copy-One $l.src (Join-Path $OutStage $l.dst) }
 # 5. Multi-arch engines (NGC). Skip if already staged (e.g. air-gapped runner pre-seeded).
