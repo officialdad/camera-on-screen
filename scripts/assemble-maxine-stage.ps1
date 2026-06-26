@@ -97,9 +97,9 @@ foreach ($f in $arFeatures) { Copy-One (Join-Path (Feature-Dir $f.name) (Join-Pa
 #     NvOFFRUC.dll uses CUDA 11 (cudart64_110.dll), distinct from cudart64_12.dll -- both coexist.
 #     LOAD_WITH_ALTERED_SEARCH_PATH in fruc.cpp resolves cudart64_110.dll beside NvOFFRUC.dll.
 if (-not $FrucSdk) {
-    Write-Warning "COS_FRUC_SDK_DIR not set -- skipping FRUC DLLs (NvOFFRUC.dll, cudart64_110.dll). bundle-maxine.ps1 will fail if they are listed in the manifest."
+    Write-Warning "COS_FRUC_SDK_DIR not set -- skipping FRUC DLLs (NvOFFRUC.dll, cudart64_110.dll). Bundle proceeds without them (OptionalDlls in manifest); FRUC will be unavailable in the shipped app."
 } elseif (-not (Test-Path -LiteralPath $FrucSdk)) {
-    Write-Warning "COS_FRUC_SDK_DIR path not found: '$FrucSdk' -- skipping FRUC DLLs. bundle-maxine.ps1 will fail if they are listed in the manifest."
+    Write-Warning "COS_FRUC_SDK_DIR path not found: '$FrucSdk' -- skipping FRUC DLLs. Bundle proceeds without them (OptionalDlls in manifest); FRUC will be unavailable in the shipped app."
 } else {
     $frucBin = Join-Path $FrucSdk 'NvOFFRUC\NvOFFRUCSample\bin\win64'
     Copy-One (Join-Path $frucBin 'NvOFFRUC.dll')      $OutStage

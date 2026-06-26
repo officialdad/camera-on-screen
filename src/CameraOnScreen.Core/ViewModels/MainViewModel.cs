@@ -107,6 +107,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SuperResQualityIndex = Math.Clamp(config.Effects.SuperResQuality, 0, 3);
         ExposureLock = config.Effects.ExposureLock;
         ExposureValue = Math.Clamp(config.Effects.ExposureValue, 0.0, 1.0);
+        FrameInterpEnabled = config.Effects.FrameInterpEnabled;
         Locked = config.Overlay.Locked;
         ClickThrough = config.Overlay.ClickThrough;
         Mirror = config.Overlay.Mirror;
@@ -138,6 +139,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SuperResQuality = SuperResQualityIndex,
             ExposureLock = ExposureLock,
             ExposureValue = ExposureValue,
+            FrameInterpEnabled = FrameInterpEnabled,
         },
         Hotkeys = _hotkeys
     };

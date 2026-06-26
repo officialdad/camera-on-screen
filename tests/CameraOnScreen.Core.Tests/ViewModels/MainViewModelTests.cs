@@ -368,6 +368,23 @@ public class MainViewModelTests
         Assert.False(fake.LastParams!.FrameInterpEnabled); // ApplyParams forces off
     }
 
+    [Fact]
+    public void FrameInterp_config_round_trips_through_config()
+    {
+        // #13: FrameInterpEnabled must survive ToAppConfig → LoadFrom (same as SuperResEnabled).
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim)
+        {
+            FrameInterpEnabled = true
+        };
+        var cfg = vm.ToAppConfig(0, 0, 320, 240);
+        Assert.True(cfg.Effects.FrameInterpEnabled);
+
+        var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm2.LoadFrom(cfg);
+        Assert.True(vm2.FrameInterpEnabled);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
