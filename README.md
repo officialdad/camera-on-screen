@@ -90,6 +90,18 @@ The two SDKs each pin an exact CUDA + TensorRT runtime and **cannot mix** in one
 process. Use a co-versioned pair - verified: **VFX 1.2.0.0 + AR 1.1.1.0** (shared
 TensorRT 10.9 / CUDA 12.x).
 
+## NVIDIA Optical Flow SDK
+
+AI Interpolation uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll`) to synthesize
+a temporal mid-frame between each real camera frame, doubling the overlay frame rate
+from 30 to 60 fps. This is a **separate product** from Maxine, governed by the
+**NVIDIA DesignWorks SDK License** - not bundled in the repository, point the build
+at it via `COS_FRUC_SDK_DIR`. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+
+FRUC uses CUDA 11 (`cudart64_110.dll`) - a distinct runtime from Maxine's CUDA 12 -
+so both stacks coexist in one process without conflict. Verified on RTX 3090.
+Requires driver ≥ 528.24; the CUDA 11 runtime is bundled (no separate install).
+
 ## Build
 
 Prerequisites: .NET 8 SDK, VS2022 Build Tools + MSVC v143. The native shim must
@@ -97,8 +109,9 @@ be built **before** the App.
 
 ```powershell
 # 1. Native shim (PowerShell - Bash mangles MSBuild /p: switches).
-$env:COS_VFX_SDK_DIR = "<path-to-VideoFX-SDK>"
-$env:COS_AR_SDK_DIR  = "<path-to-Maxine-AR-SDK-clone>"
+$env:COS_VFX_SDK_DIR  = "<path-to-VideoFX-SDK>"
+$env:COS_AR_SDK_DIR   = "<path-to-Maxine-AR-SDK-clone>"
+$env:COS_FRUC_SDK_DIR = "<path-to-Optical-Flow-SDK>"   # optional; omit for passthrough stub
 & "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" `
   native/shim/shim.vcxproj /p:Configuration=Release /p:Platform=x64
 
