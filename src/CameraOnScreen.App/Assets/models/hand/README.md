@@ -55,10 +55,11 @@ Evidence URLs:
   — confirmed via `curl.exe -sI` at **804,684,102 bytes (~767 MiB)**, bundling
   every resolution/precision/framework variant in the folder. Downloading
   ~767 MiB to extract two ONNX files under ~15 MB total is impractical.
-- Per the task brief's explicit allowance ("If PINTO zoo files are hosted via
-  download scripts/Google Drive and direct download proves impractical,
-  other acceptable Apache-2.0/MIT ONNX conversion sources are fine"), moved
-  to the next source.
+- The plan's named fallback therefore ships these models only inside a
+  ~767 MiB monolithic tarball for ~15 MB of needed files; per controller
+  guidance during implementation, an alternative Apache-2.0/MIT MediaPipe
+  ONNX conversion source was acceptable, so the same-author (PINTO0309)
+  Apache-2.0 repo below was chosen.
 
 ### Chosen source — accepted
 
@@ -129,7 +130,7 @@ row as `pd_score, box_x, box_y, box_size, kp0_x, kp0_y, kp2_x, kp2_y = box`):
 | Col | Field | Meaning |
 |-----|-------|---------|
 | 0 | `pd_score` | palm detection confidence score |
-| 1 | `box_x` | box center X, **normalized 0..1** relative to the padded square input (`sqn_*` = "square-normalized" in the source's own variable naming) |
+| 1 | `box_x` | box center X, **normalized 0..1** relative to the padded square input (the source's `__postprocess` derives `sqn_*`-prefixed values from these fields, a prefix we read as "square-normalized" — inference from naming, not a documented definition) |
 | 2 | `box_y` | box center Y, normalized 0..1, same convention |
 | 3 | `box_size` | box side length, normalized 0..1 (fraction of the square input side) |
 | 4 | `kp0_x`, 5 `kp0_y` | keypoint 0 (x,y), normalized 0..1 |
@@ -154,9 +155,9 @@ score-threshold filter (source default `0.60`) is the only postprocessing
 left to the caller.
 
 Reference only (raw-anchor layer config, **not applicable to this export**,
-recorded per the task brief in case a raw-anchor variant is substituted
-later): 2016 raw anchors ↔ 192 input, SSD layers `[(8,2),(16,2),(16,2),(16,2)]`;
-2944 raw anchors ↔ 256 input, SSD layers `[(8,2),(16,2),(32,2),(32,2),(32,2)]`.
+recorded in case a raw-anchor variant is substituted later): 2016 raw
+anchors ↔ 192 input, SSD layers `[(8,2),(16,2),(16,2),(16,2)]`; 2944 raw
+anchors ↔ 256 input, SSD layers `[(8,2),(16,2),(32,2),(32,2),(32,2)]`.
 
 ## Model 2: `hand_landmark.onnx`
 
