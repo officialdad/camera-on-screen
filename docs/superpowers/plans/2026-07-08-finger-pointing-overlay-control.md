@@ -337,15 +337,17 @@ public static class HandPoseClassifier
     {
         if (palmScore < PalmScoreMin || presenceScore < PresenceMin) return HandPose.NoHand;
 
-        float D(int i)
+        // Static local taking the spans as parameters — a non-static local capturing a
+        // ReadOnlySpan is CS9108 (ref-like types cannot be captured).
+        static float D(ReadOnlySpan<float> xs, ReadOnlySpan<float> ys, int i)
         {
             float dx = xs[i] - xs[0], dy = ys[i] - ys[0];
             return MathF.Sqrt(dx * dx + dy * dy);
         }
-        bool indexExtended = D(8) > D(6) * ExtendMargin;
-        bool middleCurled = D(12) <= D(10) * ExtendMargin;
-        bool ringCurled = D(16) <= D(14) * ExtendMargin;
-        bool pinkyCurled = D(20) <= D(18) * ExtendMargin;
+        bool indexExtended = D(xs, ys, 8) > D(xs, ys, 6) * ExtendMargin;
+        bool middleCurled = D(xs, ys, 12) <= D(xs, ys, 10) * ExtendMargin;
+        bool ringCurled = D(xs, ys, 16) <= D(xs, ys, 14) * ExtendMargin;
+        bool pinkyCurled = D(xs, ys, 20) <= D(xs, ys, 18) * ExtendMargin;
         return indexExtended && middleCurled && ringCurled && pinkyCurled
             ? HandPose.Pointing : HandPose.Other;
     }
