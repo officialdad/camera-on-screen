@@ -52,6 +52,11 @@ public sealed class FingerNudgeTracker
             : new NudgeResult(_emaDx, _emaDy, true);
     }
 
+    /// <summary>Force the tracker back to the disarmed, un-smoothed baseline (e.g. on Stop/Start of
+    /// the inference loop) — a fresh ArmFrames streak of Pointing is required to re-arm, and the
+    /// first armed frame after that yields a zero delta (no stale-EMA teleport).</summary>
+    public void Reset() => Disarm();
+
     private void Disarm()
     {
         _armed = false;

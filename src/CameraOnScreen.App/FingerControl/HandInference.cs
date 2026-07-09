@@ -1,13 +1,16 @@
 using CameraOnScreen.App.Overlay;
 using CameraOnScreen.Core.FingerControl;
-using CameraOnScreen.Core.Native;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace CameraOnScreen.App.FingerControl;
 
 /// <summary>Runs MediaPipe palm-detection + hand-landmark ONNX (CPU) on its own thread at ~15 Hz,
-/// classifies the pointing pose, and emits smoothed nudge deltas. Never touches UI or D3D.</summary>
+/// classifies the pointing pose, and emits smoothed nudge deltas. Never touches UI or D3D.
+/// <c>cos_get_frame</c> is consume-on-read (native clears its "new frame" flag on every read), so
+/// this class must NOT call the shim itself — the UI frame pump is the sole shim consumer and
+/// republishes each presented frame here via <see cref="PublishFrame"/>; a versioned shared slot
+/// decouples the pump's ~30/60 Hz cadence from this loop's ~15 Hz cadence.</summary>
 public sealed class HandInference : IDisposable
 {
     // ==== constants from the RECORDED MODEL CONTRACT (Assets/models/hand/README.md) — do not guess ====
@@ -24,23 +27,36 @@ public sealed class HandInference : IDisposable
     private const string LmPresenceOut = "hand_score"; // [N,1] — see the comment at its use site below
     // ======================================================================================================
 
-    private readonly INativeShim _shim;
     private readonly InferenceSession _palm, _landmark;
     // Owned exclusively by the inference thread's RunLoop; sized to match the UI-thread frame buffer
-    // convention (4K BGRA) so cos_get_frame never rejects it as too small.
+    // convention (4K BGRA) so a published frame never overflows it.
     private readonly byte[] _frame = new byte[3840 * 2160 * 4];
     public FingerNudgeTracker Tracker { get; } = new();
     /// <summary>Raised on the inference thread, once per processed frame.</summary>
     public event Action<NudgeResult>? Nudge;
+    /// <summary>Raised on the inference thread when the loop dies from an unhandled exception
+    /// (spec §7: surface it, don't fail silently). Handlers must enqueue onto the UI thread and
+    /// must NOT call Stop/Dispose re-entrantly from this thread.</summary>
+    public event Action<string>? Failed;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
-    private HandInference(INativeShim shim, InferenceSession palm, InferenceSession landmark)
+    // Shared frame tap fed by the UI pump (the sole shim consumer — cos_get_frame is
+    // consume-on-read, so a second reader here would steal frames from the pump and judder the
+    // overlay). PublishFrame() writes; RunLoop reads the newest version each tick.
+    private readonly byte[] _shared = new byte[3840 * 2160 * 4];
+    private readonly object _sharedLock = new();
+    private int _sharedW, _sharedH;
+    private long _sharedVersion;
+    private long _seenVersion;
+    private volatile bool _running;
+
+    private HandInference(InferenceSession palm, InferenceSession landmark)
     {
-        _shim = shim; _palm = palm; _landmark = landmark;
+        _palm = palm; _landmark = landmark;
     }
 
-    public static HandInference? TryCreate(INativeShim shim, out string detail)
+    public static HandInference? TryCreate(out string detail)
     {
         var dir = Path.Combine(AppContext.BaseDirectory, "models", "hand");
         var palmPath = Path.Combine(dir, "palm_detection.onnx");
@@ -56,7 +72,7 @@ public sealed class HandInference : IDisposable
             palm = new InferenceSession(palmPath);
             var landmark = new InferenceSession(lmPath);
             detail = "";
-            return new HandInference(shim, palm, landmark);
+            return new HandInference(palm, landmark);
         }
         catch (Exception ex)
         {
@@ -68,20 +84,38 @@ public sealed class HandInference : IDisposable
         }
     }
 
+    /// <summary>Called from the UI frame pump after it presents each frame. No-op unless the
+    /// inference loop is running. Copies into the shared slot under a short lock — never blocks on
+    /// inference (that runs later, on the inference thread, outside this lock).</summary>
+    public void PublishFrame(byte[] bgra, int w, int h)
+    {
+        if (!_running) return;
+        int len = w * h * 4;
+        lock (_sharedLock)
+        {
+            Array.Copy(bgra, _shared, len);
+            _sharedW = w; _sharedH = h;
+            _sharedVersion++;
+        }
+    }
+
     public void Start()
     {
         if (_loop is not null) return;
+        _running = true;
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => RunLoop(_cts.Token));
     }
 
     public void Stop()
     {
+        _running = false;
         _cts?.Cancel();
         try { _loop?.Wait(); } catch (AggregateException) { /* cancellation */ }
         _loop = null;
         _cts?.Dispose();
         _cts = null;
+        Tracker.Reset();
     }
 
     private async Task RunLoop(CancellationToken ct)
@@ -91,16 +125,27 @@ public sealed class HandInference : IDisposable
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
-                if (!_shim.TryGetFrame(_frame, out int w, out int h) || w <= 0) continue;
+                int w, h;
+                lock (_sharedLock)
+                {
+                    if (_sharedVersion == _seenVersion) continue; // no new frame published since last tick
+                    w = _sharedW; h = _sharedH;
+                    Array.Copy(_shared, _frame, w * h * 4);
+                    _seenVersion = _sharedVersion;
+                }
+                if (w <= 0) continue;
                 var result = ProcessFrame(w, h);
                 Nudge?.Invoke(result);
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Fail-safe: report a permanent NoHand -> tracker disarms; feature goes quiet, app lives.
-            Nudge?.Invoke(Tracker.Update(HandPose.NoHand, 0, 0, 1, 1));
+            // The loop is dead: reset tracker state and surface the failure so the UI can grey the
+            // toggle with a reason (spec §7) instead of silently going quiet.
+            Tracker.Reset();
+            System.Diagnostics.Debug.WriteLine($"[FingerControl] inference loop died: {ex}");
+            Failed?.Invoke(ex.Message);
         }
     }
 

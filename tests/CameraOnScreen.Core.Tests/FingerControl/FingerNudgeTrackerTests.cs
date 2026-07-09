@@ -100,4 +100,35 @@ public class FingerNudgeTrackerTests
         Assert.Equal(0, last.DxPx);
         Assert.Equal(0, last.DyPx);
     }
+
+    [Fact] public void ResetDisarmsAndRequiresFreshArmingStreak()
+    {
+        var t = Armed(out var armedResult);
+        Assert.True(armedResult.Armed);
+
+        t.Reset();
+
+        // Immediately after Reset, the tracker reports disarmed and a single Pointing frame is not
+        // enough to re-arm (the arming streak was cleared, not just the armed flag).
+        Assert.False(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
+        Assert.False(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
+        Assert.True(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
+    }
+
+    [Fact] public void ResetThenRearmAtNewPositionDoesNotJump()
+    {
+        var t = Armed(out _);
+        // Move while armed so the tracker accumulates EMA state that must not leak past Reset.
+        t.Update(HandPose.Pointing, 0.6f, 0.6f, W, H);
+
+        t.Reset();
+
+        // Re-arm at a totally different tip position: the first armed frame after Reset must be a
+        // zero delta (no teleport from stale EMA/prevX/prevY state).
+        NudgeResult last = default;
+        for (int i = 0; i < 3; i++) last = t.Update(HandPose.Pointing, 0.9f, 0.1f, W, H);
+        Assert.True(last.Armed);
+        Assert.Equal(0, last.DxPx);
+        Assert.Equal(0, last.DyPx);
+    }
 }
