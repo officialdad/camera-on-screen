@@ -2,9 +2,11 @@ namespace CameraOnScreen.Core.FingerControl;
 
 public readonly record struct NudgeResult(double DxPx, double DyPx, bool Armed);
 
-/// <summary>Air-trackpad state machine: ☝ held for ArmFrames arms; fingertip deltas (EMA-smoothed,
-/// deadzoned, gain-scaled) drive the overlay; pose lost for DisarmFrames disarms. Pure logic —
-/// the caller owns threading, clamping, and drag suppression.</summary>
+/// <summary>Air-trackpad state machine: ✊ held for ArmFrames arms; tracked-point deltas
+/// (EMA-smoothed, deadzoned, gain-scaled) drive the overlay while armed; an open hand held for
+/// DisarmFrames releases. ☝ pointing is inert — it never arms and interrupts an arming streak like
+/// any other non-Fist pose. Pure logic — the caller owns threading, clamping, and drag
+/// suppression.</summary>
 public sealed class FingerNudgeTracker
 {
     public const int ArmFrames = 3;
@@ -23,7 +25,7 @@ public sealed class FingerNudgeTracker
 
     public NudgeResult Update(HandPose pose, float tipX, float tipY, double screenWpx, double screenHpx)
     {
-        if (pose != HandPose.Pointing)
+        if (pose != HandPose.Fist)
         {
             _pointingStreak = 0;
             if (_armed && ++_lostStreak >= DisarmFrames) Disarm();

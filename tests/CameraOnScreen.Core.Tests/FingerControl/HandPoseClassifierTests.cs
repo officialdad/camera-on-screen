@@ -35,9 +35,15 @@ public class HandPoseClassifierTests
         Assert.Equal(HandPose.Other, HandPoseClassifier.Classify(xs, ys, 0.9f, 0.9f));
     }
 
-    [Fact] public void Fist_IsOther()
+    [Fact] public void Fist_IsFist()
     {
         var (xs, ys) = Hand(indexExtended: false, othersExtended: false);
+        Assert.Equal(HandPose.Fist, HandPoseClassifier.Classify(xs, ys, 0.9f, 0.9f));
+    }
+
+    [Fact] public void CurledIndexWithExtendedOthers_IsOther()
+    {
+        var (xs, ys) = Hand(indexExtended: false, othersExtended: true);
         Assert.Equal(HandPose.Other, HandPoseClassifier.Classify(xs, ys, 0.9f, 0.9f));
     }
 

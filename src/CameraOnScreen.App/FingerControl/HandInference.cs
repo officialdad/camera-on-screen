@@ -190,7 +190,9 @@ public sealed class HandInference : IDisposable
             ys[i] = (cropY + pts[i * 3 + 1] / LandmarkInput * cropSide) / h;
         }
         var pose = HandPoseClassifier.Classify(xs, ys, 1.0f /* palm gate already applied via DecodeBest */, presence);
-        return Tracker.Update(pose, xs[HandPoseClassifier.IndexTip], ys[HandPoseClassifier.IndexTip],
+        // Track the palm center (middle-finger MCP), not the index tip: the tip is buried inside a
+        // fist while grabbing, so it's not a stable point to diff frame-to-frame.
+        return Tracker.Update(pose, xs[HandPoseClassifier.PalmCenter], ys[HandPoseClassifier.PalmCenter],
             ScreenW, ScreenH);
     }
 

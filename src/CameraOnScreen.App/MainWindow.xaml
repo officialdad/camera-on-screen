@@ -93,10 +93,10 @@
                             <ToggleSwitch Header="Smooth 60 fps (AI)"
                                           IsEnabled="{x:Bind Vm.FrameInterpAvailable, Mode=OneWay}"
                                           IsOn="{x:Bind Vm.FrameInterpEnabled, Mode=TwoWay}"/>
-                            <ToggleSwitch Header="Finger control (point ☝ to move overlay)"
+                            <ToggleSwitch Header="Hand grab (fist ✊ to move overlay)"
                                           IsEnabled="{x:Bind Vm.FingerControlAvailable, Mode=OneWay}"
                                           IsOn="{x:Bind Vm.FingerControlEnabled, Mode=TwoWay}"/>
-                            <Slider Header="Finger sensitivity" Minimum="0.5" Maximum="3" StepFrequency="0.1"
+                            <Slider Header="Grab sensitivity" Minimum="0.5" Maximum="3" StepFrequency="0.1"
                                     IsEnabled="{x:Bind Vm.FingerControlEnabled, Mode=OneWay}"
                                     Value="{x:Bind Vm.FingerControlSensitivity, Mode=TwoWay}"/>
                             <TextBlock Text="{x:Bind Vm.FingerControlDetail, Mode=OneWay}"

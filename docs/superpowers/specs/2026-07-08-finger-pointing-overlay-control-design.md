@@ -16,6 +16,7 @@
 >    (`[N,8]` boxes baked into the graph); `PalmDecoder` is a plain argmax. Landmark presence
 >    score is used raw (source thresholds it directly, no sigmoid). Ground truth:
 >    `src/CameraOnScreen.App/Assets/models/hand/README.md`.
+> 4. **Gesture pivot (2026-07-09, human-gate feedback): ✊ fist-grab replaces ☝ pointing as the move gesture.** Fist = grab, hand movement = drag, open hand = drop; tracked point = landmark 9 (middle-finger MCP). Pointing is still classified but deliberately inert so presenters can point at screen content. Same arm/disarm hysteresis, EMA, deadzone, gain.
 > §7's "disable the feature, set the note" is implemented via a `Failed` event →
 > `FingerControlAvailable=false` + detail note; `Tracker.Reset()` on Stop guarantees clean
 > re-arm across camera stop/start.
