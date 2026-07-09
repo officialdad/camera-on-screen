@@ -13,7 +13,7 @@ public class FingerNudgeTrackerTests
         return t;
     }
 
-    [Fact] public void ArmsAfterThreeConsecutivePointingFrames()
+    [Fact] public void ArmsAfterThreeConsecutiveFistFrames()
     {
         var t = new FingerNudgeTracker();
         Assert.False(t.Update(HandPose.Fist, 0.5f, 0.5f, W, H).Armed);
@@ -35,6 +35,16 @@ public class FingerNudgeTrackerTests
         var t = new FingerNudgeTracker();
         for (int i = 0; i < 10; i++)
             Assert.False(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
+    }
+
+    // Pointing while ARMED must count as a lost frame like any non-Fist pose — the presenter
+    // switching from grab to pointing-at-content releases the overlay after the usual hysteresis.
+    [Fact] public void PointingWhileArmedCountsAsLost_DisarmsOnFifth()
+    {
+        var t = Armed(out _);
+        for (int i = 0; i < 4; i++)
+            Assert.True(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
+        Assert.False(t.Update(HandPose.Pointing, 0.5f, 0.5f, W, H).Armed);
     }
 
     [Fact] public void ArmingFrameProducesZeroDelta()

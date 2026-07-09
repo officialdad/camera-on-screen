@@ -1,7 +1,8 @@
 # Camera-on-Screen — Design Spec: Finger-Pointing Overlay Control
 
-> **⚠️ AMENDED 2026-07-09 (implemented on `feat/finger-control`).** Three §4 details below are
-> **superseded** by what implementation + the final whole-branch review established:
+> **⚠️ AMENDED 2026-07-09 (implemented on `feat/finger-control`).** Details below are
+> **superseded** by what implementation, the final whole-branch review, and human-gate
+> feedback established:
 > 1. **HandInference does NOT pull frames from the shim.** `cos_get_frame` is consume-on-read
 >    (each frame is delivered to exactly ONE caller), so a second consumer steals frames from the
 >    present pump → overlay judder. The UI frame pump is the **sole** shim consumer and republishes

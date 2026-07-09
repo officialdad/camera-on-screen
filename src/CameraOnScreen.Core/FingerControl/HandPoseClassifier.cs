@@ -10,7 +10,6 @@ public static class HandPoseClassifier
 {
     public const float PalmScoreMin = 0.7f;
     public const float PresenceMin = 0.6f;
-    public const int IndexTip = 8;
     public const int PalmCenter = 9;  // middle-finger MCP — stable palm-center proxy, the tracked point while grabbing (index tip is buried in a fist)
     private const float ExtendMargin = 1.15f; // tip must beat PIP distance by 15% to count extended
 
