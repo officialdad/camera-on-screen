@@ -1,7 +1,27 @@
 # Camera-on-Screen — Design Spec: Finger-Pointing Overlay Control
 
+> **⚠️ AMENDED 2026-07-09 (implemented on `feat/finger-control`).** Three §4 details below are
+> **superseded** by what implementation + the final whole-branch review established:
+> 1. **HandInference does NOT pull frames from the shim.** `cos_get_frame` is consume-on-read
+>    (each frame is delivered to exactly ONE caller), so a second consumer steals frames from the
+>    present pump → overlay judder. The UI frame pump is the **sole** shim consumer and republishes
+>    each frame into `HandInference.PublishFrame` (lock-guarded latest-frame slot + version
+>    counter; the inference loop copies out then releases before running ONNX). The "§4
+>    `TryGetFrame` is thread-safe by design" line conflated thread-safety with multi-consumer
+>    correctness — do not add a second `TryGetFrame` caller, ever.
+> 2. **Clamp is the current monitor's work area (≥48 px of overlay kept visible), not the virtual
+>    screen** — deliberate v1 simplification (`ponytail:` comment in `OnFingerNudge`); finger
+>    control does not cross monitors.
+> 3. **Palm detection needed no anchor decode** — the vendored export is post-processed
+>    (`[N,8]` boxes baked into the graph); `PalmDecoder` is a plain argmax. Landmark presence
+>    score is used raw (source thresholds it directly, no sigmoid). Ground truth:
+>    `src/CameraOnScreen.App/Assets/models/hand/README.md`.
+> §7's "disable the feature, set the note" is implemented via a `Failed` event →
+> `FingerControlAvailable=false` + detail note; `Tracker.Reset()` on Stop guarantees clean
+> re-arm across camera stop/start.
+
 **Date:** 2026-07-08
-**Status:** Approved (brainstorm 2026-07-08); defaults chosen by maintainer ("proceed with sensible defaults")
+**Status:** Approved (brainstorm 2026-07-08); defaults chosen by maintainer ("proceed with sensible defaults"); amended 2026-07-09 — see banner
 **Depends on:** existing frame pump + `cos_get_frame` (thread-safe), overlay `SetBounds` path,
 MVVM live-param pattern. **No shim changes. No Maxine/NVIDIA dependency.**
 **Parent spec:** `docs/superpowers/specs/2026-06-20-camera-on-screen-design.md`.
