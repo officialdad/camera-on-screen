@@ -142,7 +142,9 @@ public sealed class HandInference : IDisposable
         catch (Exception ex)
         {
             // The loop is dead: reset tracker state and surface the failure so the UI can grey the
-            // toggle with a reason (spec §7) instead of silently going quiet.
+            // toggle with a reason (spec §7) instead of silently going quiet. _running = false stops
+            // the pump from copying frames into the slot for a loop that will never read them.
+            _running = false;
             Tracker.Reset();
             System.Diagnostics.Debug.WriteLine($"[FingerControl] inference loop died: {ex}");
             Failed?.Invoke(ex.Message);

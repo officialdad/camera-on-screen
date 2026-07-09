@@ -270,7 +270,9 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (_handInference is null) return;
         _handInference.Tracker.Gain = Vm.FingerControlSensitivity;
-        if (Vm.IsRunning && Vm.FingerControlEnabled)
+        // FingerControlAvailable gates restarts too: after a Failed (loop death) the toggle greys
+        // but stays on, and a camera stop/start must not resurrect the dead loop.
+        if (Vm.IsRunning && Vm.FingerControlEnabled && Vm.FingerControlAvailable)
         {
             _handInference.Start();
         }
