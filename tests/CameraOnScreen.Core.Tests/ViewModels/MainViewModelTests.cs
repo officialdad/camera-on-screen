@@ -367,6 +367,35 @@ public class MainViewModelTests
         Assert.True(vm2.FrameInterpEnabled);
     }
 
+    // --- FingerControl (Task 5) ---
+
+    [Fact]
+    public void FingerControl_RoundTrips_Through_Config()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.FingerControlEnabled = true;
+        vm.FingerControlSensitivity = 2.5;
+        var cfg = vm.ToAppConfig(0, 0, 100, 100);
+        Assert.True(cfg.Effects.FingerControlEnabled);
+        Assert.Equal(2.5, cfg.Effects.FingerControlSensitivity);
+
+        var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm2.LoadFrom(cfg);
+        Assert.True(vm2.FingerControlEnabled);
+        Assert.Equal(2.5, vm2.FingerControlSensitivity);
+    }
+
+    [Fact]
+    public void FingerControl_Defaults_OffAndGain15()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        Assert.False(vm.FingerControlEnabled);
+        Assert.Equal(1.5, vm.FingerControlSensitivity);
+        Assert.False(vm.FingerControlAvailable);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
