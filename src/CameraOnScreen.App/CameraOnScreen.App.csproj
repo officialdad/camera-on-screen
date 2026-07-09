@@ -22,6 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260529003" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -35,6 +36,14 @@
     <!-- Native shim DLL built separately by native/shim/shim.vcxproj (Build Tools MSBuild). -->
     <None Include="..\..\native\shim\x64\$(Configuration)\CameraOnScreen.Shim.dll">
       <Link>CameraOnScreen.Shim.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MediaPipe hand models (Apache-2.0, see Assets/models/hand/README.md) -> <out>\models\hand\ -->
+    <None Include="Assets\models\hand\*.onnx;Assets\models\hand\LICENSE.txt">
+      <Link>models\hand\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
