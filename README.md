@@ -46,6 +46,7 @@ Uninstall from **Settings → Apps** as usual. Your preferences are kept at
 ## Using it
 
 - **Move it** - drag the centre **+** handle.
+- **Finger control** — point ☝ at the camera and nudge your finger to move the overlay; hold still to stop, relax your hand to release. Runs on-device (CPU, MediaPipe hand models); works on any GPU.
 - **Resize it** - scroll the mouse wheel over the overlay.
 - **Mirror / zoom** - toggle in the control panel.
 - **AI Green Screen** - removes your background with adjustable edge expand /
