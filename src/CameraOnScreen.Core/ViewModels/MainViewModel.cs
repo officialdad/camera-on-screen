@@ -67,6 +67,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int superResModeIndex;      // 0=Off, 1=Denoise, 2=Deblur
     [ObservableProperty] private int superResQualityIndex;   // 0=Low, 1=Med, 2=High, 3=Ultra
     [ObservableProperty] private bool frameInterpEnabled;
+    [ObservableProperty] private bool fingerControlEnabled;
+    [ObservableProperty] private double fingerControlSensitivity = 1.5;
+    [ObservableProperty] private bool fingerControlAvailable;    // set by the App after ORT init
+    [ObservableProperty] private string fingerControlDetail = "Checking finger-control availability…";
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
     [ObservableProperty] private bool eyeContactAvailable;
@@ -105,6 +109,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ExposureLock = config.Effects.ExposureLock;
         ExposureValue = Math.Clamp(config.Effects.ExposureValue, 0.0, 1.0);
         FrameInterpEnabled = config.Effects.FrameInterpEnabled;
+        FingerControlEnabled = config.Effects.FingerControlEnabled;
+        FingerControlSensitivity = Math.Clamp(config.Effects.FingerControlSensitivity, 0.5, 3.0);
         Mirror = config.Overlay.Mirror;
         _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
@@ -135,6 +141,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ExposureLock = ExposureLock,
             ExposureValue = ExposureValue,
             FrameInterpEnabled = FrameInterpEnabled,
+            FingerControlEnabled = FingerControlEnabled,
+            FingerControlSensitivity = FingerControlSensitivity,
         },
         Hotkeys = _hotkeys
     };

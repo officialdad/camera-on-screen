@@ -34,6 +34,8 @@ public sealed record EffectSettings
     public bool ExposureLock { get; init; }       // #16: lock camera exposure (steady fps), off by default
     public double ExposureValue { get; init; } = 0.5; // 0..1 normalized exposure when locked
     public bool FrameInterpEnabled { get; init; }     // #13: FRUC frame-rate upscaling
+    public bool FingerControlEnabled { get; init; }               // point ☝ to nudge the overlay
+    public double FingerControlSensitivity { get; init; } = 1.5;  // nudge gain, 0.5..3.0
 }
 
 public sealed record HotkeyBinding
