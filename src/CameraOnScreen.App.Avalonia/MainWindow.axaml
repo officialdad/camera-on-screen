@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="240"
+        x:Class="CameraOnScreen.App.Avalonia.MainWindow"
+        Width="420" Height="240"
+        Title="Camera-on-Screen (Avalonia)">
+    <!-- Phase 0 Track A: proves the Core MainViewModel binds unchanged under Avalonia. -->
+    <StackPanel Margin="24" Spacing="12">
+        <TextBlock Text="Cross-platform control panel — reuse smoke test"
+                   FontWeight="SemiBold" />
+        <ToggleSwitch Content="Green screen"
+                      IsChecked="{Binding GreenScreenEnabled}" />
+        <TextBlock Text="{Binding GreenScreenEnabled, StringFormat='GreenScreenEnabled = {0}'}" />
+        <TextBlock Text="{Binding CapabilityDetail}" Foreground="Gray" />
+    </StackPanel>
+</Window>
