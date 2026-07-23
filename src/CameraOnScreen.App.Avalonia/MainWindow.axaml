@@ -2,17 +2,161 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="240"
+        xmlns:conv="using:CameraOnScreen.App.Avalonia"
+        xmlns:core="using:CameraOnScreen.Core"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="720"
         x:Class="CameraOnScreen.App.Avalonia.MainWindow"
-        Width="420" Height="240"
-        Title="Camera-on-Screen (Avalonia)">
-    <!-- Phase 0 Track A: proves the Core MainViewModel binds unchanged under Avalonia. -->
-    <StackPanel Margin="24" Spacing="12">
-        <TextBlock Text="Cross-platform control panel — reuse smoke test"
-                   FontWeight="SemiBold" />
-        <ToggleSwitch Content="Green screen"
-                      IsChecked="{Binding GreenScreenEnabled}" />
-        <TextBlock Text="{Binding GreenScreenEnabled, StringFormat='GreenScreenEnabled = {0}'}" />
-        <TextBlock Text="{Binding CapabilityDetail}" Foreground="Gray" />
-    </StackPanel>
+        Width="440" Height="720"
+        Title="Camera On Screen">
+
+    <!-- Phase 1: control-panel parity with the WinUI MainWindow.xaml, bound to the reused
+         Core MainViewModel. Overlay / hooks / hotkeys / frame pump are Phase 2+ (native, per-OS). -->
+
+    <Window.Resources>
+        <conv:StatusLineConverter x:Key="StatusLine" />
+        <conv:AllTrueConverter x:Key="AllTrue" />
+        <conv:QualityEnabledConverter x:Key="QualityEnabled" />
+        <!-- ponytail: theme-neutral card + caution brushes instead of guessing Fluent resource keys;
+             swap for DynamicResource theme brushes if exact WinUI card styling is wanted later. -->
+        <SolidColorBrush x:Key="CardBg" Color="#0A808080" />
+        <SolidColorBrush x:Key="CardStroke" Color="#33808080" />
+        <SolidColorBrush x:Key="Caution" Color="#E0A000" />
+    </Window.Resources>
+
+    <Grid RowDefinitions="*,Auto">
+        <!-- Controls scroll; the license-required footer (row 1) stays pinned outside. -->
+        <ScrollViewer Grid.Row="0" Padding="16">
+            <StackPanel Spacing="16">
+
+                <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardStroke}"
+                        BorderThickness="1" CornerRadius="8" Padding="12">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Scroll over the overlay to resize it · drag the + handle to move it." />
+                </Border>
+
+                <!-- CAMERA -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Camera" FontWeight="SemiBold" />
+                    <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardStroke}"
+                            BorderThickness="1" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="12">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Camera" />
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding Cameras}"
+                                          SelectedItem="{Binding SelectedCamera, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Start" Command="{Binding StartCommand}" />
+                                <Button Content="Stop" Command="{Binding StopCommand}" />
+                                <TextBlock VerticalAlignment="Center">
+                                    <TextBlock.Text>
+                                        <MultiBinding Converter="{StaticResource StatusLine}">
+                                            <Binding Path="IsRunning" />
+                                            <Binding Path="Fps" />
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </StackPanel>
+                            <ToggleSwitch Content="Mirror (selfie view)" IsChecked="{Binding Mirror, Mode=TwoWay}" />
+                            <ToggleSwitch Content="Lock exposure (steady FPS)"
+                                          IsEnabled="{Binding ExposureSupported}"
+                                          IsChecked="{Binding ExposureLock, Mode=TwoWay}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Exposure" />
+                                <Slider Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                        Value="{Binding ExposureValue, Mode=TwoWay}">
+                                    <Slider.IsEnabled>
+                                        <MultiBinding Converter="{StaticResource AllTrue}">
+                                            <Binding Path="ExposureSupported" />
+                                            <Binding Path="ExposureLock" />
+                                        </MultiBinding>
+                                    </Slider.IsEnabled>
+                                </Slider>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- AI EFFECTS -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="AI Effects" FontWeight="SemiBold" />
+                    <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardStroke}"
+                            BorderThickness="1" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="12">
+                            <ToggleSwitch Content="AI Green Screen" IsEnabled="{Binding EffectsAvailable}"
+                                          IsChecked="{Binding GreenScreenEnabled, Mode=TwoWay}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Green-screen Expand" />
+                                <Slider Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                        IsEnabled="{Binding GreenScreenEnabled}"
+                                        Value="{Binding GreenScreenExpand, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Green-screen Feather" />
+                                <Slider Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                        IsEnabled="{Binding GreenScreenEnabled}"
+                                        Value="{Binding GreenScreenFeather, Mode=TwoWay}" />
+                            </StackPanel>
+                            <ToggleSwitch Content="Eye Contact" IsEnabled="{Binding EyeContactAvailable}"
+                                          IsChecked="{Binding EyeContactEnabled, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding EyeContactDetail}" IsVisible="{Binding !EyeContactAvailable}"
+                                       TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="AI Sharpness" />
+                                <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding SuperResAvailable}"
+                                          SelectedIndex="{Binding SuperResModeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem>Off</ComboBoxItem>
+                                    <ComboBoxItem>Denoise</ComboBoxItem>
+                                    <ComboBoxItem>Deblur</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Quality" />
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          SelectedIndex="{Binding SuperResQualityIndex, Mode=TwoWay}">
+                                    <ComboBox.IsEnabled>
+                                        <MultiBinding Converter="{StaticResource QualityEnabled}">
+                                            <Binding Path="SuperResAvailable" />
+                                            <Binding Path="SuperResModeIndex" />
+                                        </MultiBinding>
+                                    </ComboBox.IsEnabled>
+                                    <ComboBoxItem>Low</ComboBoxItem>
+                                    <ComboBoxItem>Medium</ComboBoxItem>
+                                    <ComboBoxItem>High</ComboBoxItem>
+                                    <ComboBoxItem>Ultra</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <ToggleSwitch Content="Smooth 60 fps (AI)" IsEnabled="{Binding FrameInterpAvailable}"
+                                          IsChecked="{Binding FrameInterpEnabled, Mode=TwoWay}" />
+                            <ToggleSwitch Content="Hand grab (fist ✊ to move overlay)"
+                                          IsEnabled="{Binding FingerControlAvailable}"
+                                          IsChecked="{Binding FingerControlEnabled, Mode=TwoWay}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Grab sensitivity" />
+                                <Slider Minimum="0.5" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                        IsEnabled="{Binding FingerControlEnabled}"
+                                        Value="{Binding FingerControlSensitivity, Mode=TwoWay}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding FingerControlDetail}" IsVisible="{Binding !FingerControlAvailable}"
+                                       TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
+                            <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !EffectsAvailable}"
+                                       TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Required NVIDIA Maxine attribution (SDK License Supplement §3.1) — always visible. -->
+        <TextBlock Grid.Row="1" Margin="16,8,16,12"
+                   Text="{x:Static core:AppInfo.MaxineAttribution}"
+                   FontSize="12" Opacity="0.7" />
+    </Grid>
 </Window>
