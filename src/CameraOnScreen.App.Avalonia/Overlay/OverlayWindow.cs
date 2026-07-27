@@ -78,11 +78,17 @@ public sealed class OverlayWindow : Window
             BeginMoveDrag(e);
     }
 
+    private double _wheelAccum;
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        int notches = (int)Math.Round(e.Delta.Y);
+        // Hi-res wheels (libinput smooth scrolling) deliver fractional deltas well below 1
+        // per tick — accumulate until a whole notch lands instead of rounding each event.
+        _wheelAccum += e.Delta.Y;
+        int notches = (int)_wheelAccum;
         if (notches == 0) return;
+        _wheelAccum -= notches;
         var wa = Screens.ScreenFromWindow(this)?.WorkingArea
                  ?? Screens.Primary?.WorkingArea
                  ?? new PixelRect(0, 0, 1920, 1080);
