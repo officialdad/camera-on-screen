@@ -57,7 +57,7 @@ src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScre
 
 ### Linux build (Phase 2+, issue #27; primary dev box since 2026-07)
 
-The same shim sources build as `libCameraOnScreen.Shim.so` via CMake with a V4L2 capture backend (`capture_v4l2.cpp`; Windows keeps `capture.cpp` + the vcxproj, which stays untouched). Effects are the CI-safe passthrough stubs until Phase 4 wires the Maxine Linux runtimes. The Avalonia panel (`src/CameraOnScreen.App.Avalonia`) is the Linux control panel; it uses its own app-layer `PInvokeShim` (extension-less lib name so probing finds `.dll`/`.so` per-OS) and falls back to the `FakeShim` demo VM when the `.so` is absent.
+The same shim sources build as `libCameraOnScreen.Shim.so` via CMake with a V4L2 capture backend (`capture_v4l2.cpp`; Windows keeps `capture.cpp` + the vcxproj, which stays untouched). Effects are the CI-safe passthrough stubs until Phase 4 wires the Maxine Linux runtimes. The Avalonia panel (`src/CameraOnScreen.App.Avalonia`) is the Linux control panel; it uses its own app-layer `PInvokeShim` (extension-less lib name so probing finds `.dll`/`.so` per-OS) and falls back to the `FakeShim` demo VM when the `.so` is absent. Phase 3 overlay: `Overlay/OverlayWindow.cs` — frameless transparent Topmost Avalonia window (Spike B winner (a), OBS-verified on KWin/XWayland), own 33 ms pump reading `TryGetFrame`; opens/closes with Start/Stop; drag = `BeginMoveDrag`, wheel-resize = `OverlaySizer`, geometry persists to config on panel close. Premultiplied alpha ready for Phase 4 mattes.
 
 ```bash
 cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   # -Wall -Wextra -Werror
