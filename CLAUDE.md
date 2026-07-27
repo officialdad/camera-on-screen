@@ -53,7 +53,20 @@ $env:COS_VFX_RUNTIME_DIR = "C:\dev\maxine-stage"  # assembled co-versioned stage
 src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScreen.App.exe
 ```
 
-`dotnet build CameraOnScreen.sln` builds the three SDK-style projects (Core, App, tests) but **not** the vcxproj. After a shim ABI change, verify with `dumpbin /exports` (under MSVC `bin/Hostx64/x64/`).
+`dotnet build CameraOnScreen.sln` builds the three SDK-style projects (Core, App, tests) but **not** the vcxproj. After a shim ABI change, verify with `dumpbin /exports` (under MSVC `bin/Hostx64/x64/`). Note the `.sln` cannot build on Linux (the WinUI App project needs Windows targeting + a Windows-only XAML compiler) — build the projects below individually there.
+
+### Linux build (Phase 2+, issue #27; primary dev box since 2026-07)
+
+The same shim sources build as `libCameraOnScreen.Shim.so` via CMake with a V4L2 capture backend (`capture_v4l2.cpp`; Windows keeps `capture.cpp` + the vcxproj, which stays untouched). Effects are the CI-safe passthrough stubs until Phase 4 wires the Maxine Linux runtimes. The Avalonia panel (`src/CameraOnScreen.App.Avalonia`) is the Linux control panel; it uses its own app-layer `PInvokeShim` (extension-less lib name so probing finds `.dll`/`.so` per-OS) and falls back to the `FakeShim` demo VM when the `.so` is absent.
+
+```bash
+cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   # -Wall -Wextra -Werror
+./native/shim/build/v4l2_probe   # ABI smoke: enumerate + caps (+3s capture when a camera exists)
+dotnet build src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.csproj  # auto-copies the .so
+dotnet run --project src/CameraOnScreen.App.Avalonia   # X11/XWayland; real shim if built
+```
+
+Config lands at `$XDG_CONFIG_HOME/CameraOnScreen/config.json` (Windows keeps `%LOCALAPPDATA%`). Hosted Linux CI: `.github/workflows/ci-linux.yml` (no GPU/camera needed — stub shim; `v4l2_probe` passes with 0 cameras by design). The old `[self-hosted, windows, rtx]` runner died with the Windows dev box, so `ci.yml` jobs stay queued on PRs until Phase 5 re-homes them. V4L2 format support is XBGR32/BGR24/RGB24/YUYV (fps-first scoring, ≤1080p) — MJPEG-only high-res modes (e.g. Brio 100 1080p30) fall back to lower-res YUYV until a libjpeg decode path is added.
 
 **DEPLOY THE RIGHT SHIM (cost a full debugging cycle).** The SDK build (`COS_HAS_MAXINE*`) and the CI stub (`/p:CosVfxSdkDir= /p:CosArSdkDir=`) write the **same** DLL path; whichever built **last** is what App `-t:Rebuild` deploys. Always build the SDK config **last** before running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL: `grep -a GreenScreen` **and** `grep -a GazeRedirection` present, `grep -a "not built in"` absent.
 
