@@ -1,44 +1,39 @@
 using Avalonia.Controls;
-using CameraOnScreen.Core.Native;
-using CameraOnScreen.Core.Orchestration;
-using CameraOnScreen.Core.ViewModels;
+using Avalonia.Threading;
+using CameraOnScreen.App.Avalonia.Composition;
 
 namespace CameraOnScreen.App.Avalonia;
 
 public partial class MainWindow : Window
 {
+    private readonly Services.AppServices _services;
+    private readonly DispatcherTimer _statusTimer;
+
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = BuildDemoViewModel();
-    }
+        _services = Services.Build();
+        DataContext = _services.Vm;
 
-    // ponytail: Phase 1 is control-panel UI parity only. The real native shim (Media Foundation on
-    // Windows, V4L2 on Linux) + overlay/pump are Phase 2+, so a fully-available FakeShim stands in
-    // so every control renders enabled and bindings are exercised. Real shim wiring replaces this.
-    private static MainViewModel BuildDemoViewModel()
-    {
-        var shim = new FakeShim
+        // Status is polled, never pushed (repo contract). No frame pump yet — the Linux
+        // overlay is Phase 3 — so 4 Hz keeps fps/error/running fresh without burning CPU.
+        _statusTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(250),
+            DispatcherPriority.Background, (_, _) => _services.Vm.PollStatusTick());
+        _statusTimer.Start();
+
+        Closing += (_, _) =>
         {
-            GreenScreenAvailable = true,
-            EyeContactAvailable = true,
-            SuperResAvailable = true,
-            FrameInterpAvailable = true,
+            // Overlay geometry passes through from the loaded config until the Linux
+            // overlay (Phase 3) exists to supply live values.
+            var o = _services.Loaded.Overlay;
+            _services.Store.Save(_services.Vm.ToAppConfig(o.X, o.Y, o.Width, o.Height));
         };
-        var orchestrator = new Orchestrator(shim, GpuTier.Rtx);
-        var vm = new MainViewModel(orchestrator, shim);
-
-        vm.Cameras.Add(new CameraInfo("cam0", "Integrated Webcam"));
-        vm.Cameras.Add(new CameraInfo("cam1", "USB Capture HDMI"));
-        vm.SelectedCamera = vm.Cameras[0];
-
-        // The App sets finger-control availability after ORT init (independent of the Maxine probe).
-        vm.FingerControlAvailable = true;
-        vm.FingerControlDetail = "";
-
-        // Same deferred capability probe the WinUI app fires from its ctor; FakeShim reports all
-        // effects available, so the toggles ungrey once it lands.
-        _ = vm.ProbeCapabilitiesAsync();
-        return vm;
+        Closed += (_, _) =>
+        {
+            _statusTimer.Stop();
+            // Joins the native capture worker (cos_shutdown) — without this the global
+            // std::thread is destroyed joinable at process exit -> std::terminate.
+            _services.Vm.Dispose();
+        };
     }
 }

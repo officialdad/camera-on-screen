@@ -11,6 +11,13 @@
     <ProjectReference Include="..\CameraOnScreen.Core\CameraOnScreen.Core.csproj" />
   </ItemGroup>
 
+  <!-- Deploy the Linux shim when it has been built (cmake -S native/shim -B native/shim/build).
+       Absent -> the app falls back to the FakeShim demo VM instead of crashing. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\native\shim\build\libCameraOnScreen.Shim.so')">
+    <None Include="$(MSBuildThisFileDirectory)..\..\native\shim\build\libCameraOnScreen.Shim.so"
+          Link="libCameraOnScreen.Shim.so" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
