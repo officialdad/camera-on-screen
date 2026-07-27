@@ -144,6 +144,15 @@ Two candidate designs; the spike picks one:
 Both must honor: **premultiplied alpha** (matte = A, RGB premultiplied — identical to the Aigs
 contract), a running **compositor**, **no content protection**, and X11 (not native Wayland).
 
+> **VERDICT (2026-07-27, Spike B run on the CachyOS box, KWin Wayland + XWayland): (a) WINS.**
+> `OverlaySpikeWindow` (`--overlay-spike`, #31) — Avalonia transparent Topmost window blitting
+> live Brio 100 frames via `WriteableBitmap` — passed the OBS human gate: PipeWire screen capture
+> shows the video live, the 60 px transparent ring renders the desktop (no black, no border) both
+> on-screen and in the recording. Handoff cost fine at camera rate (present-fps tracked camera
+> fps; camera auto-exposure gave ~15 fps in room light, not a present-path limit). The 60 Hz
+> question stays open until FRUC lands on Linux (Phase 4). Phase 3 builds on (a); (b) stays the
+> fallback if a compositor/driver combo breaks (a).
+
 ### 5.3 Input / drag-to-move overlay
 
 Windows uses a global `WH_MOUSE_LL` hook + timer `GetCursorPos`→`SetBounds` (MPO-plane alpha loss
