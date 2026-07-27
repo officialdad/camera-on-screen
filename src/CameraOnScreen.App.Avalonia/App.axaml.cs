@@ -15,7 +15,11 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            // Spike B (#31): `--overlay-spike` opens the transparent overlay probe instead
+            // of the control panel.
+            desktop.MainWindow = desktop.Args?.Contains("--overlay-spike") == true
+                ? new OverlaySpikeWindow()
+                : new MainWindow();
         }
 
         base.OnFrameworkInitializationCompleted();
