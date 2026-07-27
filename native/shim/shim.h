@@ -1,9 +1,13 @@
 #pragma once
 #include <stdint.h>
-#ifdef COS_EXPORTS
-#define COS_API extern "C" __declspec(dllexport)
+#ifdef _WIN32
+  #ifdef COS_EXPORTS
+  #define COS_API extern "C" __declspec(dllexport)
+  #else
+  #define COS_API extern "C" __declspec(dllimport)
+  #endif
 #else
-#define COS_API extern "C" __declspec(dllimport)
+  #define COS_API extern "C" __attribute__((visibility("default")))
 #endif
 
 typedef struct {
