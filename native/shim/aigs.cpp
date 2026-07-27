@@ -1,11 +1,14 @@
 #include "aigs.h"
 
 #ifdef COS_HAS_MAXINE
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 #include <string>
 #include <vector>

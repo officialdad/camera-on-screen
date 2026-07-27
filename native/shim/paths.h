@@ -8,3 +8,6 @@ std::string ShimModuleDir();
 
 // True iff `path` exists and is a directory.
 bool DirExists(const std::string& path);
+
+// Portable env read: empty string when unset.
+std::string EnvVar(const char* name);

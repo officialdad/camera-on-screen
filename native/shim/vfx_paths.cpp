@@ -1,15 +1,22 @@
 #include "vfx_paths.h"
 #ifdef COS_HAS_MAXINE
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "maxine_linux.h"
+#endif
 #include "paths.h"
 
+#ifdef _WIN32
 // The proxy stub (nvVideoEffectsProxy.cpp) declares this extern; we own the single
 // definition here (moved out of aigs.cpp). Non-null => dir holding NVVideoEffects.dll,
 // which the proxy passes to SetDllDirectory before LoadLibrary.
 char* g_nvVFXSDKPath = nullptr;
+#endif
 
 namespace vfx {
 bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& err) {
+#ifdef _WIN32
     char buf[1024] = {0};
     DWORD n = GetEnvironmentVariableA("COS_VFX_RUNTIME_DIR", buf, sizeof(buf));
     if (n > 0 && n < sizeof(buf)) {
@@ -30,11 +37,29 @@ bool ResolveSdkPaths(std::string& binDir, std::string& modelDir, std::string& er
     }
     err = "VFX runtime not found: set COS_VFX_RUNTIME_DIR or bundle maxine\\ beside the app";
     return false;
+#else
+    // Linux: COS_VFX_RUNTIME_DIR (VFX SDK-core tree: lib/, lib/models/, features/)
+    // -> <shimdir>/maxine/vfx (bundled, Phase 5). binDir is the tree ROOT, not root/lib —
+    // PreloadMaxineClosure walks the whole tree.
+    for (std::string root : { EnvVar("COS_VFX_RUNTIME_DIR"), ShimModuleDir() + "/maxine/vfx" }) {
+        if (!root.empty() && root.back() == '/') root.pop_back();
+        if (root.empty() || !DirExists(root + "/lib")) continue;
+        binDir = root;
+        modelDir = root + "/lib/models";
+        return true;
+    }
+    err = "VFX runtime not found (set COS_VFX_RUNTIME_DIR to the VideoFX SDK root)";
+    return false;
+#endif
 }
 void PointProxiesAt(const std::string& binDir) {
+#ifdef _WIN32
     static std::string s_bin;
     s_bin = binDir;
     g_nvVFXSDKPath = const_cast<char*>(s_bin.c_str());
+#else
+    PreloadMaxineClosure(binDir);
+#endif
 }
 }
 #else

@@ -1,6 +1,8 @@
 #include "superres.h"
 
-#ifdef COS_HAS_MAXINE
+// Real path is Windows-only even with COS_HAS_MAXINE: the Linux VFX SDK ships no
+// nvVFXVideoSuperRes.h / NGX VSR feature — the effect stays stubbed and the probe greys it.
+#if defined(COS_HAS_MAXINE) && defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
 #include <cstring>
@@ -153,11 +155,17 @@ bool SuperRes::ProcessFrame(const uint8_t* bgra, int w, int h, std::vector<uint8
 }
 
 #else
-// ---- Passthrough stub: built when no SDK is configured. ----
+// ---- Passthrough stub: no SDK configured, or Linux (no VSR in the Linux VFX SDK). ----
+// Distinct Linux-SDK detail: the deploy check greps the SDK build for "not built in".
+#ifdef COS_HAS_MAXINE
+static constexpr const char* kSrUnavailable = "VideoSuperRes not supported on Linux";
+#else
+static constexpr const char* kSrUnavailable = "Maxine SDK not built in";
+#endif
 SuperRes::SuperRes() = default;
 SuperRes::~SuperRes() = default;
-bool SuperRes::Probe(std::string& detail) { detail = "Maxine SDK not built in"; return false; }
-bool SuperRes::Start(int, int) { lastError_ = "Maxine SDK not built in"; ready_ = false; return false; }
+bool SuperRes::Probe(std::string& detail) { detail = kSrUnavailable; return false; }
+bool SuperRes::Start(int, int) { lastError_ = kSrUnavailable; ready_ = false; return false; }
 void SuperRes::Stop() { ready_ = false; }
 bool SuperRes::ProcessFrame(const uint8_t*, int, int, std::vector<uint8_t>&, int&, int&) { return false; }
 #endif

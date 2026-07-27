@@ -1,5 +1,8 @@
 #include "paths.h"
 
+#include <cstdlib>
+
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
 #include <vector>
@@ -48,3 +51,35 @@ bool DirExists(const std::string& path) {
     DWORD attr = GetFileAttributesW(w.c_str());
     return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
+
+std::string EnvVar(const char* name) {
+    char buf[1024];
+    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
+    return (n > 0 && n < sizeof(buf)) ? std::string(buf, n) : std::string();
+}
+
+#else // Linux
+
+#include <dlfcn.h>
+#include <sys/stat.h>
+
+std::string ShimModuleDir() {
+    Dl_info info{};
+    if (!dladdr(reinterpret_cast<void*>(&ShimModuleDir), &info) || !info.dli_fname) return "";
+    std::string p(info.dli_fname);
+    auto slash = p.find_last_of('/');
+    return slash == std::string::npos ? "" : p.substr(0, slash);
+}
+
+bool DirExists(const std::string& path) {
+    if (path.empty()) return false;
+    struct stat st{};
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+std::string EnvVar(const char* name) {
+    const char* v = std::getenv(name);
+    return v ? std::string(v) : std::string();
+}
+
+#endif
