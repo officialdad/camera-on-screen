@@ -1,0 +1,37 @@
+# Hosted Linux CI (issue #27 Phase 2). Runs on GitHub's ubuntu runners — no GPU, no
+# camera, no Maxine SDK needed: the shim builds with the passthrough effect stubs and
+# v4l2_probe passes with zero cameras by design. The Windows job set in ci.yml needs the
+# (currently offline) self-hosted RTX runner; Phase 5 re-homes it.
+name: CI (Linux)
+
+on:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build shim (.so, stub effects, warnings-as-errors)
+        run: |
+          cmake -S native/shim -B native/shim/build
+          cmake --build native/shim/build
+
+      - name: Verify exports
+        run: |
+          nm -D --defined-only native/shim/build/libCameraOnScreen.Shim.so | grep -q cos_query_capabilities
+          nm -D --defined-only native/shim/build/libCameraOnScreen.Shim.so | grep -q cos_get_frame
+
+      - name: ABI smoke (v4l2_probe; zero cameras is a pass)
+        run: ./native/shim/build/v4l2_probe
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Avalonia app (deploys the .so, warnings as errors)
+        run: dotnet build src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.csproj -c Release /p:TreatWarningsAsErrors=true --nologo
+
+      - name: Core tests
+        run: dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj -c Release /p:TreatWarningsAsErrors=true --nologo

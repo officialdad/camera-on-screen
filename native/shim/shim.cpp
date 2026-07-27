@@ -11,18 +11,23 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
 #include <windows.h>
 #include <mfapi.h>
+#endif
 
 namespace {
     std::atomic<bool> g_running{false};
+#ifdef _WIN32
     std::atomic<bool> g_mfStarted{false};
+#endif
     CosParams   g_params{};
     Capture     g_capture;
     std::string g_cameraId;
 }
 
 COS_API int cos_init(void* /*d3d11_device*/) {
+#ifdef _WIN32
     // MFStartup exactly once. cos_init runs before enumerate/start (the App calls
     // Init() first), so this guarantees MF is live for every later MF call.
     bool expected = false;
@@ -32,6 +37,8 @@ COS_API int cos_init(void* /*d3d11_device*/) {
             return 0;
         }
     }
+#endif
+    // Linux: V4L2 needs no process-wide startup; the capture backend opens the device per session.
     return 1;
 }
 
@@ -139,8 +146,10 @@ COS_API int cos_query_capabilities(CosCaps* out) {
 COS_API void cos_shutdown(void) {
     g_capture.Stop();
     g_running = false;
+#ifdef _WIN32
     bool expected = true;
     if (g_mfStarted.compare_exchange_strong(expected, false)) {
         MFShutdown();
     }
+#endif
 }

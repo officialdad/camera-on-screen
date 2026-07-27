@@ -10,6 +10,18 @@ public class JsonSettingsStoreTests
         Path.Combine(Path.GetTempPath(), "cos-" + Path.GetRandomFileName(), "config.json");
 
     [Fact]
+    public void DefaultPath_UsesPlatformConfigRoot()
+    {
+        var path = JsonSettingsStore.DefaultPath();
+        // Windows keeps the shipped %LOCALAPPDATA% contract; elsewhere config belongs under
+        // $XDG_CONFIG_HOME (~/.config), which SpecialFolder.ApplicationData maps to on Unix (#29).
+        var expectedRoot = OperatingSystem.IsWindows()
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        Assert.Equal(Path.Combine(expectedRoot, "CameraOnScreen", "config.json"), path);
+    }
+
+    [Fact]
     public void Load_returns_defaults_when_file_missing()
     {
         var store = new JsonSettingsStore(TempFile());

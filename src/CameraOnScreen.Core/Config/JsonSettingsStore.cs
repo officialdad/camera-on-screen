@@ -8,8 +8,13 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     public JsonSettingsStore(string filePath) => _filePath = filePath;
 
+    // Windows: %LOCALAPPDATA% (existing contract, WinUI app unchanged). Elsewhere:
+    // SpecialFolder.ApplicationData maps to $XDG_CONFIG_HOME (default ~/.config) on Unix,
+    // which is where Linux config belongs (issue #29).
     public static string DefaultPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Environment.GetFolderPath(OperatingSystem.IsWindows()
+            ? Environment.SpecialFolder.LocalApplicationData
+            : Environment.SpecialFolder.ApplicationData),
         "CameraOnScreen", "config.json");
 
     public AppConfig Load()

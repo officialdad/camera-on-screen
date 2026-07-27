@@ -21,3 +21,6 @@ x86/
 # Project-scoped agent skills — user-scoped instead (relocated to ~/.claude/skills)
 /.agents/
 /skills-lock.json
+
+# Linux CMake shim build (issue #27 Phase 2)
+native/shim/build/
