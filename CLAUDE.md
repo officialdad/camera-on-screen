@@ -57,7 +57,7 @@ src/CameraOnScreen.App/bin/Debug/net8.0-windows10.0.19041.0/win-x64/CameraOnScre
 
 ### Linux build (Phase 2+, issue #27; primary dev box since 2026-07)
 
-The same shim sources build as `libCameraOnScreen.Shim.so` via CMake with a V4L2 capture backend (`capture_v4l2.cpp`; Windows keeps `capture.cpp` + the vcxproj, which stays untouched). Effects are the CI-safe passthrough stubs until Phase 4 wires the Maxine Linux runtimes. The Avalonia panel (`src/CameraOnScreen.App.Avalonia`) is the Linux control panel; it uses its own app-layer `PInvokeShim` (extension-less lib name so probing finds `.dll`/`.so` per-OS) and falls back to the `FakeShim` demo VM when the `.so` is absent. Phase 3 overlay: `Overlay/OverlayWindow.cs` — frameless transparent Topmost Avalonia window (Spike B winner (a), OBS-verified on KWin/XWayland), own 33 ms pump reading `TryGetFrame`; opens/closes with Start/Stop; drag = `BeginMoveDrag`, wheel-resize = `OverlaySizer`, geometry persists to config on panel close. Premultiplied alpha ready for Phase 4 mattes.
+The same shim sources build as `libCameraOnScreen.Shim.so` via CMake with a V4L2 capture backend (`capture_v4l2.cpp`; Windows keeps `capture.cpp` + the vcxproj, which stays untouched). Effects are the CI-safe passthrough stubs unless the Maxine SDK env vars are set at cmake time (Phase 4, below). The Avalonia panel (`src/CameraOnScreen.App.Avalonia`) is the Linux control panel; it uses its own app-layer `PInvokeShim` (extension-less lib name so probing finds `.dll`/`.so` per-OS) and falls back to the `FakeShim` demo VM when the `.so` is absent. Phase 3 overlay: `Overlay/OverlayWindow.cs` — frameless transparent Topmost Avalonia window (Spike B winner (a), OBS-verified on KWin/XWayland), own 33 ms pump reading `TryGetFrame`; opens/closes with Start/Stop; drag = `BeginMoveDrag`, wheel-resize = `OverlaySizer`, geometry persists to config on panel close. Premultiplied alpha ready for Phase 4 mattes.
 
 ```bash
 cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   # -Wall -Wextra -Werror
@@ -67,6 +67,24 @@ dotnet run --project src/CameraOnScreen.App.Avalonia   # X11/XWayland; real shim
 ```
 
 Config lands at `$XDG_CONFIG_HOME/CameraOnScreen/config.json` (Windows keeps `%LOCALAPPDATA%`). Hosted Linux CI: `.github/workflows/ci-linux.yml` (no GPU/camera needed — stub shim; `v4l2_probe` passes with 0 cameras by design). The old `[self-hosted, windows, rtx]` runner died with the Windows dev box, so `ci.yml` jobs stay queued on PRs until Phase 5 re-homes them. V4L2 format support is XBGR32/BGR24/RGB24/YUYV (fps-first scoring, ≤1080p) — MJPEG-only high-res modes (e.g. Brio 100 1080p30) fall back to lower-res YUYV until a libjpeg decode path is added.
+
+Phase 4 Maxine-on-Linux (green screen + eye contact): build the shim with
+`COS_VFX_SDK_DIR=~/dev/VideoFX-linux/VideoFX COS_AR_SDK_DIR=~/dev/ARSDK-linux/ARSDK` — the
+**Linux SDK-core trees** (headers + features + libs; refetch via `scripts/fetch-maxine-linux.sh`
++ ngc CLI, spec §6), NOT the GitHub header clones (they lack `nvVFXGreenScreen.h`). Unset = CI
+stub. Runtime: `COS_VFX_RUNTIME_DIR`/`COS_AR_RUNTIME_DIR` point at the same trees (bundled tier
+`<shim>/maxine/{vfx,ar}` = Phase 5). Same co-versioned pins as Windows (TRT 10.9 / CUDA 12.8);
+`Aigs::Probe` runs first, so VFX 1.2's `libNVCVImage.so.1` wins first-load for both effects. The
+SDK `.so` set has no RUNPATH — `maxine_linux.cpp` preloads the closure by absolute path
+(`RTLD_GLOBAL`, fixpoint), promotes the shim itself to the global scope (P/Invoke dlopens it
+`RTLD_LOCAL`), and interposes `libVideoFXLocal`'s `GetOSInfo` (segfaults parsing
+`/etc/lsb-release` on non-Ubuntu distros). **No NVIDIA proxy compiles on Linux** (VFX/NvCVImage
+are `#warning not ported`; `nvARProxy.cpp`'s `getNvARLib()` uses unguarded TCHAR) —
+`maxine_proxy_linux.cpp` is ours: hidden-visibility dlsym forwarders for all three surfaces
+(hidden so `dlsym(RTLD_DEFAULT)` can't self-resolve and recurse). Super-res + FRUC stay
+stubbed/greyed on Linux (no VSR header/feature in the Linux VFX SDK; Optical Flow SDK download
+pending). Deploy-the-right-shim check: `nm -D` shows `GetOSInfo` and `strings` lacks
+`"not built in"` = SDK build.
 
 **DEPLOY THE RIGHT SHIM (cost a full debugging cycle).** The SDK build (`COS_HAS_MAXINE*`) and the CI stub (`/p:CosVfxSdkDir= /p:CosArSdkDir=`) write the **same** DLL path; whichever built **last** is what App `-t:Rebuild` deploys. Always build the SDK config **last** before running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL: `grep -a GreenScreen` **and** `grep -a GazeRedirection` present, `grep -a "not built in"` absent.
 
