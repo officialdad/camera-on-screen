@@ -1,3 +1,9 @@
+# Windows compile safety net on GitHub-hosted runners (the self-hosted RTX runner died
+# with the Windows dev box; primary dev is Linux, see ci-linux.yml). Covers the two
+# artifacts that can ONLY compile on Windows: shim.vcxproj (Media Foundation capture)
+# and the WinUI 3 App. STUB shim config only — no Maxine SDK / NGC / GPU on hosted
+# runners, so the Windows COS_HAS_MAXINE paths and the export-verify gate stay
+# unverified until a Windows box returns (they move back with it).
 name: ci
 
 on:
@@ -9,53 +15,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build (Maxine) + Test
-    runs-on: [self-hosted, windows, rtx]
+  windows-compile:
+    name: Windows compile (stub shim + WinUI App)
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The runner host has an x86 .NET (no SDK) at "C:\Program Files (x86)\dotnet"
-      # that can shadow the x64 SDK on PATH -> `dotnet build` fails "No .NET SDKs were
-      # found". Prepend the x64 install so the SDK wins for all later steps.
-      - name: Prefer x64 .NET on PATH
-        shell: pwsh
-        run: |
-          if (Test-Path "C:\Program Files\dotnet\dotnet.exe") {
-            "C:\Program Files\dotnet" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          }
+      - name: Locate MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Build native shim (SDK config, x64 Release)
+      - name: Build native shim (stub config, x64 Release)
         shell: pwsh
         run: |
-          $msbuild = "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe"
-          & $msbuild native/shim/shim.vcxproj `
-            /p:Configuration=Release /p:Platform=x64 `
-            /warnaserror /nologo
+          msbuild native/shim/shim.vcxproj /p:Configuration=Release /p:Platform=x64 /warnaserror /nologo
           if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
-
-      - name: Verify deployed shim has both Maxine effects (stale-stub guard)
-        shell: pwsh
-        run: |
           $dll = "native/shim/x64/Release/CameraOnScreen.Shim.dll"
           if (-not (Test-Path $dll)) { throw "shim DLL missing: $dll" }
-          $dumpbin = (Get-ChildItem "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1).FullName + "/bin/Hostx64/x64/dumpbin.exe"
-          if (-not (Test-Path $dumpbin)) { throw "dumpbin not found at $dumpbin — check the MSVC Build Tools install on the runner" }
-          $exports = & $dumpbin /exports $dll | Out-String
+          # Stub sanity: hosted runners have no SDK env, so this MUST be the passthrough stub.
           $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
-          $hasGS  = $exports -match 'GreenScreen'   -or $strings -match 'GreenScreen'
-          $hasGaze = $exports -match 'GazeRedirection' -or $strings -match 'GazeRedirection'
-          $isStub = $strings -match 'not built in'
-          # FRUC is OPTIONAL (legal gate open). Report its presence for visibility, but do NOT
-          # fail when it's stubbed — its stub string deliberately avoids the 'not built in' sentinel.
-          $hasFruc = $strings -match 'NvOFFRUC'
-          Write-Host "GreenScreen=$hasGS GazeRedirection=$hasGaze stub=$isStub FRUC=$hasFruc"
-          if (-not $hasGS)   { throw "GreenScreen missing — green-screen effect not built in" }
-          if (-not $hasGaze) { throw "GazeRedirection missing — eye-contact effect not built in" }
-          if ($isStub)       { throw "shim is the passthrough STUB ('not built in' present)" }
-          if (-not $hasFruc) { Write-Host "::warning::FRUC built as stub (COS_FRUC_SDK_DIR unset on runner, or runner not restarted after .env change) — optional, not failing" }
+          if ($strings -notmatch 'not built in') { throw "expected the stub build on a hosted runner" }
 
       - name: Build App (copies shim, warnings = errors)
         shell: pwsh

@@ -1,8 +1,12 @@
 #include "eyecontact.h"
 
 #ifdef COS_HAS_MAXINE_AR
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#else
+#include "maxine_linux.h"
+#endif
 #include <cstring>
 #include <new>
 #include <string>
@@ -12,6 +16,7 @@
 #include "nvAR.h"
 #include "nvAR_defs.h"
 #include "paths.h"
+#include "vfx_paths.h"
 
 // AR 1.1.1.0 moved per-feature IDs into per-feature headers and dropped the NvAR_Feature_*
 // macros from nvAR_defs.h (NvAR_FeatureID is a const char*). Define the literal if absent so
@@ -21,10 +26,12 @@
 #define NvAR_Feature_GazeRedirection "GazeRedirection"
 #endif
 
+#ifdef _WIN32
 // The AR proxy stub (nvARProxy.cpp) declares this extern; define it here. When non-null it
 // is SetDllDirectory'd before LoadLibrary(nvARPose.dll). When null the proxy auto-falls back
 // to "%ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK\".
 char* g_nvARSDKPath = nullptr;
+#endif
 
 namespace {
 // Resolves the AR runtime root (holds nvARPose.dll) and its models dir.
@@ -33,6 +40,20 @@ namespace {
 //         shipped app stays self-contained and never loads a non-co-versioned system AR SDK).
 // Tier 3: %ProgramFiles%\NVIDIA Corporation\NVIDIA AR SDK (dev last resort).
 bool ResolveArPaths(std::string& runtimeDir, std::string& modelDir, std::string& err) {
+#ifndef _WIN32
+    // Linux: COS_AR_RUNTIME_DIR (AR SDK-core tree: lib/, lib/models/, features/)
+    // -> <shimdir>/maxine/ar (bundled, Phase 5). runtimeDir is the tree ROOT —
+    // PreloadMaxineClosure walks the whole tree.
+    for (std::string root : { EnvVar("COS_AR_RUNTIME_DIR"), ShimModuleDir() + "/maxine/ar" }) {
+        if (!root.empty() && root.back() == '/') root.pop_back();
+        if (root.empty() || !DirExists(root + "/lib")) continue;
+        runtimeDir = root;
+        modelDir = root + "/lib/models";
+        return true;
+    }
+    err = "AR runtime not found (set COS_AR_RUNTIME_DIR to the AR SDK root)";
+    return false;
+#else
     char buf[1024] = {0};
     // Tier 1: dev override.
     DWORD n = GetEnvironmentVariableA("COS_AR_RUNTIME_DIR", buf, sizeof(buf));
@@ -65,14 +86,27 @@ bool ResolveArPaths(std::string& runtimeDir, std::string& modelDir, std::string&
     runtimeDir = root;
     modelDir   = root + "\\models";
     return true;
+#endif
 }
 
 // Points the AR proxy at the runtime root so nvARPose.dll + deps are found. Idempotent;
-// s_root must outlive every NvAR call.
+// s_root must outlive every NvAR call. On Linux the runtime has no RUNPATH — preload the
+// whole closure instead (SONAME reuse then serves the proxy's plain-name dlopen).
 void PointProxyAt(const std::string& runtimeDir) {
+#ifdef _WIN32
     static std::string s_root;
     s_root = runtimeDir;
     g_nvARSDKPath = const_cast<char*>(s_root.c_str());
+#else
+    // Co-version, first-load-wins: the shared NVCVImage/TRT/CUDA runtime must come from
+    // the VFX tree (the Windows stage ships VFX's copies for both SDKs). Preload VFX
+    // first regardless of which effect starts first — the worker chain starts eye
+    // contact before green screen, and AR's libNVCVImage.so.1 (1.1) winning breaks
+    // VFX 1.2's feature load (NVCV_ERR_LIBRARY). No-op when VFX isn't built/resolvable.
+    std::string vfxBin, vfxModels, vfxErr;
+    if (vfx::ResolveSdkPaths(vfxBin, vfxModels, vfxErr)) vfx::PointProxiesAt(vfxBin);
+    PreloadMaxineClosure(runtimeDir);
+#endif
 }
 
 constexpr unsigned kNumLandmarks = 126;       // GazeEngine LANDMARKS_INFO[1].numPoints

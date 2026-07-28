@@ -345,9 +345,13 @@ void Capture::WorkerLoop() {
         return;
     }
 
-    // Phase 4 (Maxine on Linux) inserts the effect chain here, mirroring capture.cpp:
-    // eye contact -> super res -> green screen -> FRUC, worker-thread-local objects.
-    // Until then this backend publishes opaque passthrough frames only.
+    // Maxine effect chain (Phase 4), mirroring capture.cpp: eye contact -> green screen.
+    // Worker-thread-local objects (CUDA thread affinity — repo contract); UI toggles cross
+    // via the atomics, errors via the leaf locks. Super res + FRUC stay stubbed on Linux
+    // (no VSR in the Linux VFX SDK; Optical Flow SDK download pending) — the probe greys
+    // both, so their enable flags never come on and they are omitted from this chain.
+    Aigs aigs;
+    EyeContact eyeContact;
     std::vector<uint8_t> bgra;
 
     while (!g_state.stopRequested.load(std::memory_order_acquire)) {
@@ -380,6 +384,61 @@ void Capture::WorkerLoop() {
                 case V4L2_PIX_FMT_YUYV:   YuyvToBgra(src, stride, width, height, bgra.data()); break;
                 default: break;
             }
+
+            // Eye Contact runs first, on the raw frame (needs real eyes/landmarks).
+            const bool ecWant = g_state.eyeContactEnabled.load(std::memory_order_acquire);
+            if (ecWant && !eyeContact.IsReady()) {
+                if (!eyeContact.Start()) {
+                    std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                    const std::string& newErr = eyeContact.LastError();
+                    if (g_state.ecError != newErr) g_state.ecError = newErr;
+                }
+            } else if (!ecWant && eyeContact.IsReady()) {
+                eyeContact.Stop();
+                std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                if (!g_state.ecError.empty()) g_state.ecError.clear();
+            }
+            bool ecApplied = false;
+            if (ecWant && eyeContact.IsReady()) {
+                ecApplied = eyeContact.ProcessFrame(bgra.data(), width, height);
+                std::lock_guard<std::mutex> e(g_state.ecErrMtx);
+                if (!ecApplied) {
+                    const std::string& newErr = eyeContact.LastError();
+                    if (g_state.ecError != newErr) g_state.ecError = newErr;
+                } else if (!g_state.ecError.empty()) {
+                    g_state.ecError.clear();
+                }
+            }
+            g_state.eyeContactActive.store(ecApplied, std::memory_order_release);
+
+            // Green screen composites last and authors the premultiplied alpha matte.
+            const bool gsWant = g_state.greenScreenEnabled.load(std::memory_order_acquire);
+            if (gsWant && !aigs.IsReady()) {
+                if (!aigs.Start()) {
+                    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                    const std::string& newErr = aigs.LastError();
+                    if (g_state.gsError != newErr) g_state.gsError = newErr;
+                }
+            } else if (!gsWant && aigs.IsReady()) {
+                aigs.Stop();
+                std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                if (!g_state.gsError.empty()) g_state.gsError.clear();
+            }
+            bool gsApplied = false;
+            if (gsWant && aigs.IsReady()) {
+                const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
+                const double feather = g_state.matteFeather.load(std::memory_order_acquire);
+                gsApplied = aigs.ProcessFrame(bgra.data(), width, height, expand, feather);
+                std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                if (!gsApplied) {
+                    const std::string& newErr = aigs.LastError();
+                    if (g_state.gsError != newErr) g_state.gsError = newErr;
+                } else if (!g_state.gsError.empty()) {
+                    g_state.gsError.clear();
+                }
+            }
+            g_state.greenScreenActive.store(gsApplied, std::memory_order_release);
+
             {
                 std::lock_guard<std::mutex> lock(g_state.mtx);
                 g_state.frame.swap(bgra);
@@ -392,6 +451,9 @@ void Capture::WorkerLoop() {
         Xioctl(fd, VIDIOC_QBUF, &b);
     }
 
+    // Effect teardown on THIS thread (CUDA thread affinity) before closing the device.
+    eyeContact.Stop();
+    aigs.Stop();
     exposure.Restore(); // leave the camera in auto-exposure for other apps
     Xioctl(fd, VIDIOC_STREAMOFF, &type);
     for (auto& m : buffers) if (m.start) munmap(m.start, m.length);

@@ -168,6 +168,15 @@ These require a **Linux + RTX box** (this dev host is Windows and cannot build/r
   via the **native (non-Triton)** `nvargazeredirection` path; confirm it loads and runs in-process.
   *Kill criterion:* if only Triton works, eye-contact becomes Linux-unavailable (greys out) and the
   Linux build ships green-screen + FRUC only.
+  > **VERDICT (2026-07-27, CachyOS + RTX 3090): PASS** — `NvAR_Load(GazeRedirection)` succeeds
+  > in-process via `libnvARPoseLocal.so` (native, non-Triton). Probe: `native/shim/smoke/maxine_probe_linux.cpp`.
+  > **Supply chain (no NVAIE):** SDK cores need the FREE NVIDIA Developer Program (`nvidia-dev`
+  > product) via `ngc registry resource download-version nvidia/maxine/{vfx_sdk_core:1.2.0.0_linux,
+  > ar_sdk_core:1.1.1.0_linux}`; per-feature runtime libs + engines come from the ungated
+  > nvidia/maxine models registry (`scripts/fetch-maxine-linux.sh`, plain NGC personal key).
+  > **Gotcha:** `libVideoFXLocal.so`'s exported `GetOSInfo(key, out)` parses `/etc/lsb-release`
+  > and SEGFAULTS on non-Ubuntu distros (CachyOS `DISTRIB_RELEASE="rolling"`). Fix: interpose the
+  > symbol (claim Ubuntu 22.04, rc=0) — `native/shim/smoke/fakeosinfo.cpp`, verified.
 - **Spike B — transparent X11 overlay captured live.** Minimal `override-redirect` ARGB + GL window
   (or Avalonia transparent Topmost) over the desktop; confirm OBS **screen capture** grabs it live,
   transparent regions show the desktop (not black), no content-protection set. Picks §5.2 (a) vs (b).
@@ -175,6 +184,10 @@ These require a **Linux + RTX box** (this dev host is Windows and cannot build/r
   AR `.so` set; confirm VFX + AR **coexist in one process** (the Windows first-load-wins hazard,
   re-verified with Linux pins) + FRUC's CUDA-11 `.so` stays compatible. Mirrors the Windows
   co-version verification (`docs/superpowers/specs/2026-06-26-camera-on-screen-13-fruc-coversion-findings.md`).
+  > **VERDICT (2026-07-27, CachyOS + RTX 3090): PASS** — Linux VFX 1.2.0.0 + AR 1.1.1.0 cores both
+  > bundle **TensorRT 10.9.0 + CUDA 12.8** (`libnvinfer.so.10.9.0`, `libcudart.so.12.8.90` — the
+  > exact pins of the Windows-verified pair). Green screen + gaze loaded **in one process**
+  > (`maxine_probe_linux`: `coexist=PASS`). FRUC-on-Linux still untested (SDK not yet downloaded).
 
 Other risks: Electron/JS frame tax (N/A — Avalonia path avoids it); WebKitGTK (N/A — Avalonia
 uses Skia, not a webview); CI (self-hosted runner is Windows+RTX — a Linux+RTX runner is a new

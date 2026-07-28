@@ -1,13 +1,16 @@
 name: release
 
-# Tag-triggered release: build the installer on the self-hosted RTX runner, verify the bundled
-# Maxine runtime actually loads, then publish the installer as a GitHub release. Mirrors ci.yml's
-# runner + throw-on-nonzero-exit conventions; the heavy lifting lives in the checked-in scripts
-# (build-installer.ps1 + verify-bundle.ps1) so this workflow stays a thin orchestrator.
+# Installer release: build on the self-hosted RTX runner, verify the bundled Maxine runtime
+# actually loads, then publish the installer as a GitHub release. The heavy lifting lives in
+# the checked-in scripts (build-installer.ps1 + verify-bundle.ps1) so this workflow stays a
+# thin orchestrator. MANUAL-ONLY while the Windows RTX runner is dead (died with the Windows
+# dev box) — a v* tag trigger would queue forever. Restore the tag trigger when a runner
+# returns:
+#   push:
+#     tags:
+#       - 'v*'
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 # Never cancel a release mid-publish (unlike ci.yml, which cancels superseded runs).
 concurrency:
