@@ -104,6 +104,10 @@ loginctl enable-linger ariff   # runner survives logout/reboot without a session
 
 Environment: the runner reads `~/actions-runner/.env` at service start —
 `COS_VFX_SDK_DIR` / `COS_AR_SDK_DIR` point at the **Linux SDK-core trees**
-(`~/dev/VideoFX-linux/VideoFX`, `~/dev/ARSDK-linux/ARSDK`); `~/actions-runner/.path`
-supplies PATH (user-local `cmake` lives in `~/.local/bin`). Same caveat as Windows:
-changing `.env` needs `systemctl --user restart actions-runner`.
+(`~/dev/VideoFX-linux/VideoFX`, `~/dev/ARSDK-linux/ARSDK`). Same caveat as Windows:
+changing `.env` needs `systemctl --user restart actions-runner`. Two lessons already
+paid for: the runner's `.path` file did **not** reach job PATH under this user unit, so
+the `maxine-rtx` job adds user-local tool dirs (`~/.local/bin` — cmake) via
+`$GITHUB_PATH` instead; and do **not** set `KillMode=process` in the unit — it kills
+only `run.sh` on restart, leaving an orphan `Runner.Listener` with the stale
+environment to keep taking jobs.

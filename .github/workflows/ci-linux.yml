@@ -47,6 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Tool paths (user-local cmake — see runbook)
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Build shim (SDK config, warnings-as-errors)
         run: |
           test -n "$COS_VFX_SDK_DIR" && test -n "$COS_AR_SDK_DIR"
