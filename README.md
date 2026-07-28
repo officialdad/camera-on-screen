@@ -9,34 +9,51 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/officialdad/camera-on-screen/actions/workflows/ci-linux.yml"><img src="https://github.com/officialdad/camera-on-screen/actions/workflows/ci-linux.yml/badge.svg" alt="ci-linux"></a>
   <a href="https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml"><img src="https://github.com/officialdad/camera-on-screen/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
 </p>
 
 ---
 
-An always-on-top webcam overlay for Windows. It floats your live
+An always-on-top webcam overlay for **Linux and Windows**. It floats your live
 camera feed over everything else, so any screen recorder or screen sharing session
 captures you and your screen together in real-time. Useful for teaching too.
 
 Included NVIDIA powered features such as
 - **AI Green Screen** (background removal)
-- **AI Eye Contact** (gaze redirection).
-- **AI Interpolation** (doubles webcam FPS)
+- **AI Eye Contact** (gaze redirection)
+- **AI Interpolation** (doubles webcam FPS — Windows only for now)
 
-> **You need:** Windows + an **NVIDIA RTX GPU** for the AI effects.
-> On other hardware the overlay still works without the AI effects.
+> **You need:** an **NVIDIA RTX GPU** for the AI effects, on Linux (X11/XWayland)
+> or Windows. On other hardware the overlay still works without the AI effects.
 
 ## Install
 
-1. Download the latest `CameraOnScreen-Setup-<ver>-x64.exe` from
-   [**Releases**](https://github.com/officialdad/camera-on-screen/releases).
-2. Run it. It installs **per-user** (no admin), adds a Start Menu shortcut, and
-   bundles everything it needs - no extra downloads.
-3. Windows SmartScreen will warn (the installer is unsigned): click
-   **More info → Run anyway**.
+### Linux (current release focus)
 
-Uninstall from **Settings → Apps** as usual. Your preferences are kept at
-`%LOCALAPPDATA%\CameraOnScreen\config.json`.
+1. Download the latest `CameraOnScreen-<ver>-linux-x64.tar.zst` from
+   [**Releases**](https://github.com/officialdad/camera-on-screen/releases).
+2. Extract and run — it is self-contained (bundled .NET runtime **and** the
+   NVIDIA Maxine runtime; no env vars, no extra downloads):
+
+   ```bash
+   mkdir camera-on-screen && tar -C camera-on-screen --zstd -xf CameraOnScreen-<ver>-linux-x64.tar.zst
+   camera-on-screen/CameraOnScreen.App.Avalonia
+   ```
+
+Preferences are kept at `$XDG_CONFIG_HOME/CameraOnScreen/config.json`
+(`~/.config/CameraOnScreen/config.json`).
+
+### Windows
+
+Installer releases are paused until Windows CI returns
+([#38](https://github.com/officialdad/camera-on-screen/issues/38)) — the latest
+Windows installer is
+[**v0.7.0**](https://github.com/officialdad/camera-on-screen/releases/tag/v0.7.0)
+(`CameraOnScreen-Setup-0.7.0-x64.exe`). It installs **per-user** (no admin) and
+bundles everything it needs. Windows SmartScreen will warn (unsigned): click
+**More info → Run anyway**. Uninstall from **Settings → Apps**; preferences are
+kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 
 > The AI effects ship with models for **RTX 20/30/40-series and Blackwell**
 > GPUs, but are only verified on **RTX 30-series & 20-series** so far - other RTX
@@ -45,8 +62,8 @@ Uninstall from **Settings → Apps** as usual. Your preferences are kept at
 
 ## Using it
 
-- **Move it** - drag the centre **+** handle.
-- **Hand grab** — make a fist ✊ at the camera to grab the overlay, move your hand to drag it, open your hand to drop it. Point ☝ freely — pointing never moves the overlay. Runs on-device (CPU, MediaPipe hand models); works on any GPU.
+- **Move it** - drag the centre **+** handle (Windows) or drag anywhere (Linux).
+- **Hand grab** (Windows) — make a fist ✊ at the camera to grab the overlay, move your hand to drag it, open your hand to drop it. Point ☝ freely — pointing never moves the overlay. Runs on-device (CPU, MediaPipe hand models); works on any GPU.
 - **Resize it** - scroll the mouse wheel over the overlay.
 - **Mirror / zoom** - toggle in the control panel.
 - **AI Green Screen** - removes your background with adjustable edge expand /
@@ -74,11 +91,13 @@ trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
 
 ## What it is
 
-- Single-process **C# .NET 8 + WinUI 3** control panel.
-- A native **C++ C-ABI shim** (P/Invoke) doing Media Foundation capture and the
-  optional Maxine effects.
-- The C# side owns all windowing/compositing (a layered DirectComposition
-  overlay); the shim only captures and applies effects.
+- A **C# .NET 8** control panel — **Avalonia** on Linux, **WinUI 3** on Windows —
+  sharing one cross-platform `Core` (view models, orchestration).
+- A native **C++ C-ABI shim** (P/Invoke) doing the camera capture (**V4L2** on
+  Linux, **Media Foundation** on Windows) and the optional Maxine effects.
+- The C# side owns all windowing/compositing (a transparent topmost X11 window on
+  Linux; a layered DirectComposition overlay on Windows); the shim only captures
+  and applies effects.
 
 ## NVIDIA Maxine SDKs
 
@@ -105,6 +124,20 @@ Requires driver ≥ 528.24; the CUDA 11 runtime is bundled (no separate install)
 
 ## Build
 
+### Linux
+
+Prerequisites: .NET 8 SDK, CMake, g++. The shim builds with CI-safe passthrough
+stubs unless the Maxine Linux SDK-core trees are supplied at cmake time (see
+[`CLAUDE.md`](CLAUDE.md) for the SDK env vars and the runtime/bundle details).
+
+```bash
+cmake -S native/shim -B native/shim/build && cmake --build native/shim/build
+dotnet run --project src/CameraOnScreen.App.Avalonia   # X11/XWayland
+scripts/publish-linux.sh --tar   # self-contained dist/linux + release tarball
+```
+
+### Windows
+
 Prerequisites: .NET 8 SDK, VS2022 Build Tools + MSVC v143. The native shim must
 be built **before** the App.
 
@@ -130,8 +163,17 @@ runtime env vars needed to actually run the effects, see
 
 ## CI / Release
 
-Every PR is gated by GitHub Actions on a **self-hosted RTX runner** - full
-co-versioned Maxine build, a stale-stub export verify, the App build, and Core
-unit tests, all with warnings treated as errors. A second workflow builds the
-installer and publishes a GitHub release on a `v*` tag. See
+Every PR is gated by GitHub Actions, warnings treated as errors:
+
+- **Hosted Linux job** — stub shim build, ABI smoke, Avalonia app build, Core
+  unit tests.
+- **Self-hosted Linux RTX runner** — full co-versioned Maxine shim build, a
+  stale-stub deploy check, and a real GPU capability probe (both effects load).
+- **Hosted Windows job** — stub compile of the shim + WinUI app (full Windows
+  CI parked until a Windows RTX runner exists again,
+  [#38](https://github.com/officialdad/camera-on-screen/issues/38)).
+
+A `v*` tag builds, GPU-verifies, and publishes the **Linux tarball** as a GitHub
+release on the RTX runner; Windows installer releases are manual and currently
+paused (#38). See
 [`docs/ci/self-hosted-runner.md`](docs/ci/self-hosted-runner.md).

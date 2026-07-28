@@ -1,15 +1,15 @@
 name: release
 
-# Installer release: build on the self-hosted RTX runner, verify the bundled Maxine runtime
-# actually loads, then publish the installer as a GitHub release. The heavy lifting lives in
-# the checked-in scripts (build-installer.ps1 + verify-bundle.ps1) so this workflow stays a
-# thin orchestrator. MANUAL-ONLY while the Windows RTX runner is dead (died with the Windows
-# dev box) — a v* tag trigger would queue forever. Restore the tag trigger when a runner
-# returns:
-#   push:
-#     tags:
-#       - 'v*'
+# Release focus is LINUX BINARIES for now (#38): a v* tag builds + verifies + publishes the
+# Linux tarball on the self-hosted Linux RTX runner. The Windows installer job remains
+# manual-only (workflow_dispatch) — its Windows RTX runner died with the old dev box; #38
+# tracks re-homing it (drop its `if:` guard then). Heavy lifting lives in checked-in
+# scripts (publish-linux.sh / build-installer.ps1 + verify-bundle.ps1) so this workflow
+# stays a thin orchestrator.
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 # Never cancel a release mid-publish (unlike ci.yml, which cancels superseded runs).
@@ -21,8 +21,50 @@ permissions:
   contents: write   # create the GitHub release + upload the installer asset
 
 jobs:
-  release:
-    name: Build installer + publish release
+  release-linux:
+    name: Linux tarball + publish release
+    runs-on: [self-hosted, linux, rtx]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # publish-linux.sh names the tarball from `git describe --tags`
+
+      - name: Tool paths (user-local cmake + dotnet — see runbook)
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+          echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - name: Publish self-contained app + pruned maxine/ bundle + tarball
+        run: |
+          test -n "$COS_VFX_SDK_DIR" && test -n "$COS_AR_SDK_DIR"
+          rm -f dist/*.tar.zst   # runner workspace persists; stale artifacts must not survive
+          scripts/publish-linux.sh --tar
+
+      - name: Runtime verify gate (bundled maxine/ tier, COS_* unset, GPU-only)
+        run: |
+          g++ -std=c++17 -DPROBE_ONLY -o dist/probe_gate \
+              native/shim/smoke/effects_drive_linux.cpp \
+              -L dist/linux -lCameraOnScreen.Shim -Wl,-rpath,$PWD/dist/linux
+          env -u COS_VFX_RUNTIME_DIR -u COS_AR_RUNTIME_DIR \
+              -u COS_VFX_SDK_DIR -u COS_AR_SDK_DIR dist/probe_gate
+
+      - name: Create GitHub release + upload tarball
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PKG=$(ls dist/CameraOnScreen-*-linux-x64.tar.zst)
+          HEADER=$'Linux x64 tarball (Avalonia panel + overlay + bundled NVIDIA Maxine runtime — extract and run, no env vars). AI effects require an NVIDIA RTX GPU; without one the app runs as a plain webcam overlay. X11/XWayland. Windows installer releases are paused (#38) — latest installer is v0.7.0.\n\nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
+          gh release create "$GITHUB_REF_NAME" "$PKG" \
+            --title "Camera on Screen ${GITHUB_REF_NAME#v}" \
+            --verify-tag --generate-notes --notes "$HEADER" \
+          || gh release upload "$GITHUB_REF_NAME" "$PKG"
+
+  release-windows:
+    name: Build installer + publish release (manual — #38)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, windows, rtx]
     steps:
       - name: Checkout
