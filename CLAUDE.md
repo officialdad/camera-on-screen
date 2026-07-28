@@ -64,7 +64,13 @@ cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   #
 ./native/shim/build/v4l2_probe   # ABI smoke: enumerate + caps (+3s capture when a camera exists)
 dotnet build src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.csproj  # auto-copies the .so
 dotnet run --project src/CameraOnScreen.App.Avalonia   # X11/XWayland; real shim if built
+scripts/publish-linux.sh   # self-contained dist/linux + maxine/ symlinks -> runs with NO env vars
+# Runtime effects verify gate (RTX + camera): smoke/effects_drive_linux.cpp (build cmd in its header)
 ```
+
+`dist/linux/CameraOnScreen.App.Avalonia` is what the dev box's desktop launcher
+(`~/.local/share/applications/camera-on-screen.desktop`) runs — re-run `publish-linux.sh`
+after shim/app changes or the launcher keeps starting the stale build.
 
 Config lands at `$XDG_CONFIG_HOME/CameraOnScreen/config.json` (Windows keeps `%LOCALAPPDATA%`). Hosted Linux CI: `.github/workflows/ci-linux.yml` (no GPU/camera needed — stub shim; `v4l2_probe` passes with 0 cameras by design). The old `[self-hosted, windows, rtx]` runner died with the Windows dev box, so `ci.yml` jobs stay queued on PRs until Phase 5 re-homes them. V4L2 format support is XBGR32/BGR24/RGB24/YUYV (fps-first scoring, ≤1080p) — MJPEG-only high-res modes (e.g. Brio 100 1080p30) fall back to lower-res YUYV until a libjpeg decode path is added.
 
