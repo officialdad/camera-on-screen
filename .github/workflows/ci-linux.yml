@@ -52,7 +52,7 @@ jobs:
 
       - name: Build shim (SDK config, warnings-as-errors)
         run: |
-          test -n "$COS_VFX_SDK_DIR" && test -n "$COS_AR_SDK_DIR"
+          test -n "$COS_VFX_SDK_DIR" && test -n "$COS_AR_SDK_DIR" && test -n "$COS_FRUC_SDK_DIR"
           cmake -S native/shim -B native/shim/build-ci
           cmake --build native/shim/build-ci
 
@@ -67,5 +67,10 @@ jobs:
               native/shim/smoke/effects_drive_linux.cpp \
               -L native/shim/build-ci -lCameraOnScreen.Shim \
               -Wl,-rpath,$PWD/native/shim/build-ci
+          # FRUC runtime = the SDK's own bin/ubuntu; its cudart must exist under its SONAME
+          # (NVIDIA's setup.sh does the same symlink).
+          FRUC_BIN="$COS_FRUC_SDK_DIR/NvOFFRUC/NvOFFRUCSample/bin/ubuntu"
+          ln -sf libcudart.so.11.6.55 "$FRUC_BIN/libcudart.so.11.0"
           COS_VFX_RUNTIME_DIR="$COS_VFX_SDK_DIR" COS_AR_RUNTIME_DIR="$COS_AR_SDK_DIR" \
+              COS_FRUC_RUNTIME_DIR="$FRUC_BIN" \
               ./native/shim/build-ci/probe_gate

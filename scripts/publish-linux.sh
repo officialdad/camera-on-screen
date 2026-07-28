@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 VFX="${COS_VFX_SDK_DIR:-$HOME/dev/VideoFX-linux/VideoFX}"
 AR="${COS_AR_SDK_DIR:-$HOME/dev/ARSDK-linux/ARSDK}"
+FRUC="${COS_FRUC_SDK_DIR:-$HOME/dev/Optical_Flow_SDK_5.0.7}"   # optional; absent = FRUC greys out
 OUT="dist/linux"; TAR=0
 for a in "$@"; do case "$a" in --tar) TAR=1 ;; *) OUT="$a" ;; esac; done
 
@@ -19,7 +20,8 @@ for a in "$@"; do case "$a" in --tar) TAR=1 ;; *) OUT="$a" ;; esac; done
 [ -f "$AR/include/nvAR.h" ] || { echo "ERROR: AR SDK-core tree not found at $AR" >&2; exit 1; }
 
 # Deploy-the-right-shim: build the SDK config LAST so it is what ships.
-COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" cmake -S native/shim -B native/shim/build
+COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" COS_FRUC_SDK_DIR="$FRUC" \
+  cmake -S native/shim -B native/shim/build
 cmake --build native/shim/build
 
 dotnet publish src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.csproj \
@@ -28,7 +30,8 @@ dotnet publish src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.cspro
 # The publish carries whatever .so the csproj copied; overwrite with the fresh SDK build.
 cp native/shim/build/libCameraOnScreen.Shim.so "$OUT/"
 
-COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" scripts/bundle-maxine-linux.sh "$OUT/maxine" | tail -1
+COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" COS_FRUC_SDK_DIR="$FRUC" \
+  scripts/bundle-maxine-linux.sh "$OUT/maxine" | tail -2
 
 if strings "$OUT/libCameraOnScreen.Shim.so" | grep -q "not built in"; then
   echo "ERROR: stub shim deployed (deploy-the-right-shim)" >&2; exit 1

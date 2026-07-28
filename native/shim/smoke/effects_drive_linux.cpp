@@ -26,10 +26,12 @@ int main() {
 #ifndef SKIP_PROBE
     CosCaps caps{};
     cos_query_capabilities(&caps);
-    std::printf("probe: gs=%d (%s) ec=%d (%s)\n", caps.green_screen_available, caps.detail,
-                caps.eye_contact_available, caps.ec_detail);
+    std::printf("probe: gs=%d (%s) ec=%d (%s) fi=%d (%s)\n", caps.green_screen_available,
+                caps.detail, caps.eye_contact_available, caps.ec_detail,
+                caps.frame_interp_available, caps.fi_detail);
 #ifdef PROBE_ONLY
-    bool ok = caps.green_screen_available && caps.eye_contact_available;
+    bool ok = caps.green_screen_available && caps.eye_contact_available
+              && caps.frame_interp_available;
     cos_shutdown();
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
@@ -38,6 +40,7 @@ int main() {
     CosParams p{};
     p.green_screen_enabled = 1;
     p.eye_contact_enabled = 1;
+    p.frame_interp_enabled = 1;   // pass unchanged by fi; watch frames/s ~double when active
     cos_set_params(&p);
     cos_start();
     std::vector<uint8_t> buf(1920 * 1080 * 4);

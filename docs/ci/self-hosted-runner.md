@@ -104,8 +104,10 @@ loginctl enable-linger ariff   # runner survives logout/reboot without a session
 
 Environment: the runner reads `~/actions-runner/.env` at service start —
 `COS_VFX_SDK_DIR` / `COS_AR_SDK_DIR` point at the **Linux SDK-core trees**
-(`~/dev/VideoFX-linux/VideoFX`, `~/dev/ARSDK-linux/ARSDK`). Same caveat as Windows:
-changing `.env` needs `systemctl --user restart actions-runner`. Two lessons already
+(`~/dev/VideoFX-linux/VideoFX`, `~/dev/ARSDK-linux/ARSDK`), and `COS_FRUC_SDK_DIR` at
+the **Optical Flow SDK root** (`~/dev/Optical_Flow_SDK_5.0.7` — manual developer-site
+download, issue #35; enables FRUC in the shim build + `maxine/fruc` in bundles). Same
+caveat as Windows: changing `.env` needs `systemctl --user restart actions-runner`. Two lessons already
 paid for: the runner's `.path` file did **not** reach job PATH under this user unit, so
 the `maxine-rtx` job adds user-local tool dirs (`~/.local/bin` — cmake) via
 `$GITHUB_PATH` instead; and do **not** set `KillMode=process` in the unit — it kills

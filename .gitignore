@@ -24,3 +24,6 @@ x86/
 
 # Linux CMake shim build (issue #27 Phase 2)
 native/shim/build/
+
+# NvOFFRUC writes an (empty) error log dir beside the CWD at create time
+NvOFFRUC/

@@ -47,8 +47,8 @@ jobs:
           g++ -std=c++17 -DPROBE_ONLY -o dist/probe_gate \
               native/shim/smoke/effects_drive_linux.cpp \
               -L dist/linux -lCameraOnScreen.Shim -Wl,-rpath,$PWD/dist/linux
-          env -u COS_VFX_RUNTIME_DIR -u COS_AR_RUNTIME_DIR \
-              -u COS_VFX_SDK_DIR -u COS_AR_SDK_DIR dist/probe_gate
+          env -u COS_VFX_RUNTIME_DIR -u COS_AR_RUNTIME_DIR -u COS_FRUC_RUNTIME_DIR \
+              -u COS_VFX_SDK_DIR -u COS_AR_SDK_DIR -u COS_FRUC_SDK_DIR dist/probe_gate
 
       - name: Create GitHub release + upload tarball
         if: github.event_name == 'push'
