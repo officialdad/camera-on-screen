@@ -42,10 +42,51 @@ public sealed class OverlayWindow : Window
         SetMirror(mirror);
 
         _pump = new DispatcherTimer(TimeSpan.FromMilliseconds(PumpMs),
-            DispatcherPriority.Render, (_, _) => Present());
+            DispatcherPriority.Render, (_, _) => { if (_dragging) PollDrag(); Present(); });
         _pump.Start();
-        Closed += (_, _) => _pump.Stop();
+        Closed += (_, _) => { _pump.Stop(); if (_dpy != IntPtr.Zero) { XCloseDisplay(_dpy); _dpy = IntPtr.Zero; } };
+
+        // #40: KWin stacks a focused fullscreen window (slide share, fullscreen video) in a
+        // layer ABOVE _NET_WM_STATE_ABOVE, so Topmost alone sinks on click. The KDE
+        // critical-notification window type is the one client-settable layer above active
+        // fullscreen. Set before AND after map (KWin reads the type at manage time and
+        // tracks changes). Non-KDE WMs ignore the unknown atom and fall back to NORMAL,
+        // where Topmost keeps today's behavior.
+        SetAboveFullscreen();
+        Opened += (_, _) => SetAboveFullscreen();
     }
+
+    private void SetAboveFullscreen()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var handle = TryGetPlatformHandle();
+        if (handle is null) return;
+        IntPtr dpy = XOpenDisplay(IntPtr.Zero);
+        if (dpy == IntPtr.Zero) return;
+        try
+        {
+            var atoms = new[]
+            {
+                XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_CRITICAL_NOTIFICATION", false),
+                XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", false),
+            };
+            XChangeProperty(dpy, handle.Handle,
+                XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false),
+                XInternAtom(dpy, "ATOM", false), 32, PropModeReplace, atoms, atoms.Length);
+        }
+        finally { XCloseDisplay(dpy); }
+    }
+
+    private const int PropModeReplace = 0;
+    [DllImport("libX11.so.6")] private static extern IntPtr XOpenDisplay(IntPtr display);
+    [DllImport("libX11.so.6")] private static extern IntPtr XInternAtom(IntPtr display, string name, bool onlyIfExists);
+    [DllImport("libX11.so.6")] private static extern int XChangeProperty(IntPtr display, IntPtr window,
+        IntPtr property, IntPtr type, int format, int mode, IntPtr[] data, int nelements);
+    [DllImport("libX11.so.6")] private static extern int XCloseDisplay(IntPtr display);
+    [DllImport("libX11.so.6")] private static extern IntPtr XDefaultRootWindow(IntPtr display);
+    [DllImport("libX11.so.6")] private static extern bool XQueryPointer(IntPtr display, IntPtr window,
+        out IntPtr root, out IntPtr child, out int rootX, out int rootY,
+        out int winX, out int winY, out uint mask);
 
     public void SetMirror(bool mirror) =>
         _image.RenderTransform = mirror ? new ScaleTransform(-1, 1) : null;
@@ -75,11 +116,51 @@ public sealed class OverlayWindow : Window
         _image.InvalidateVisual();
     }
 
+    // App-side drag, not BeginMoveDrag: KWin refuses _NET_WM_MOVERESIZE on the
+    // critical-notification layer (SetAboveFullscreen), so the WM won't move us — we move
+    // ourselves. Same lesson as the Windows overlay (see CLAUDE.md): the drag MOVE is
+    // polled on the frame-pump timer from ROOT pointer coords (XQueryPointer), never
+    // derived from window-relative event coords — Position updates async from the WM, and
+    // feeding its stale value back into the delta makes the window glide behind the
+    // cursor. Pointer events only start/stop the drag.
+    private bool _dragging;
+    private int _grabDX, _grabDY;      // pointer(root) - window origin at press
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            BeginMoveDrag(e);
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            && TryGetRootPointer(out int rx, out int ry))
+        {
+            _grabDX = rx - Position.X;
+            _grabDY = ry - Position.Y;
+            _dragging = true;
+            e.Pointer.Capture(this);
+        }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _dragging = false;
+    }
+
+    private void PollDrag()
+    {
+        if (!TryGetRootPointer(out int rx, out int ry)) { _dragging = false; return; }
+        Position = new PixelPoint(rx - _grabDX, ry - _grabDY);
+    }
+
+    private IntPtr _dpy;   // persistent Xlib connection for pointer polling; closed with the window
+
+    private bool TryGetRootPointer(out int rootX, out int rootY)
+    {
+        rootX = rootY = 0;
+        if (!OperatingSystem.IsLinux()) return false;
+        if (_dpy == IntPtr.Zero) _dpy = XOpenDisplay(IntPtr.Zero);
+        if (_dpy == IntPtr.Zero) return false;
+        return XQueryPointer(_dpy, XDefaultRootWindow(_dpy), out _, out _,
+                             out rootX, out rootY, out _, out _, out _);
     }
 
     private double _wheelAccum;
