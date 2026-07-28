@@ -81,7 +81,16 @@ SDK `.so` set has no RUNPATH — `maxine_linux.cpp` preloads the closure by abso
 `/etc/lsb-release` on non-Ubuntu distros). **No NVIDIA proxy compiles on Linux** (VFX/NvCVImage
 are `#warning not ported`; `nvARProxy.cpp`'s `getNvARLib()` uses unguarded TCHAR) —
 `maxine_proxy_linux.cpp` is ours: hidden-visibility dlsym forwarders for all three surfaces
-(hidden so `dlsym(RTLD_DEFAULT)` can't self-resolve and recurse). Super-res + FRUC stay
+(hidden so `dlsym(RTLD_DEFAULT)` can't self-resolve and recurse). **Preload gotchas (cost a
+debugging cycle):** `external/cuda/lib/stubs/` are link-time stubs with the REAL SONAMEs —
+loading one silently breaks `NvVFX_Run` ("stub version of nppi*" on stderr); the closure skips
+`stubs/` dirs and dedups lib basenames across the two trees (one runtime, VFX's copies win —
+the AR gaze feature binds VFX's `libVideoFXLocal` internals via the global scope, so the trees
+are NOT independent). Ordering invariant: the process's FIRST `NvVFX_Load` must precede any
+`NvAR_Load`/`NvCVImage_Alloc`, else `libNVCVImage` caches an internal init failure and every
+later alloc returns `NVCV_ERR_LIBRARY` — guaranteed in-app because the capability probe
+(`Aigs::Probe` first) always runs before effects can enable; don't drive the raw ABI with
+effects on and no prior `cos_query_capabilities`. Super-res + FRUC stay
 stubbed/greyed on Linux (no VSR header/feature in the Linux VFX SDK; Optical Flow SDK download
 pending). Deploy-the-right-shim check: `nm -D` shows `GetOSInfo` and `strings` lacks
 `"not built in"` = SDK build.

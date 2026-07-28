@@ -16,6 +16,7 @@
 #include "nvAR.h"
 #include "nvAR_defs.h"
 #include "paths.h"
+#include "vfx_paths.h"
 
 // AR 1.1.1.0 moved per-feature IDs into per-feature headers and dropped the NvAR_Feature_*
 // macros from nvAR_defs.h (NvAR_FeatureID is a const char*). Define the literal if absent so
@@ -97,6 +98,13 @@ void PointProxyAt(const std::string& runtimeDir) {
     s_root = runtimeDir;
     g_nvARSDKPath = const_cast<char*>(s_root.c_str());
 #else
+    // Co-version, first-load-wins: the shared NVCVImage/TRT/CUDA runtime must come from
+    // the VFX tree (the Windows stage ships VFX's copies for both SDKs). Preload VFX
+    // first regardless of which effect starts first — the worker chain starts eye
+    // contact before green screen, and AR's libNVCVImage.so.1 (1.1) winning breaks
+    // VFX 1.2's feature load (NVCV_ERR_LIBRARY). No-op when VFX isn't built/resolvable.
+    std::string vfxBin, vfxModels, vfxErr;
+    if (vfx::ResolveSdkPaths(vfxBin, vfxModels, vfxErr)) vfx::PointProxiesAt(vfxBin);
     PreloadMaxineClosure(runtimeDir);
 #endif
 }
