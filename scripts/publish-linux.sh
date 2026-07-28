@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Self-contained Linux build of the Avalonia panel with the SDK shim and the bundled-tier
 # maxine/ layout, launchable with NO env vars: <shimdir>/maxine/{vfx,ar} is the resolvers'
-# last tier. Dev-box convenience — maxine/ are SYMLINKS to the SDK-core trees, not a
-# redistributable bundle (pruned closure + licenses = Phase 5).
+# last tier. maxine/ is the pruned redistributable bundle (bundle-maxine-linux.sh:
+# DT_NEEDED closure + models + licenses; reflink copies, so rebuilds cost seconds).
 #
-# Usage: scripts/publish-linux.sh [outdir]   (default dist/linux)
+# Usage: scripts/publish-linux.sh [outdir] [--tar]   (default dist/linux; --tar also writes
+# CameraOnScreen-<git describe>-linux-x64.tar.zst beside outdir — zstd -12 keeps the 3.6 GB
+# tree at ~1.85 GiB, under GitHub's 2 GiB release-asset cap; default zstd was a 7 MB squeak)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VFX="${COS_VFX_SDK_DIR:-$HOME/dev/VideoFX-linux/VideoFX}"
 AR="${COS_AR_SDK_DIR:-$HOME/dev/ARSDK-linux/ARSDK}"
-OUT="${1:-dist/linux}"
+OUT="dist/linux"; TAR=0
+for a in "$@"; do case "$a" in --tar) TAR=1 ;; *) OUT="$a" ;; esac; done
 
 [ -f "$VFX/include/nvVideoEffects.h" ] || { echo "ERROR: VFX SDK-core tree not found at $VFX" >&2; exit 1; }
 [ -f "$AR/include/nvAR.h" ] || { echo "ERROR: AR SDK-core tree not found at $AR" >&2; exit 1; }
@@ -25,11 +28,16 @@ dotnet publish src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.cspro
 # The publish carries whatever .so the csproj copied; overwrite with the fresh SDK build.
 cp native/shim/build/libCameraOnScreen.Shim.so "$OUT/"
 
-mkdir -p "$OUT/maxine"
-ln -sfn "$VFX" "$OUT/maxine/vfx"
-ln -sfn "$AR" "$OUT/maxine/ar"
+COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" scripts/bundle-maxine-linux.sh "$OUT/maxine" | tail -1
 
 if strings "$OUT/libCameraOnScreen.Shim.so" | grep -q "not built in"; then
   echo "ERROR: stub shim deployed (deploy-the-right-shim)" >&2; exit 1
 fi
 echo "OK: $OUT/CameraOnScreen.App.Avalonia (no COS_* env vars needed)"
+
+if [ "$TAR" = 1 ]; then
+  VER=$(git describe --tags --always 2>/dev/null || echo dev)
+  PKG="$(dirname "$OUT")/CameraOnScreen-$VER-linux-x64.tar.zst"
+  tar -C "$OUT" --use-compress-program='zstd -T0 -12' -cf "$PKG" .
+  echo "OK: $PKG ($(stat -c %s "$PKG" | awk '{printf "%.2f GiB", $1/1073741824}'))"
+fi
