@@ -110,6 +110,8 @@ download, issue #35; enables FRUC in the shim build + `maxine/fruc` in bundles).
 caveat as Windows: changing `.env` needs `systemctl --user restart actions-runner`. Two lessons already
 paid for: the runner's `.path` file did **not** reach job PATH under this user unit, so
 the `maxine-rtx` job adds user-local tool dirs (`~/.local/bin` — cmake) via
-`$GITHUB_PATH` instead; and do **not** set `KillMode=process` in the unit — it kills
+`$GITHUB_PATH` instead (third instance, v0.8.0: `release-linux`'s `gh` lives in
+`~/.local/share/mise/shims` — also added via `$GITHUB_PATH`; the v0.8.0 release itself
+was published by hand because the workflow file is snapshotted at the tag ref); and do **not** set `KillMode=process` in the unit — it kills
 only `run.sh` on restart, leaving an orphan `Runner.Listener` with the stale
 environment to keep taking jobs.

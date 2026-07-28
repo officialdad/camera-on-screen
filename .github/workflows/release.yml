@@ -30,10 +30,11 @@ jobs:
         with:
           fetch-depth: 0   # publish-linux.sh names the tarball from `git describe --tags`
 
-      - name: Tool paths (user-local cmake + dotnet — see runbook)
+      - name: Tool paths (user-local cmake + dotnet + gh — see runbook)
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"   # gh (v0.8.0 lesson: release step died on gh-not-found)
           echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
 
       - name: Publish self-contained app + pruned maxine/ bundle + tarball
