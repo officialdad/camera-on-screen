@@ -25,7 +25,7 @@ Fn* Sym(const char* name) { return reinterpret_cast<Fn*>(dlsym(RTLD_DEFAULT, nam
 NvCV_Status NvCVImage_Alloc(NvCVImage* im, unsigned width, unsigned height, NvCVImage_PixelFormat format, NvCVImage_ComponentType type, unsigned layout, unsigned memSpace, unsigned alignment) { COS_FWD(NvCVImage_Alloc, im, width, height, format, type, layout, memSpace, alignment); }
 void NvCVImage_Dealloc(NvCVImage* im) { static auto* f = Sym<decltype(NvCVImage_Dealloc)>("NvCVImage_Dealloc"); if (f) f(im); }
 NvCV_Status NvCVImage_Init(NvCVImage* im, unsigned width, unsigned height, int pitch, void* pixels, NvCVImage_PixelFormat format, NvCVImage_ComponentType type, unsigned layout, unsigned memSpace) { COS_FWD(NvCVImage_Init, im, width, height, pitch, pixels, format, type, layout, memSpace); }
-NvCV_Status NvCVImage_Transfer(const NvCVImage* src, NvCVImage* dst, float scale, CUstream stream, NvCVImage* tmp) { COS_FWD(NvCVImage_Transfer, src, dst, scale, stream, tmp); }
+NvCV_Status NvCVImage_Transfer(const NvCVImage* src, NvCVImage* dst, float scale, struct CUstream_st* stream, NvCVImage* tmp) { COS_FWD(NvCVImage_Transfer, src, dst, scale, stream, tmp); }
 const char* NvCV_GetErrorStringFromCode(NvCV_Status code) { static auto* f = Sym<decltype(NvCV_GetErrorStringFromCode)>("NvCV_GetErrorStringFromCode"); return f ? f(code) : "NvCV library not loaded"; }
 
 #ifdef COS_HAS_MAXINE
