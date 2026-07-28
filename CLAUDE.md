@@ -64,22 +64,32 @@ cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   #
 ./native/shim/build/v4l2_probe   # ABI smoke: enumerate + caps (+3s capture when a camera exists)
 dotnet build src/CameraOnScreen.App.Avalonia/CameraOnScreen.App.Avalonia.csproj  # auto-copies the .so
 dotnet run --project src/CameraOnScreen.App.Avalonia   # X11/XWayland; real shim if built
-scripts/publish-linux.sh   # self-contained dist/linux + maxine/ symlinks -> runs with NO env vars
+scripts/publish-linux.sh   # self-contained dist/linux + PRUNED maxine/ bundle -> runs with NO env vars
+scripts/publish-linux.sh --tar   # + CameraOnScreen-<ver>-linux-x64.tar.zst (~1.85 GiB, under GitHub's 2 GiB cap)
 # Runtime effects verify gate (RTX + camera): smoke/effects_drive_linux.cpp (build cmd in its header)
+# -DPROBE_ONLY variant = GPU-only capability gate (no camera) — what the maxine-rtx CI job runs
 ```
 
 `dist/linux/CameraOnScreen.App.Avalonia` is what the dev box's desktop launcher
 (`~/.local/share/applications/camera-on-screen.desktop`) runs — re-run `publish-linux.sh`
 after shim/app changes or the launcher keeps starting the stale build.
 
-Config lands at `$XDG_CONFIG_HOME/CameraOnScreen/config.json` (Windows keeps `%LOCALAPPDATA%`). Hosted Linux CI: `.github/workflows/ci-linux.yml` (no GPU/camera needed — stub shim; `v4l2_probe` passes with 0 cameras by design). The old `[self-hosted, windows, rtx]` runner died with the Windows dev box, so `ci.yml` jobs stay queued on PRs until Phase 5 re-homes them. V4L2 format support is XBGR32/BGR24/RGB24/YUYV (fps-first scoring, ≤1080p) — MJPEG-only high-res modes (e.g. Brio 100 1080p30) fall back to lower-res YUYV until a libjpeg decode path is added.
+Config lands at `$XDG_CONFIG_HOME/CameraOnScreen/config.json` (Windows keeps `%LOCALAPPDATA%`). Linux CI: `.github/workflows/ci-linux.yml` — hosted `linux` job (no GPU/camera — stub shim; `v4l2_probe` passes with 0 cameras by design) + `maxine-rtx` job on the dev box's self-hosted `[self-hosted, linux, rtx]` runner (`cachyos-rtx3090`, user systemd service; SDK-config build, deploy-check, GPU-only capability probe — runbook: `docs/ci/self-hosted-runner.md`). Windows Maxine CI (`ci.yml` full jobs + tag-triggered `release.yml` installers) still needs a Windows RTX box. V4L2 format support is XBGR32/BGR24/RGB24/YUYV (fps-first scoring, ≤1080p) — MJPEG-only high-res modes (e.g. Brio 100 1080p30) fall back to lower-res YUYV until a libjpeg decode path is added.
 
 Phase 4 Maxine-on-Linux (green screen + eye contact): build the shim with
 `COS_VFX_SDK_DIR=~/dev/VideoFX-linux/VideoFX COS_AR_SDK_DIR=~/dev/ARSDK-linux/ARSDK` — the
 **Linux SDK-core trees** (headers + features + libs; refetch via `scripts/fetch-maxine-linux.sh`
 + ngc CLI, spec §6), NOT the GitHub header clones (they lack `nvVFXGreenScreen.h`). Unset = CI
-stub. Runtime: `COS_VFX_RUNTIME_DIR`/`COS_AR_RUNTIME_DIR` point at the same trees (bundled tier
-`<shim>/maxine/{vfx,ar}` = Phase 5). Same co-versioned pins as Windows (TRT 10.9 / CUDA 12.8);
+stub. Runtime: `COS_VFX_RUNTIME_DIR`/`COS_AR_RUNTIME_DIR` point at the same trees, else the
+bundled tier `<shim>/maxine/{vfx,ar}` — a pruned redistributable copy built by
+`scripts/bundle-maxine-linux.sh` (Phase 5: DT_NEEDED closure computed at bundle time +
+cuDNN/TRT dlopen extras + sm86 engines + license files; ~3.5 GB vs the 8.8 GB trees;
+verify gate = `effects_drive` vs the bundle with `COS_*` unset). **Bundle gotcha:** AR's
+`libNVCVImage.so.1.1.1` must ship even though VFX's copy wins SONAME matching —
+NVIDIA statically embedded libstdc++ pieces into it and `libnvARPoseLocal` binds
+`_ZNSt12__cow_stringC1EPKcm` from there (no other lib exports it; dropping it =
+`NvAR_CudaStreamCreate` fails `NVCV_ERR_LIBRARY`). Same co-versioned pins as Windows
+(TRT 10.9 / CUDA 12.8);
 `Aigs::Probe` runs first, so VFX 1.2's `libNVCVImage.so.1` wins first-load for both effects. The
 SDK `.so` set has no RUNPATH — `maxine_linux.cpp` preloads the closure by absolute path
 (`RTLD_GLOBAL`, fixpoint), promotes the shim itself to the global scope (P/Invoke dlopens it

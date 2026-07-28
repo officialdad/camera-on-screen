@@ -74,3 +74,40 @@ The SDK build and the CI stub write the **same** DLL path; whichever built last
 wins. The workflow's "Verify deployed shim" step fails the run if the deployed
 DLL is the passthrough stub (missing `GreenScreen`/`GazeRedirection`, or
 containing `not built in`), so a stale stub can never pass CI green.
+
+## Linux RTX runner (Phase 5 — `ci-linux.yml` `maxine-rtx` job)
+
+The CachyOS dev box (RTX 3090) is registered as a **repo-level** runner named
+`cachyos-rtx3090` with labels `[self-hosted, linux, rtx]`. It runs the SDK-config
+shim build + deploy-check + Maxine capability probe (GPU-only; the full camera
+gate `effects_drive` stays manual because the box's camera is in interactive use).
+
+Setup (already done on the box; repeat only on a rebuild):
+
+```bash
+mkdir ~/actions-runner && cd ~/actions-runner
+curl -sLo r.tar.gz https://github.com/actions/runner/releases/download/v<VER>/actions-runner-linux-x64-<VER>.tar.gz
+tar xzf r.tar.gz && rm r.tar.gz
+TOKEN=$(gh api -X POST repos/officialdad/camera-on-screen/actions/runners/registration-token --jq .token)
+./config.sh --unattended --url https://github.com/officialdad/camera-on-screen \
+  --token "$TOKEN" --name cachyos-rtx3090 --labels rtx --replace
+```
+
+No sudo on the box, so **not** `svc.sh` — a **user** systemd unit
+(`~/.config/systemd/user/actions-runner.service`, `ExecStart=~/actions-runner/run.sh`,
+`Restart=always`), then:
+
+```bash
+systemctl --user enable --now actions-runner.service
+loginctl enable-linger ariff   # runner survives logout/reboot without a session
+```
+
+Environment: the runner reads `~/actions-runner/.env` at service start —
+`COS_VFX_SDK_DIR` / `COS_AR_SDK_DIR` point at the **Linux SDK-core trees**
+(`~/dev/VideoFX-linux/VideoFX`, `~/dev/ARSDK-linux/ARSDK`). Same caveat as Windows:
+changing `.env` needs `systemctl --user restart actions-runner`. Two lessons already
+paid for: the runner's `.path` file did **not** reach job PATH under this user unit, so
+the `maxine-rtx` job adds user-local tool dirs (`~/.local/bin` — cmake) via
+`$GITHUB_PATH` instead; and do **not** set `KillMode=process` in the unit — it kills
+only `run.sh` on restart, leaving an orphan `Runner.Listener` with the stale
+environment to keep taking jobs.

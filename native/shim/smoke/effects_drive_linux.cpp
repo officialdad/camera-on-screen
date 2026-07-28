@@ -13,6 +13,8 @@
 // Expect: probe gs=1 ec=1, then gs_active=1 ec_active=1 alphaVaried=1 (early-exits on success;
 // first run engine-load can take ~30-60 s). -DSKIP_PROBE reproduces the raw worker-only
 // ordering trap (first NvVFX_Load must precede AR/alloc use — see CLAUDE.md) and MUST fail.
+// -DPROBE_ONLY stops after cos_query_capabilities (GPU-only, no camera) — the CI gate on the
+// shared dev box, where the full run would fight the user's app for the camera.
 #include <cstdio>
 #include <vector>
 #include <thread>
@@ -26,6 +28,12 @@ int main() {
     cos_query_capabilities(&caps);
     std::printf("probe: gs=%d (%s) ec=%d (%s)\n", caps.green_screen_available, caps.detail,
                 caps.eye_contact_available, caps.ec_detail);
+#ifdef PROBE_ONLY
+    bool ok = caps.green_screen_available && caps.eye_contact_available;
+    cos_shutdown();
+    std::printf("%s\n", ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+#endif
 #endif
     CosParams p{};
     p.green_screen_enabled = 1;

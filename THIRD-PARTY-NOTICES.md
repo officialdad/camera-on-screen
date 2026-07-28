@@ -50,6 +50,23 @@ product:
 | `maxine\ThirdPartyLicenses-VFX.txt` | Video Effects SDK open-source dependencies |
 | `maxine\ThirdPartyLicenses-AR.txt` | AR SDK open-source dependencies |
 
+### Linux bundle layout
+
+The Linux distribution (`scripts/publish-linux.sh --tar`) ships the same NVIDIA
+components pruned from the Linux Maxine SDK-core trees into `maxine/{vfx,ar}/`
+beside the application, under the same license framework as the table above.
+License texts in the Linux layout:
+
+- `maxine/<sdk>/share/*.pdf` — the Software License Agreement, AI
+  Product-Specific Terms, and (VFX) Open Model License
+- `maxine/<sdk>/features/<feature>/license/*.pdf` — per-feature model licenses
+  (the AR features carry the Models Community License)
+- `maxine/<sdk>/share/external/ThirdPartyLicenses.txt` — each SDK's open-source
+  dependency notices
+
+The Optical Flow SDK / FRUC is **not** part of the Linux bundle (no Linux SDK
+fetched yet — issue #35); the section below currently applies to Windows only.
+
 The bundled model engines are redistributed under the NVIDIA Community Model
 License §1.2 exception (i) — they are designated for use with NVIDIA RTX /
 GeForce RTX GPUs, run locally on a single user's PC, and are shipped with a copy

@@ -1,7 +1,12 @@
 # Hosted Linux CI (issue #27 Phase 2). Runs on GitHub's ubuntu runners — no GPU, no
 # camera, no Maxine SDK needed: the shim builds with the passthrough effect stubs and
-# v4l2_probe passes with zero cameras by design. The Windows job set in ci.yml needs the
-# (currently offline) self-hosted RTX runner; Phase 5 re-homes it.
+# v4l2_probe passes with zero cameras by design.
+#
+# The maxine-rtx job (Phase 5) runs on the self-hosted Linux RTX box: SDK-config shim
+# build + deploy-the-right-shim check + Maxine capability probe (GPU-only — the full
+# camera gate stays manual, the box's camera is in interactive use). SDK dirs come from
+# the runner's .env (docs/ci/self-hosted-runner.md). Windows Maxine CI still needs a
+# Windows RTX box (ci.yml stub job meanwhile).
 name: CI (Linux)
 
 on:
@@ -35,3 +40,32 @@ jobs:
 
       - name: Core tests
         run: dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj -c Release /p:TreatWarningsAsErrors=true --nologo
+
+  maxine-rtx:
+    runs-on: [self-hosted, linux, rtx]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tool paths (user-local cmake — see runbook)
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build shim (SDK config, warnings-as-errors)
+        run: |
+          test -n "$COS_VFX_SDK_DIR" && test -n "$COS_AR_SDK_DIR"
+          cmake -S native/shim -B native/shim/build-ci
+          cmake --build native/shim/build-ci
+
+      - name: Deploy-the-right-shim check
+        run: |
+          nm -D native/shim/build-ci/libCameraOnScreen.Shim.so | grep -q GetOSInfo
+          ! strings native/shim/build-ci/libCameraOnScreen.Shim.so | grep -q "not built in"
+
+      - name: Maxine capability probe (RTX, GPU-only)
+        run: |
+          g++ -std=c++17 -DPROBE_ONLY -o native/shim/build-ci/probe_gate \
+              native/shim/smoke/effects_drive_linux.cpp \
+              -L native/shim/build-ci -lCameraOnScreen.Shim \
+              -Wl,-rpath,$PWD/native/shim/build-ci
+          COS_VFX_RUNTIME_DIR="$COS_VFX_SDK_DIR" COS_AR_RUNTIME_DIR="$COS_AR_SDK_DIR" \
+              ./native/shim/build-ci/probe_gate
