@@ -34,6 +34,8 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName == nameof(MainViewModel.IsRunning)) SyncOverlay();
             else if (e.PropertyName == nameof(MainViewModel.Mirror)) _overlay?.SetMirror(_services.Vm.Mirror);
+            else if (e.PropertyName is nameof(MainViewModel.FrameInterpEnabled) or nameof(MainViewModel.FrameInterpAvailable))
+                _overlay?.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
         };
 
         Closing += (_, _) =>
@@ -61,6 +63,7 @@ public partial class MainWindow : Window
             // Alt+F4 on the frameless overlay closes it directly: remember where it was and
             // let capture keep running; the next Stop/Start round-trip reopens it.
             w.Closed += (_, _) => { if (ReferenceEquals(_overlay, w)) { _overlayBounds = BoundsOf(w); _overlay = null; } };
+            w.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
             _overlay = w;
             w.Show();
         }

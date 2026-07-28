@@ -106,10 +106,19 @@ are NOT independent). Ordering invariant: the process's FIRST `NvVFX_Load` must 
 `NvAR_Load`/`NvCVImage_Alloc`, else `libNVCVImage` caches an internal init failure and every
 later alloc returns `NVCV_ERR_LIBRARY` — guaranteed in-app because the capability probe
 (`Aigs::Probe` first) always runs before effects can enable; don't drive the raw ABI with
-effects on and no prior `cos_query_capabilities`. Super-res + FRUC stay
-stubbed/greyed on Linux (no VSR header/feature in the Linux VFX SDK; Optical Flow SDK download
-pending). Deploy-the-right-shim check: `nm -D` shows `GetOSInfo` and `strings` lacks
-`"not built in"` = SDK build.
+effects on and no prior `cos_query_capabilities`. Super-res stays stubbed/greyed on Linux
+(no VSR header/feature in the Linux VFX SDK). **FRUC on Linux (issue #35, 2026-07-29):**
+`COS_FRUC_SDK_DIR=~/dev/Optical_Flow_SDK_5.0.7` at cmake time; runtime
+`COS_FRUC_RUNTIME_DIR` (dir must hold `libcudart.so.11.0` under its SONAME — NVIDIA's
+`setup.sh` symlink) else `<shim>/maxine/fruc` (bundled: `libNvOFFRUC.so` +
+`libcudart.so.11.0` + DesignWorks `LicenseAgreement.pdf`). The CUDA driver API is
+**dlsym'd from `libcuda.so.1`** (the `*_v2` 64-bit entry points; no CUDA toolkit at build,
+zero NVIDIA `DT_NEEDED` so the shim still loads on non-NVIDIA boxes), and `libNvOFFRUC.so`
+is dlopened with **`RTLD_DEEPBIND`** — load-bearing: Maxine's preload puts its CUDA-12
+cudart in the global scope, and without DEEPBIND FRUC's unversioned refs would bind to it
+instead of its co-shipped CUDA-11 cudart (ELF flat namespace has no Windows
+distinct-DLL-name isolation). Deploy-the-right-shim check: `nm -D` shows `GetOSInfo` and
+`strings` lacks `"not built in"` = SDK build.
 
 **DEPLOY THE RIGHT SHIM (cost a full debugging cycle).** The SDK build (`COS_HAS_MAXINE*`) and the CI stub (`/p:CosVfxSdkDir= /p:CosArSdkDir=`) write the **same** DLL path; whichever built **last** is what App `-t:Rebuild` deploys. Always build the SDK config **last** before running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL: `grep -a GreenScreen` **and** `grep -a GazeRedirection` present, `grep -a "not built in"` absent.
 
@@ -159,7 +168,7 @@ Three projects: `src/CameraOnScreen.Core` (pure .NET 8 logic, no WinUI/Win32 typ
 
 ### FRUC / Optical Flow SDK (separate product; redistribution = bundled-with-app only)
 
-- **FRUC** (frame-rate upscaling, 30→60 fps) uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll`) — a **separate product** from Maxine VFX/AR, governed by the **NVIDIA DesignWorks SDK License** (not the Maxine license above); build via `COS_FRUC_SDK_DIR`; compiled behind `COS_HAS_FRUC`. Runtime: `COS_FRUC_RUNTIME_DIR` else `<app>\maxine\`.
+- **FRUC** (frame-rate upscaling, 30→60 fps) uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll` / `libNvOFFRUC.so`) — a **separate product** from Maxine VFX/AR, governed by the **NVIDIA DesignWorks SDK License** (not the Maxine license above); build via `COS_FRUC_SDK_DIR`; compiled behind `COS_HAS_FRUC`. Runtime: `COS_FRUC_RUNTIME_DIR` else `<app>\maxine\` (Windows) / `<shim>/maxine/fruc` (Linux — see the Phase 4 paragraph for the dlsym/DEEPBIND loader).
 - **Redistribution:** `NvOFFRUC.dll` + `cudart64_110.dll` ship **only bundled inside the app** (never standalone) — permitted under the DesignWorks license's distributable-portions terms (material additional functionality; SDK accessed only by our app). See `THIRD-PARTY-NOTICES.md`. End-user needs an NVIDIA driver **≥ 528.24**; the CUDA 11 runtime is bundled (no CUDA Toolkit install needed). No suitable GPU/driver → effect greys out, app runs normally.
 
 ## CI/CD

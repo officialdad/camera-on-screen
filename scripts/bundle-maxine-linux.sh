@@ -118,4 +118,22 @@ for tree, sub in ((VFX, "vfx"), (AR, "ar")):
 print(f"closure: {len(seen)} libs, {total/1e9:.2f} GB; system deps left to the host: {sorted(set(system))}")
 PY
 
+# FRUC tier (issue #35): the Optical Flow SDK is a separate product (DesignWorks license,
+# bundled-with-app redistribution only). <out>/fruc is fruc.cpp's bundled resolution tier.
+# The CUDA-11 runtime is copied under its SONAME (what the DT_NEEDED preload matches).
+# Optional: no SDK on the box = no fruc/ tier, the FRUC toggle greys out at probe.
+FRUC="${COS_FRUC_SDK_DIR:-$HOME/dev/Optical_Flow_SDK_5.0.7}"
+FRUC_BIN="$FRUC/NvOFFRUC/NvOFFRUCSample/bin/ubuntu"
+if [ -f "$FRUC_BIN/libNvOFFRUC.so" ]; then
+  mkdir -p "$OUT/fruc"
+  cp --reflink=auto -p "$FRUC_BIN/libNvOFFRUC.so" "$OUT/fruc/libNvOFFRUC.so"
+  # One real file, named by SONAME (the SDK dir may also hold setup.sh's symlinks).
+  CUDART=$(find "$FRUC_BIN" -name 'libcudart.so.11*' ! -type l | head -1)
+  cp --reflink=auto -pL "$CUDART" "$OUT/fruc/libcudart.so.11.0"
+  cp --reflink=auto -p "$FRUC/LicenseAgreement.pdf" "$OUT/fruc/LicenseAgreement.pdf"
+  echo "  fruc: libNvOFFRUC.so + libcudart.so.11.0 + LicenseAgreement.pdf"
+else
+  echo "  fruc: SKIPPED (no Optical Flow SDK at $FRUC; set COS_FRUC_SDK_DIR)"
+fi
+
 echo "OK: $OUT"

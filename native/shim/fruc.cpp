@@ -2,8 +2,22 @@
 #include <cstring>
 
 #ifdef COS_HAS_FRUC
+#ifdef _WIN32
 #include <windows.h>
 #include <cuda.h>
+#else
+#include <dlfcn.h>
+#include <cstdlib>
+// CUDA driver API via dlsym(libcuda.so.1) — the shim must keep ZERO NVIDIA DT_NEEDED so it
+// still dlopens on non-NVIDIA boxes (plain-overlay tier). Types mirror cuda.h's stable
+// 64-bit ABI; the *_v2 export names are the 64-bit entry points (plain names = legacy ABI).
+using HMODULE = void*;   // lets the Windows Start/Submit/Stop bodies below compile as-is
+using CUresult = int;
+using CUdevice = int;
+using CUcontext = struct CUctx_st*;
+using CUdeviceptr = unsigned long long;
+#define CUDA_SUCCESS 0
+#endif
 #include "NvOFFRUC.h"
 #include "paths.h"
 
@@ -25,6 +39,7 @@ struct FrucImpl {
 
 static const double kInterval = 1.0;
 
+#ifdef _WIN32
 // Resolves NvOFFRUC.dll: COS_FRUC_RUNTIME_DIR, else <shimDir>\maxine, else system PATH.
 // LOAD_WITH_ALTERED_SEARCH_PATH on full paths so cudart64_110.dll resolves beside the dll.
 HMODULE LoadFruc(std::string& err) {
@@ -61,6 +76,70 @@ HMODULE LoadFruc(std::string& err) {
     err = "NvOFFRUC.dll not found: set COS_FRUC_RUNTIME_DIR or bundle maxine\\ beside the app";
     return nullptr;
 }
+#else // Linux
+
+CUresult (*cuInit)(unsigned int) = nullptr;
+CUresult (*cuDeviceGet)(CUdevice*, int) = nullptr;
+CUresult (*cuDevicePrimaryCtxRetain)(CUcontext*, CUdevice) = nullptr;
+CUresult (*cuDevicePrimaryCtxRelease)(CUdevice) = nullptr;
+CUresult (*cuCtxSetCurrent)(CUcontext) = nullptr;
+CUresult (*cuMemAlloc)(CUdeviceptr*, size_t) = nullptr;
+CUresult (*cuMemFree)(CUdeviceptr) = nullptr;
+CUresult (*cuMemcpyHtoD)(CUdeviceptr, const void*, size_t) = nullptr;
+CUresult (*cuMemcpyDtoH)(void*, CUdeviceptr, size_t) = nullptr;
+
+void* GetProcAddress(void* lib, const char* name) { return dlsym(lib, name); }
+void  FreeLibrary(void* lib) { if (lib) dlclose(lib); }
+
+bool LoadCudaDriver(std::string& err) {
+    if (cuInit) return true;
+    void* cu = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!cu) { err = "libcuda.so.1 not found (NVIDIA driver required)"; return false; }
+    cuInit                    = (CUresult(*)(unsigned int))dlsym(cu, "cuInit");
+    cuDeviceGet               = (CUresult(*)(CUdevice*, int))dlsym(cu, "cuDeviceGet");
+    cuDevicePrimaryCtxRetain  = (CUresult(*)(CUcontext*, CUdevice))dlsym(cu, "cuDevicePrimaryCtxRetain");
+    cuDevicePrimaryCtxRelease = (CUresult(*)(CUdevice))dlsym(cu, "cuDevicePrimaryCtxRelease_v2");
+    cuCtxSetCurrent           = (CUresult(*)(CUcontext))dlsym(cu, "cuCtxSetCurrent");
+    cuMemAlloc                = (CUresult(*)(CUdeviceptr*, size_t))dlsym(cu, "cuMemAlloc_v2");
+    cuMemFree                 = (CUresult(*)(CUdeviceptr))dlsym(cu, "cuMemFree_v2");
+    cuMemcpyHtoD              = (CUresult(*)(CUdeviceptr, const void*, size_t))dlsym(cu, "cuMemcpyHtoD_v2");
+    cuMemcpyDtoH              = (CUresult(*)(void*, CUdeviceptr, size_t))dlsym(cu, "cuMemcpyDtoH_v2");
+    if (!cuInit || !cuDeviceGet || !cuDevicePrimaryCtxRetain || !cuDevicePrimaryCtxRelease
+        || !cuCtxSetCurrent || !cuMemAlloc || !cuMemFree || !cuMemcpyHtoD || !cuMemcpyDtoH) {
+        err = "libcuda.so.1 is missing driver API symbols";
+        cuInit = nullptr;
+        return false;
+    }
+    return true;
+}
+
+// Resolves libNvOFFRUC.so: COS_FRUC_RUNTIME_DIR, else <shimDir>/maxine/fruc, else system paths.
+// The SDK .so has no RUNPATH and needs its bundled CUDA-11 runtime, so libcudart.so.11.0 is
+// preloaded from the same dir to satisfy DT_NEEDED. RTLD_DEEPBIND is load-bearing: the Maxine
+// trees are preloaded RTLD_GLOBAL with their own CUDA-12 cudart, and without DEEPBIND
+// libNvOFFRUC's unversioned cudart refs would bind to that global CUDA-12 copy instead of its
+// co-shipped CUDA-11 one (the Windows "distinct DLL name" co-version guarantee does not exist
+// in ELF's flat namespace — DEEPBIND restores per-module binding).
+HMODULE LoadFruc(std::string& err) {
+    if (!LoadCudaDriver(err)) return nullptr;
+    auto tryDir = [](std::string dir) -> void* {
+        if (!dir.empty() && dir.back() == '/') dir.pop_back();
+        dlopen((dir + "/libcudart.so.11.0").c_str(), RTLD_NOW | RTLD_LOCAL);
+        return dlopen((dir + "/libNvOFFRUC.so").c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
+    };
+    const char* env = std::getenv("COS_FRUC_RUNTIME_DIR");
+    if (env && *env) {
+        if (void* h = tryDir(env)) return h;
+    }
+    const std::string shimDir = ShimModuleDir();
+    if (!shimDir.empty()) {
+        if (void* h = tryDir(shimDir + "/maxine/fruc")) return h;
+    }
+    if (void* h = dlopen("libNvOFFRUC.so", RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND)) return h;
+    err = "libNvOFFRUC.so not found: set COS_FRUC_RUNTIME_DIR or bundle maxine/fruc beside the app";
+    return nullptr;
+}
+#endif // _WIN32
 } // namespace
 
 Fruc::Fruc() {}

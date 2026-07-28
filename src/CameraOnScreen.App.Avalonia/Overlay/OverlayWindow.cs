@@ -18,7 +18,8 @@ namespace CameraOnScreen.App.Avalonia.Overlay;
 // the Windows MPO-plane hit-test failure does not apply). Wheel = OverlaySizer resize.
 public sealed class OverlayWindow : Window
 {
-    private const int PumpMs = 33; // camera rate; Phase 4 FRUC drops this to 16 (60 Hz)
+    private const int PumpMs = 33;     // camera rate
+    private const int PumpFrucMs = 16; // ~60 Hz while FRUC double-publishes (mid + real frame)
 
     private readonly INativeShim _shim;
     private readonly Image _image = new() { Stretch = Stretch.Uniform };
@@ -48,6 +49,9 @@ public sealed class OverlayWindow : Window
 
     public void SetMirror(bool mirror) =>
         _image.RenderTransform = mirror ? new ScaleTransform(-1, 1) : null;
+
+    public void SetFrameInterp(bool on) =>
+        _pump.Interval = TimeSpan.FromMilliseconds(on ? PumpFrucMs : PumpMs);
 
     private void Present()
     {

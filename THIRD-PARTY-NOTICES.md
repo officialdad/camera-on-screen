@@ -64,8 +64,10 @@ License texts in the Linux layout:
 - `maxine/<sdk>/share/external/ThirdPartyLicenses.txt` — each SDK's open-source
   dependency notices
 
-The Optical Flow SDK / FRUC is **not** part of the Linux bundle (no Linux SDK
-fetched yet — issue #35); the section below currently applies to Windows only.
+The Optical Flow SDK / FRUC ships in the Linux bundle as `maxine/fruc/`
+(`libNvOFFRUC.so`, its CUDA 11 runtime `libcudart.so.11.0`, and the DesignWorks
+`LicenseAgreement.pdf`); the section below applies to both platforms — the Linux
+file names stand in for the Windows DLL names it cites.
 
 The bundled model engines are redistributed under the NVIDIA Community Model
 License §1.2 exception (i) — they are designated for use with NVIDIA RTX /
@@ -121,9 +123,9 @@ Conditions met by this distribution:
 - **Accessed only by this application.** The DLL lives in the app's private `maxine\` directory.
 - **No NVIDIA endorsement implied**, no proprietary notices removed, no reverse engineering.
 
-End-user requirement: an NVIDIA GPU with a current driver (**≥ 528.24** on Windows) for the Optical
-Flow hardware engine. The CUDA 11 runtime (`cudart64_110.dll`) FRUC needs is bundled, so no separate
-CUDA Toolkit install is required. On machines without a suitable GPU/driver the effect simply greys
+End-user requirement: an NVIDIA GPU with a current driver (**≥ 528.24** on Windows, **≥ 510.47.03**
+on Linux) for the Optical Flow hardware engine. The CUDA 11 runtime (`cudart64_110.dll` /
+`libcudart.so.11.0`) FRUC needs is bundled, so no separate CUDA Toolkit install is required. On machines without a suitable GPU/driver the effect simply greys
 out (the rest of the app runs normally).
 
 > Note: redistribution rests on the DesignWorks SDK License's "distributable portions … as part of

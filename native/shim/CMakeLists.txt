@@ -2,8 +2,9 @@
 # Windows keeps shim.vcxproj (deliberately outside the .sln); this file is Linux-only.
 # Maxine (Phase 4): COS_VFX_SDK_DIR / COS_AR_SDK_DIR env point at the Linux SDK-CORE trees
 # (include/ + features/*/include + lib/; e.g. ~/dev/VideoFX-linux/VideoFX). Unset -> the
-# CI-safe passthrough stubs, exactly as before. COS_HAS_FRUC stays undefined on Linux
-# (Optical Flow SDK has no non-interactive Linux download; follow-up issue).
+# CI-safe passthrough stubs, exactly as before. COS_FRUC_SDK_DIR points at the Optical Flow
+# SDK root (e.g. ~/dev/Optical_Flow_SDK_5.0.7) and enables FRUC frame interpolation; the
+# CUDA driver API is dlsym'd from libcuda.so.1 at runtime, so no CUDA toolkit is needed.
 cmake_minimum_required(VERSION 3.20)
 project(CameraOnScreenShim CXX)
 
@@ -61,6 +62,16 @@ endif()
 
 if(_maxine)
   target_sources(shim PRIVATE maxine_linux.cpp maxine_proxy_linux.cpp)
+endif()
+
+# FRUC (frame interpolation, Optical Flow SDK — separate product, DesignWorks license).
+set(_fruc "$ENV{COS_FRUC_SDK_DIR}")
+if(_fruc AND EXISTS "${_fruc}/NvOFFRUC/Interface/NvOFFRUC.h")
+  target_compile_definitions(shim PRIVATE COS_HAS_FRUC)
+  target_include_directories(shim SYSTEM PRIVATE "${_fruc}/NvOFFRUC/Interface")
+  message(STATUS "FRUC: ENABLED (${_fruc})")
+else()
+  message(STATUS "FRUC: stub (COS_FRUC_SDK_DIR unset or not an Optical Flow SDK root)")
 endif()
 
 add_executable(v4l2_probe smoke/v4l2_probe.cpp)

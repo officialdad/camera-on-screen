@@ -345,13 +345,14 @@ void Capture::WorkerLoop() {
         return;
     }
 
-    // Maxine effect chain (Phase 4), mirroring capture.cpp: eye contact -> green screen.
-    // Worker-thread-local objects (CUDA thread affinity — repo contract); UI toggles cross
-    // via the atomics, errors via the leaf locks. Super res + FRUC stay stubbed on Linux
-    // (no VSR in the Linux VFX SDK; Optical Flow SDK download pending) — the probe greys
-    // both, so their enable flags never come on and they are omitted from this chain.
+    // Maxine effect chain (Phase 4), mirroring capture.cpp: eye contact -> green screen ->
+    // FRUC. Worker-thread-local objects (CUDA thread affinity — repo contract); UI toggles
+    // cross via the atomics, errors via the leaf locks. Super res stays stubbed on Linux
+    // (no VSR in the Linux VFX SDK) — the probe greys it, so its enable flag never comes on
+    // and it is omitted from this chain.
     Aigs aigs;
     EyeContact eyeContact;
+    Fruc fruc; int fiW = 0, fiH = 0;
     std::vector<uint8_t> bgra;
 
     while (!g_state.stopRequested.load(std::memory_order_acquire)) {
@@ -439,19 +440,51 @@ void Capture::WorkerLoop() {
             }
             g_state.greenScreenActive.store(gsApplied, std::memory_order_release);
 
-            {
+            // FRUC frame interpolation runs LAST, on the final composite. Streaming: feed each
+            // composite once; on a successful interpolation publish the midpoint, pace ~half a
+            // frame, then publish the real frame -> doubled output cadence.
+            const bool fiWant = g_state.frameInterpEnabled.load(std::memory_order_acquire);
+            if (fiWant && !fruc.IsReady()) {
+                if (fruc.Start(width, height)) { fiW = width; fiH = height; }
+                else { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                       if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError(); }
+            } else if (fruc.IsReady() && (!fiWant || width != fiW || height != fiH)) {
+                fruc.Stop();
+                if (!fiWant) { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                               if (!g_state.fiError.empty()) g_state.fiError.clear(); }
+            }
+
+            auto publish = [&](std::vector<uint8_t>& f) {
                 std::lock_guard<std::mutex> lock(g_state.mtx);
-                g_state.frame.swap(bgra);
+                g_state.frame.swap(f);
                 g_state.width = width;
                 g_state.height = height;
                 g_state.hasNewFrame = true;
                 g_state.framesProduced.fetch_add(1, std::memory_order_release);
+            };
+
+            bool fiApplied = false;
+            if (fiWant && fruc.IsReady()) {
+                std::vector<uint8_t> mid; bool hasMid = false;
+                if (fruc.Submit(bgra.data(), width, height, mid, hasMid)) {
+                    if (hasMid) {
+                        publish(mid);                              // midpoint first
+                        std::this_thread::sleep_for(std::chrono::milliseconds(8)); // pace toward 60Hz
+                        fiApplied = true;
+                    }
+                } else {
+                    std::lock_guard<std::mutex> e(g_state.fiErrMtx);
+                    if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError();
+                }
             }
+            g_state.frameInterpActive.store(fiApplied, std::memory_order_release);
+            publish(bgra);                                         // then the real frame
         }
         Xioctl(fd, VIDIOC_QBUF, &b);
     }
 
     // Effect teardown on THIS thread (CUDA thread affinity) before closing the device.
+    fruc.Stop();
     eyeContact.Stop();
     aigs.Stop();
     exposure.Restore(); // leave the camera in auto-exposure for other apps
