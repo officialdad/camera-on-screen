@@ -31,6 +31,20 @@ jobs:
       - name: ABI smoke (v4l2_probe; zero cameras is a pass)
         run: ./native/shim/build/v4l2_probe
 
+      - name: ONNX green-screen smoke (real CPU inference — no GPU needed)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz
+          echo "a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407  /tmp/ort.tgz" | sha256sum -c -
+          curl -fsSL -o /tmp/pinto109.tar.gz "https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/109_Selfie_Segmentation/resources.tar.gz"
+          mkdir -p /tmp/seg-runtime
+          tar -xzf /tmp/ort.tgz -C /tmp onnxruntime-linux-x64-1.28.0/lib/libonnxruntime.so.1.28.0
+          cp /tmp/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime.so.1.28.0 /tmp/seg-runtime/libonnxruntime.so.1
+          tar -xzf /tmp/pinto109.tar.gz -C /tmp saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx
+          echo "de212dabbc6266f0047711d1dfae80900f7b596b9ed5f7665f3d1cf68c5443ee  /tmp/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx" | sha256sum -c -
+          cp /tmp/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx /tmp/seg-runtime/selfie_segmentation.onnx
+          COS_SEG_RUNTIME_DIR=/tmp/seg-runtime ./native/shim/build/seg_probe
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x

@@ -8,6 +8,7 @@ public sealed class FakeShim : INativeShim
     public bool EyeContactAvailable { get; set; }
     public bool SuperResAvailable { get; set; }
     public bool FrameInterpAvailable { get; set; }
+    public bool GreenScreenOnnxAvailable { get; set; }
     private bool _running;
 
     public bool Init(IntPtr d3dDevice) => true;
@@ -35,7 +36,9 @@ public sealed class FakeShim : INativeShim
             EyeContactAvailable,
             EyeContactAvailable ? "fake: ec available" : "fake: ec unavailable",
             SuperResAvailable,
-            FrameInterpAvailable);
+            FrameInterpAvailable,
+            GreenScreenOnnxAvailable,
+            GreenScreenOnnxAvailable ? "fake: onnx available" : "fake: onnx unavailable");
 
     public bool Disposed { get; private set; }
     public void Dispose() => Disposed = true;

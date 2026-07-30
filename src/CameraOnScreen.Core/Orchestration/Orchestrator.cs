@@ -22,8 +22,14 @@ public sealed class Orchestrator
 
     public OrchestratorState State { get; private set; } = OrchestratorState.Idle;
 
+    /// <summary>True when the Maxine (RTX) green-screen engine can run. False until probed.</summary>
+    public bool GreenScreenMaxineAvailable { get; private set; }
+
+    /// <summary>True when the ONNX CPU green-screen engine can run (issue #24). False until probed.</summary>
+    public bool GreenScreenOnnxAvailable { get; private set; }
+
     /// <summary>True when the native shim reports Green Screen can actually run. False until
-    /// <see cref="ProbeCapabilities"/> has run.</summary>
+    /// <see cref="ProbeCapabilities"/> has run. Semantic change: EffectsAvailable = Maxine OR ONNX (#24).</summary>
     public bool EffectsAvailable { get; private set; }
 
     /// <summary>Human-readable reason string from the shim probe (e.g. "SDK not found"). Shows a
@@ -48,8 +54,14 @@ public sealed class Orchestrator
     public void ProbeCapabilities()
     {
         var caps = _shim.QueryCapabilities();
-        EffectsAvailable = caps.GreenScreenAvailable;
-        CapabilityDetail = caps.Detail;
+        GreenScreenMaxineAvailable = caps.GreenScreenAvailable;
+        GreenScreenOnnxAvailable = caps.GreenScreenOnnxAvailable;
+        // Green screen is usable when EITHER engine can run (#24); the detail note
+        // (shown only while unavailable) then carries both reasons.
+        EffectsAvailable = caps.GreenScreenAvailable || caps.GreenScreenOnnxAvailable;
+        CapabilityDetail = EffectsAvailable
+            ? (caps.GreenScreenAvailable ? caps.Detail : caps.GreenScreenOnnxDetail)
+            : $"{caps.Detail} · {caps.GreenScreenOnnxDetail}";
         EyeContactAvailable = caps.EyeContactAvailable;
         EyeContactDetail = caps.EyeContactDetail;
         SuperResAvailable = caps.SuperResAvailable;
@@ -70,12 +82,19 @@ public sealed class Orchestrator
 
     /// <summary>Push effect params to the shim — at Start and on every live toggle/slider change
     /// while running. Applies the effect gate: when effects are unavailable they are forced off
-    /// (so a UI toggle can never enable an effect the probe said can't run).</summary>
+    /// (so a UI toggle can never enable an effect the probe said can't run). Clamps an explicit
+    /// green-screen backend to 0 (Auto) if that engine is unavailable.</summary>
     public void ApplyParams(ShimParams requested)
     {
         var effective = requested with
         {
             GreenScreenEnabled = requested.GreenScreenEnabled && EffectsAvailable,
+            GreenScreenBackend = requested.GreenScreenBackend switch
+            {
+                1 when !GreenScreenMaxineAvailable => 0, // engine gone -> Auto resolves
+                2 when !GreenScreenOnnxAvailable => 0,
+                var b => b,
+            },
             EyeContactEnabled = requested.EyeContactEnabled && EyeContactAvailable,
             SuperResEnabled = requested.SuperResEnabled && SuperResAvailable,
             FrameInterpEnabled = requested.FrameInterpEnabled && FrameInterpAvailable,
