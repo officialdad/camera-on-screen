@@ -396,6 +396,40 @@ public class MainViewModelTests
         Assert.False(vm.FingerControlAvailable);
     }
 
+    // --- GreenScreenBackend (Task 6) ---
+
+    [Fact]
+    public void GreenScreenBackend_RoundTripsThroughConfig()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.GreenScreenBackendIndex = 2;
+        var config = vm.ToAppConfig(0, 0, 100, 100);
+        Assert.Equal(2, config.Effects.GreenScreenBackend);
+
+        var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm2.LoadFrom(config);
+        Assert.Equal(2, vm2.GreenScreenBackendIndex);
+    }
+
+    [Fact]
+    public void LoadFrom_ClampsBackendIndex()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.LoadFrom(new AppConfig { Effects = new EffectSettings { GreenScreenBackend = 9 } });
+        Assert.Equal(0, vm.GreenScreenBackendIndex); // out-of-range -> Auto (combo crash guard)
+    }
+
+    [Fact]
+    public void BuildParams_CarriesBackend()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.GreenScreenBackendIndex = 1;
+        Assert.Equal(1, vm.BuildParams().GreenScreenBackend);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

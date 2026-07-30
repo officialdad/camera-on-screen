@@ -26,6 +26,7 @@ public sealed record EffectSettings
     public bool GreenScreenEnabled { get; init; } = true;
     public double GreenScreenExpand { get; init; }
     public double GreenScreenFeather { get; init; }
+    public int GreenScreenBackend { get; init; }  // 0=Auto, 1=Maxine, 2=ONNX (#24)
     public bool EyeContactEnabled { get; init; }
     public double EyeContactSensitivity { get; init; } = 0.5;
     public double EyeContactLookAwayRange { get; init; } = 0.5;

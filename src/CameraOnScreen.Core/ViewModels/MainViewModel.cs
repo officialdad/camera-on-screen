@@ -29,6 +29,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // ProbeCapabilitiesAsync publishes the real values once the (deferred) probe completes.
         EffectsAvailable = orchestrator.EffectsAvailable;
         CapabilityDetail = orchestrator.CapabilityDetail;
+        GreenScreenMaxineAvailable = orchestrator.GreenScreenMaxineAvailable;
+        GreenScreenOnnxAvailable = orchestrator.GreenScreenOnnxAvailable;
         EyeContactAvailable = orchestrator.EyeContactAvailable;
         EyeContactDetail = orchestrator.EyeContactDetail;
         SuperResAvailable = orchestrator.SuperResAvailable;
@@ -49,6 +51,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await Task.Run(_orchestrator.ProbeCapabilities);
         EffectsAvailable = _orchestrator.EffectsAvailable;
         CapabilityDetail = _orchestrator.CapabilityDetail;
+        GreenScreenMaxineAvailable = _orchestrator.GreenScreenMaxineAvailable;
+        GreenScreenOnnxAvailable = _orchestrator.GreenScreenOnnxAvailable;
         EyeContactAvailable = _orchestrator.EyeContactAvailable;
         EyeContactDetail = _orchestrator.EyeContactDetail;
         SuperResAvailable = _orchestrator.SuperResAvailable;
@@ -61,6 +65,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool greenScreenEnabled = true;
     [ObservableProperty] private double greenScreenExpand;
     [ObservableProperty] private double greenScreenFeather;
+    [ObservableProperty] private int greenScreenBackendIndex;
     [ObservableProperty] private bool eyeContactEnabled;
     [ObservableProperty] private double eyeContactSensitivity = 0.5;
     [ObservableProperty] private double eyeContactLookAwayRange = 0.5;
@@ -73,6 +78,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string fingerControlDetail = "Checking finger-control availability…";
     [ObservableProperty] private bool effectsAvailable;
     [ObservableProperty] private string capabilityDetail = "Checking effect availability…";
+    [ObservableProperty] private bool greenScreenMaxineAvailable;
+    [ObservableProperty] private bool greenScreenOnnxAvailable;
     [ObservableProperty] private bool eyeContactAvailable;
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool superResAvailable;
@@ -98,6 +105,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         GreenScreenEnabled = config.Effects.GreenScreenEnabled;
         GreenScreenExpand = config.Effects.GreenScreenExpand;
         GreenScreenFeather = config.Effects.GreenScreenFeather;
+        GreenScreenBackendIndex = config.Effects.GreenScreenBackend is >= 0 and <= 2 ? config.Effects.GreenScreenBackend : 0;
         EyeContactEnabled = config.Effects.EyeContactEnabled;
         EyeContactSensitivity = config.Effects.EyeContactSensitivity;
         EyeContactLookAwayRange = config.Effects.EyeContactLookAwayRange;
@@ -133,7 +141,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Effects = new EffectSettings
         {
             GreenScreenEnabled = GreenScreenEnabled, GreenScreenExpand = GreenScreenExpand,
-            GreenScreenFeather = GreenScreenFeather,
+            GreenScreenFeather = GreenScreenFeather, GreenScreenBackend = GreenScreenBackendIndex,
             EyeContactEnabled = EyeContactEnabled, EyeContactSensitivity = EyeContactSensitivity,
             EyeContactLookAwayRange = EyeContactLookAwayRange,
             SuperResMode = SuperResModeIndex,
@@ -155,6 +163,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnGreenScreenEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnGreenScreenExpandChanged(double value) => ApplyLiveParams();
     partial void OnGreenScreenFeatherChanged(double value) => ApplyLiveParams();
+    partial void OnGreenScreenBackendIndexChanged(int value) => ApplyLiveParams();
     partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
@@ -182,7 +191,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SuperResQualityLevel: QualityLevelFor(SuperResModeIndex, SuperResQualityIndex),
         ExposureLockEnabled: ExposureLock,
         ExposureValue: ExposureValue,
-        FrameInterpEnabled: FrameInterpEnabled);
+        FrameInterpEnabled: FrameInterpEnabled,
+        GreenScreenBackend: GreenScreenBackendIndex);
 
     public void OnStatus(ShimStatus s)
     {
