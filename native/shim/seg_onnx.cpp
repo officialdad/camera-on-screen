@@ -63,6 +63,8 @@ void* GetSym(void* lib, const char* name) {
 
 // Process-wide ORT function table + the dir it was loaded from. Loaded once, never
 // unloaded (in-process re-dlopen of ORT is unsupported; matches the Maxine preload).
+// Not designed for concurrent Probe()/Start() calls (caller-sequenced), same as the
+// Maxine preload in maxine_linux.cpp.
 const OrtApi* g_ort = nullptr;
 std::string   g_runtimeDir;
 
@@ -72,10 +74,15 @@ const OrtApi* EnsureOrt(std::string& err) {
     if (dir.empty()) return nullptr;
 #ifdef _WIN32
     void* lib = LoadLib(dir + "\\onnxruntime.dll");
+    if (!lib) { err = "failed to load ONNX Runtime from " + dir; return nullptr; }
 #else
     void* lib = LoadLib(dir + "/libonnxruntime.so.1");
+    if (!lib) {
+        const char* dlerr = dlerror(); // cleared on read; capture before it's gone
+        err = "failed to load ONNX Runtime from " + dir + ": " + (dlerr ? dlerr : "unknown error");
+        return nullptr;
+    }
 #endif
-    if (!lib) { err = "failed to load ONNX Runtime from " + dir; return nullptr; }
     using GetBaseFn = const OrtApiBase*(ORT_API_CALL*)(void);
     auto getBase = reinterpret_cast<GetBaseFn>(GetSym(lib, "OrtGetApiBase"));
     if (!getBase) { err = "OrtGetApiBase export missing (not an ONNX Runtime library?)"; return nullptr; }
@@ -123,6 +130,8 @@ SegImpl* CreateSession(const OrtApi* ort, std::string& err) {
 
     if (!Check(ort, ort->CreateEnv(ORT_LOGGING_LEVEL_ERROR, "cos-seg", &impl->env), "CreateEnv", err) ||
         !Check(ort, ort->CreateSessionOptions(&impl->so), "CreateSessionOptions", err) ||
+        // 2 threads: enough to parallelize the small 256x256 conv net without contending
+        // with the capture worker thread's own per-frame work on this box's core count.
         !Check(ort, ort->SetIntraOpNumThreads(impl->so, 2), "SetIntraOpNumThreads", err) ||
         !Check(ort, ort->SetSessionGraphOptimizationLevel(impl->so, ORT_ENABLE_ALL), "SetGraphOptimizationLevel", err)) {
         DestroySession(ort, impl);
