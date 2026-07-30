@@ -2,6 +2,7 @@
 #include "shim.h"
 #include "capture.h"
 #include "aigs.h"
+#include "seg_onnx.h"
 #include "eyecontact.h"
 #include "superres.h"
 #include "fruc.h"
@@ -70,7 +71,7 @@ COS_API void cos_set_params(const CosParams* p) {
     if (!p) return;
     g_params = *p;
     g_cameraId = p->camera_id ? p->camera_id : "";
-    g_capture.SetGreenScreen(p->green_screen_enabled != 0);
+    g_capture.SetGreenScreen(p->green_screen_enabled != 0, p->green_screen_backend);
     g_capture.SetMatteParams(p->green_screen_expand, p->green_screen_feather);
     g_capture.SetEyeContact(p->eye_contact_enabled != 0);
     g_capture.SetSuperRes(p->super_res_enabled != 0, p->super_res_quality_level, p->super_res_scale);
@@ -139,8 +140,15 @@ COS_API int cos_query_capabilities(CosCaps* out) {
     std::memcpy(out->fi_detail, fiDetail.data(), fn);
     out->fi_detail[fn] = '\0';
 
+    std::string soDetail;
+    bool soOk = SegOnnx::Probe(soDetail);
+    out->gs_onnx_available = soOk ? 1 : 0;
+    size_t sn = soDetail.size() < 255 ? soDetail.size() : 255;
+    std::memcpy(out->gs_onnx_detail, soDetail.data(), sn);
+    out->gs_onnx_detail[sn] = '\0';
+
     // Return 1 if any effect is available (the managed side reads the per-gate ints).
-    return (gsOk || ecOk || out->super_res_available || out->frame_interp_available) ? 1 : 0;
+    return (gsOk || ecOk || soOk || out->super_res_available || out->frame_interp_available) ? 1 : 0;
 }
 
 COS_API void cos_shutdown(void) {

@@ -29,8 +29,10 @@ public:
 
     static std::vector<CameraDesc> Enumerate();
 
-    // Toggles AIGS for subsequent frames. Thread-safe; the worker owns the Aigs object.
-    void SetGreenScreen(bool enabled);
+    // Toggles green screen for subsequent frames and selects the engine
+    // (0 Auto = Maxine else ONNX, 1 Maxine, 2 ONNX CPU — issue #24).
+    // Thread-safe; the worker owns both engine objects.
+    void SetGreenScreen(bool enabled, int backend);
     // Sets matte post-process amounts (0..1). Thread-safe; worker reads per frame.
     void SetMatteParams(double expand, double feather);
     // Snapshot for status polling. Thread-safe.
