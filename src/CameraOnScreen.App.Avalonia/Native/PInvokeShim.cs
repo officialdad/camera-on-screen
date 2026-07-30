@@ -36,6 +36,7 @@ public sealed class PInvokeShim : INativeShim
         public int exposure_lock_enabled;
         public double exposure_value;
         public int frame_interp_enabled;
+        public int green_screen_backend;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -48,6 +49,8 @@ public sealed class PInvokeShim : INativeShim
         public int SuperResAvailable;
         public int FrameInterpAvailable;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public byte[] FiDetail;
+        public int GsOnnxAvailable;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)] public byte[] GsOnnxDetail;
     }
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)] private static extern int cos_init(IntPtr device);
@@ -98,6 +101,7 @@ public sealed class PInvokeShim : INativeShim
                 exposure_lock_enabled = p.ExposureLockEnabled ? 1 : 0,
                 exposure_value = p.ExposureValue,
                 frame_interp_enabled = p.FrameInterpEnabled ? 1 : 0,
+                green_screen_backend = p.GreenScreenBackend,
             };
             cos_set_params(ref native);
         }
@@ -123,13 +127,14 @@ public sealed class PInvokeShim : INativeShim
 
     public ShimCapabilities QueryCapabilities()
     {
-        var caps = new CosCaps { Detail = new byte[256], EcDetail = new byte[256], FiDetail = new byte[256] };
+        var caps = new CosCaps { Detail = new byte[256], EcDetail = new byte[256], FiDetail = new byte[256], GsOnnxDetail = new byte[256] };
         cos_query_capabilities(ref caps);
         return new ShimCapabilities(
             caps.GreenScreenAvailable != 0, ReadUtf8(caps.Detail, 0, 256),
             caps.EyeContactAvailable != 0, ReadUtf8(caps.EcDetail, 0, 256),
             caps.SuperResAvailable != 0,
-            caps.FrameInterpAvailable != 0);
+            caps.FrameInterpAvailable != 0,
+            caps.GsOnnxAvailable != 0, ReadUtf8(caps.GsOnnxDetail, 0, 256));
     }
 
     public void Dispose() => cos_shutdown();
