@@ -27,6 +27,7 @@ add_library(shim SHARED
   paths.cpp
   vfx_paths.cpp
   matte_ops.cpp
+  seg_onnx.cpp
 )
 set_target_properties(shim PROPERTIES
   OUTPUT_NAME "CameraOnScreen.Shim"   # -> libCameraOnScreen.Shim.so
@@ -78,3 +79,9 @@ endif()
 add_executable(v4l2_probe smoke/v4l2_probe.cpp)
 target_compile_options(v4l2_probe PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(v4l2_probe PRIVATE shim)
+
+# ONNX green-screen smoke (issue #24): compiles the engine directly (shim symbols are
+# hidden). Needs COS_SEG_RUNTIME_DIR (ORT lib + model) at run time, not build time.
+add_executable(seg_probe smoke/seg_probe.cpp seg_onnx.cpp matte_ops.cpp paths.cpp)
+target_compile_options(seg_probe PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(seg_probe PRIVATE ${CMAKE_DL_LIBS})
