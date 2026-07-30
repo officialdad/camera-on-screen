@@ -18,6 +18,7 @@
 #include "nvVFXGreenScreen.h" // defines NVVFX_FX_GREEN_SCREEN "GreenScreen"
 #include "paths.h"
 #include "vfx_paths.h"
+#include "matte_ops.h"
 
 // Real per-effect state, hidden behind the opaque impl_ pointer.
 struct AigsImpl {
@@ -149,16 +150,6 @@ NvCV_Status Download(AigsImpl* impl) {
     return NvCVImage_Transfer(&impl->matteGpu, &impl->matteCpu, 1.0f, impl->stream, nullptr);
 }
 
-// Max amount of dilate/blur at slider value 1.0, in pixels.
-constexpr int kMaxDilateRadius = 16;
-constexpr int kMaxBlurRadius   = 16;
-
-int RadiusFromAmount(double amount, int maxRadius) {
-    if (amount <= 0.0) return 0;
-    if (amount >= 1.0) return maxRadius;
-    return static_cast<int>(std::lround(amount * maxRadius));
-}
-
 // Copy the (possibly padded) CPU matte into a packed w*h buffer.
 static void PackMatte(AigsImpl* impl, int w, int h) {
     impl->matteWork.resize(static_cast<size_t>(w) * h);
@@ -170,73 +161,6 @@ static void PackMatte(AigsImpl* impl, int w, int h) {
                     m + static_cast<size_t>(mpitch) * y, static_cast<size_t>(w));
 }
 
-// Separable morphological dilate (max filter) over matteWork; result back in matteWork.
-void DilateMatte(AigsImpl* impl, int w, int h, int r) {
-    if (r <= 0) return;
-    uint8_t* src = impl->matteWork.data();
-    uint8_t* tmp = impl->matteTmp.data();
-    for (int y = 0; y < h; ++y) {       // horizontal
-        const uint8_t* srow = src + static_cast<size_t>(w) * y;
-        uint8_t* trow = tmp + static_cast<size_t>(w) * y;
-        for (int x = 0; x < w; ++x) {
-            uint8_t mx = 0;
-            const int x0 = std::max(0, x - r), x1 = std::min(w - 1, x + r);
-            for (int k = x0; k <= x1; ++k) mx = std::max(mx, srow[k]);
-            trow[x] = mx;
-        }
-    }
-    for (int x = 0; x < w; ++x) {       // vertical
-        for (int y = 0; y < h; ++y) {
-            uint8_t mx = 0;
-            const int y0 = std::max(0, y - r), y1 = std::min(h - 1, y + r);
-            for (int k = y0; k <= y1; ++k) mx = std::max(mx, tmp[static_cast<size_t>(w) * k + x]);
-            src[static_cast<size_t>(w) * y + x] = mx;
-        }
-    }
-}
-
-// Separable box blur over matteWork; result back in matteWork.
-void FeatherMatte(AigsImpl* impl, int w, int h, int r) {
-    if (r <= 0) return;
-    const int win = 2 * r + 1;
-    uint8_t* src = impl->matteWork.data();
-    uint8_t* tmp = impl->matteTmp.data();
-    for (int y = 0; y < h; ++y) {       // horizontal
-        const uint8_t* srow = src + static_cast<size_t>(w) * y;
-        uint8_t* trow = tmp + static_cast<size_t>(w) * y;
-        for (int x = 0; x < w; ++x) {
-            int sum = 0;
-            const int x0 = std::max(0, x - r), x1 = std::min(w - 1, x + r);
-            for (int k = x0; k <= x1; ++k) sum += srow[k];
-            trow[x] = static_cast<uint8_t>(sum / win);
-        }
-    }
-    for (int x = 0; x < w; ++x) {       // vertical
-        for (int y = 0; y < h; ++y) {
-            int sum = 0;
-            const int y0 = std::max(0, y - r), y1 = std::min(h - 1, y + r);
-            for (int k = y0; k <= y1; ++k) sum += tmp[static_cast<size_t>(w) * k + x];
-            src[static_cast<size_t>(w) * y + x] = static_cast<uint8_t>(sum / win);
-        }
-    }
-}
-
-// SEAM 3 (composite): apply the post-processed packed matte to BGRA in place, premultiplied.
-void Composite(AigsImpl* impl, uint8_t* bgra, int w, int h) {
-    const uint8_t* m = impl->matteWork.data(); // packed, pitch == w
-    for (int y = 0; y < h; ++y) {
-        const uint8_t* mrow = m + static_cast<size_t>(w) * y;
-        uint8_t* prow = bgra + static_cast<size_t>(w) * 4 * y;
-        for (int x = 0; x < w; ++x) {
-            const unsigned a = mrow[x];
-            uint8_t* px = prow + x * 4;
-            px[0] = static_cast<uint8_t>((px[0] * a) / 255); // B
-            px[1] = static_cast<uint8_t>((px[1] * a) / 255); // G
-            px[2] = static_cast<uint8_t>((px[2] * a) / 255); // R
-            px[3] = static_cast<uint8_t>(a);                 // A = matte
-        }
-    }
-}
 } // namespace
 
 bool Aigs::ProcessFrame(uint8_t* bgra, int w, int h, double expand, double feather) {
@@ -250,9 +174,11 @@ bool Aigs::ProcessFrame(uint8_t* bgra, int w, int h, double expand, double feath
     if (NvVFX_CudaStreamSynchronize(impl->stream) != NVCV_SUCCESS) { lastError_ = "stream sync failed"; return false; }
 
     PackMatte(impl, w, h);
-    DilateMatte(impl, w, h, RadiusFromAmount(expand, kMaxDilateRadius));
-    FeatherMatte(impl, w, h, RadiusFromAmount(feather, kMaxBlurRadius));
-    Composite(impl, bgra, w, h);
+    matte::Dilate(impl->matteWork.data(), impl->matteTmp.data(), w, h,
+                  matte::RadiusFromAmount(expand, matte::kMaxDilateRadius));
+    matte::Feather(impl->matteWork.data(), impl->matteTmp.data(), w, h,
+                   matte::RadiusFromAmount(feather, matte::kMaxBlurRadius));
+    matte::CompositePremultiplied(bgra, impl->matteWork.data(), w, h);
     return true;
 }
 

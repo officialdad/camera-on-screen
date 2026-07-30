@@ -26,6 +26,7 @@ add_library(shim SHARED
   fruc.cpp
   paths.cpp
   vfx_paths.cpp
+  matte_ops.cpp
 )
 set_target_properties(shim PROPERTIES
   OUTPUT_NAME "CameraOnScreen.Shim"   # -> libCameraOnScreen.Shim.so
