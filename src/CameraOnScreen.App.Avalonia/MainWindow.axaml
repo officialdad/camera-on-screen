@@ -104,6 +104,17 @@
                                         IsEnabled="{Binding GreenScreenEnabled}"
                                         Value="{Binding GreenScreenFeather, Mode=TwoWay}" />
                             </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Green-screen Engine" />
+                                <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding EffectsAvailable}"
+                                          SelectedIndex="{Binding GreenScreenBackendIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Auto" />
+                                    <ComboBoxItem Content="NVIDIA Maxine (GPU)"
+                                                  IsEnabled="{Binding GreenScreenMaxineAvailable}" />
+                                    <ComboBoxItem Content="ONNX (CPU)"
+                                                  IsEnabled="{Binding GreenScreenOnnxAvailable}" />
+                                </ComboBox>
+                            </StackPanel>
                             <ToggleSwitch Content="Eye Contact" IsEnabled="{Binding EyeContactAvailable}"
                                           IsChecked="{Binding EyeContactEnabled, Mode=TwoWay}" />
                             <TextBlock Text="{Binding EyeContactDetail}" IsVisible="{Binding !EyeContactAvailable}"
