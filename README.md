@@ -182,8 +182,10 @@ Every PR is gated by GitHub Actions, warnings treated as errors:
   unit tests.
 - **Self-hosted Linux RTX runner** — full co-versioned Maxine shim build, a
   stale-stub deploy check, and a real GPU capability probe (both effects load).
-- **Hosted Windows job** — stub compile of the shim + WinUI app (full Windows
-  CI parked until a Windows RTX runner exists again,
+- **Hosted Windows job** — stub compile, then Maxine SDK-config compile of the
+  shim from a private header/proxy build kit + the export-verify gate, then
+  WinUI App build + Core tests (runtime/GPU verification and installer
+  releases still parked on
   [#38](https://github.com/officialdad/camera-on-screen/issues/38)).
 
 A `v*` tag builds, GPU-verifies, and publishes the **Linux tarball** as a GitHub
