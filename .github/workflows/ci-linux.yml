@@ -33,6 +33,7 @@ jobs:
 
       - name: ONNX green-screen smoke (real CPU inference — no GPU needed)
         run: |
+          set -euo pipefail
           curl -fsSL -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz
           echo "a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407  /tmp/ort.tgz" | sha256sum -c -
           curl -fsSL -o /tmp/pinto109.tar.gz "https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/109_Selfie_Segmentation/resources.tar.gz"
