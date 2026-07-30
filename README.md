@@ -19,11 +19,10 @@ An always-on-top webcam overlay for **Linux and Windows**. It floats your live
 camera feed over everything else, so any screen recorder or screen sharing session
 captures you and your screen together in real-time. Useful for teaching too.
 
-Included AI-powered features such as
-- **AI Green Screen** (background removal) — NVIDIA Maxine on RTX, or a
-  built-in CPU engine on any hardware
-- **AI Eye Contact** (gaze redirection) — NVIDIA RTX
-- **AI Interpolation** (doubles webcam FPS — Windows only for now) — NVIDIA RTX
+Included NVIDIA powered features such as
+- **AI Green Screen** (background removal)
+- **AI Eye Contact** (gaze redirection)
+- **AI Interpolation** (doubles webcam FPS, 30 → 60)
 
 > **You need:** an **NVIDIA RTX GPU** for AI Eye Contact and AI Interpolation.
 > **AI Green Screen** works on any hardware — RTX (via NVIDIA Maxine) gives the
@@ -36,7 +35,7 @@ Included AI-powered features such as
 1. Download the latest `CameraOnScreen-<ver>-linux-x64.tar.zst` from
    [**Releases**](https://github.com/officialdad/camera-on-screen/releases).
 2. Extract and run — it is self-contained (bundled .NET runtime **and** the
-   NVIDIA Maxine runtime; no env vars, no extra downloads):
+   NVIDIA Maxine + Optical Flow runtimes; no env vars, no extra downloads):
 
    ```bash
    mkdir camera-on-screen && tar -C camera-on-screen --zstd -xf CameraOnScreen-<ver>-linux-x64.tar.zst
@@ -51,8 +50,8 @@ Preferences are kept at `$XDG_CONFIG_HOME/CameraOnScreen/config.json`
 Installer releases are paused until Windows CI returns
 ([#38](https://github.com/officialdad/camera-on-screen/issues/38)) — the latest
 Windows installer is
-[**v0.7.0**](https://github.com/officialdad/camera-on-screen/releases/tag/v0.7.0)
-(`CameraOnScreen-Setup-0.7.0-x64.exe`). It installs **per-user** (no admin) and
+[**v0.6.0**](https://github.com/officialdad/camera-on-screen/releases/tag/v0.6.0)
+(`CameraOnScreen-Setup-0.6.0-x64.exe`). It installs **per-user** (no admin) and
 bundles everything it needs. Windows SmartScreen will warn (unsigned): click
 **More info → Run anyway**. Uninstall from **Settings → Apps**; preferences are
 kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
@@ -72,6 +71,7 @@ kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 - **AI Green Screen** - removes your background with adjustable edge expand /
   feather (NVIDIA Maxine on RTX, or a built-in CPU engine on any hardware).
 - **AI Eye Contact** - gently redirects your gaze toward the camera.
+- **AI Interpolation** - doubles the overlay frame rate (30 → 60 fps).
 
 Then record with NVIDIA ShadowPlay, Game Bar or stream live with the overlay
 always visible on real time in the capture.
@@ -124,13 +124,14 @@ required. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 ## NVIDIA Optical Flow SDK
 
-AI Interpolation uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll`) to synthesize
+AI Interpolation uses the **NVIDIA Optical Flow SDK** (`NvOFFRUC.dll` /
+`libNvOFFRUC.so`) to synthesize
 a temporal mid-frame between each real camera frame, doubling the overlay frame rate
 from 30 to 60 fps. This is a **separate product** from Maxine, governed by the
 **NVIDIA DesignWorks SDK License** - not bundled in the repository, point the build
 at it via `COS_FRUC_SDK_DIR`. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-FRUC uses CUDA 11 (`cudart64_110.dll`) - a distinct runtime from Maxine's CUDA 12 -
+FRUC uses CUDA 11 (`cudart64_110.dll` / `libcudart.so.11.0`) - a distinct runtime from Maxine's CUDA 12 -
 so both stacks coexist in one process without conflict. Verified on RTX 3090.
 Requires driver ≥ 528.24; the CUDA 11 runtime is bundled (no separate install).
 
