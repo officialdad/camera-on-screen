@@ -101,6 +101,48 @@ bool Check(const OrtApi* ort, OrtStatus* st, const char* what, std::string& err)
     return false;
 }
 
+// Validates a session input/output is a float32 tensor whose shape is compatible with
+// `expected` (fixed dims must match exactly; a dynamic dim, encoded as -1, passes
+// unconditionally). Guards against a wrong or incompatible model (different resolution,
+// the 2-channel "Meet" segmentation variant, ...) silently loading and then heap-overreading
+// in DownscaleToNet/UpscaleMatte, which trust the shape blindly. `typeInfo` stays owned by
+// the caller (ReleaseTypeInfo); the OrtTensorTypeAndShapeInfo* obtained here is a view into
+// it and must not be released separately (see CastTypeInfoToTensorInfo's doc comment).
+bool CheckTensorShape(const OrtApi* ort, OrtTypeInfo* typeInfo, const int64_t* expected,
+                       size_t expectedCount, const char* label, std::string& err) {
+    const OrtTensorTypeAndShapeInfo* info = nullptr;
+    if (!Check(ort, ort->CastTypeInfoToTensorInfo(typeInfo, &info), "CastTypeInfoToTensorInfo", err))
+        return false;
+    if (!info) { err = std::string(label) + ": not a tensor"; return false; }
+
+    ONNXTensorElementDataType elemType;
+    if (!Check(ort, ort->GetTensorElementType(info, &elemType), "GetTensorElementType", err)) return false;
+    if (elemType != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+        err = std::string(label) + ": expected float32 element type, got " +
+              std::to_string(static_cast<int>(elemType));
+        return false;
+    }
+
+    size_t dimCount = 0;
+    if (!Check(ort, ort->GetDimensionsCount(info, &dimCount), "GetDimensionsCount", err)) return false;
+    if (dimCount != expectedCount) {
+        err = std::string(label) + ": expected " + std::to_string(expectedCount) +
+              " dims, got " + std::to_string(dimCount);
+        return false;
+    }
+
+    std::vector<int64_t> dims(dimCount);
+    if (!Check(ort, ort->GetDimensions(info, dims.data(), dimCount), "GetDimensions", err)) return false;
+    for (size_t i = 0; i < expectedCount; ++i) {
+        if (dims[i] != -1 && dims[i] != expected[i]) {
+            err = std::string(label) + ": shape mismatch at dim " + std::to_string(i) +
+                  " (expected " + std::to_string(expected[i]) + ", got " + std::to_string(dims[i]) + ")";
+            return false;
+        }
+    }
+    return true;
+}
+
 // ---- session ------------------------------------------------------------------------
 
 struct SegImpl {
@@ -150,6 +192,28 @@ SegImpl* CreateSession(const OrtApi* ort, std::string& err) {
     OrtStatus* cs = ort->CreateSession(impl->env, modelPath.c_str(), impl->so, &impl->session);
 #endif
     if (!Check(ort, cs, "CreateSession (model missing/corrupt?)", err)) { DestroySession(ort, impl); return nullptr; }
+
+    // Reject a wrong-shaped model up front (per-session, not per-frame) — see
+    // CheckTensorShape's comment for why DownscaleToNet/UpscaleMatte can't defend themselves.
+    OrtTypeInfo* inType = nullptr;
+    if (!Check(ort, ort->SessionGetInputTypeInfo(impl->session, 0, &inType), "GetInputTypeInfo", err)) {
+        DestroySession(ort, impl);
+        return nullptr;
+    }
+    const int64_t kExpectedIn[4] = {1, kNetSize, kNetSize, 3};
+    const bool inOk = CheckTensorShape(ort, inType, kExpectedIn, 4, "input tensor", err);
+    ort->ReleaseTypeInfo(inType);
+    if (!inOk) { DestroySession(ort, impl); return nullptr; }
+
+    OrtTypeInfo* outType = nullptr;
+    if (!Check(ort, ort->SessionGetOutputTypeInfo(impl->session, 0, &outType), "GetOutputTypeInfo", err)) {
+        DestroySession(ort, impl);
+        return nullptr;
+    }
+    const int64_t kExpectedOut[4] = {1, kNetSize, kNetSize, 1};
+    const bool outOk = CheckTensorShape(ort, outType, kExpectedOut, 4, "output tensor", err);
+    ort->ReleaseTypeInfo(outType);
+    if (!outOk) { DestroySession(ort, impl); return nullptr; }
 
     OrtAllocator* alloc = nullptr;
     char* name = nullptr;

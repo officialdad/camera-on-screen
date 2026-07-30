@@ -144,7 +144,8 @@ opaque, and the error surfaces via status polling. No new mechanisms.
   timing. Modeled on `v4l2_probe`/`effects_drive`.
 - **CI:** the hosted Linux job downloads ORT + model and runs `seg_probe` —
   CPU-only inference means **the first AI effect fully verifiable on hosted
-  CI, no GPU required**. The `maxine-rtx` job additionally A/Bs both backends.
+  CI, no GPU required**. The RTX-side A/B of both backends is the human
+  visual gate below, not a CI job.
 - **Visual gate:** overlay + OBS capture, human check per
   `docs/superpowers/verification/` (matte quality is a judgment call).
 

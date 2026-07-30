@@ -36,7 +36,7 @@ public:
     // Sets matte post-process amounts (0..1). Thread-safe; worker reads per frame.
     void SetMatteParams(double expand, double feather);
     // Snapshot for status polling. Thread-safe.
-    bool GreenScreenActive() const;       // true only while AIGS is transforming frames
+    bool GreenScreenActive() const;       // true only while a green-screen engine (Maxine AIGS or ONNX) is transforming frames
     std::string GreenScreenError() const; // empty when none
 
     // Toggles Eye Contact for subsequent frames. Thread-safe; the worker owns the object.

@@ -55,6 +55,12 @@ cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/lib/libonnxruntime.so.$ORT_VER" "$OUT/
 cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/LICENSE" "$OUT/onnx/ONNXRUNTIME-LICENSE"
 cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/ThirdPartyNotices.txt" "$OUT/onnx/ONNXRUNTIME-ThirdPartyNotices.txt"
 cp "$CACHE/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx" "$OUT/onnx/selfie_segmentation.onnx"
+# The PINTO tarball ships no LICENSE file (verified: `tar tzf` has no LICENSE/README entry) —
+# vendor the Apache-2.0 text the model is licensed under (native/shim/bundle/APACHE-2.0.txt,
+# already carrying the PINTO/Katsuya Hyodo copyright notice — same copyright holder as the
+# selfie-segmentation ONNX conversion per THIRD-PARTY-NOTICES.md).
+cp native/shim/bundle/APACHE-2.0.txt "$OUT/onnx/MODEL-LICENSE"
+cp THIRD-PARTY-NOTICES.md "$OUT/"
 
 if strings "$OUT/libCameraOnScreen.Shim.so" | grep -q "not built in"; then
   echo "ERROR: stub shim deployed (deploy-the-right-shim)" >&2; exit 1
