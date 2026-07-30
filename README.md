@@ -19,13 +19,15 @@ An always-on-top webcam overlay for **Linux and Windows**. It floats your live
 camera feed over everything else, so any screen recorder or screen sharing session
 captures you and your screen together in real-time. Useful for teaching too.
 
-Included NVIDIA powered features such as
-- **AI Green Screen** (background removal)
-- **AI Eye Contact** (gaze redirection)
-- **AI Interpolation** (doubles webcam FPS — Windows only for now)
+Included AI-powered features such as
+- **AI Green Screen** (background removal) — NVIDIA Maxine on RTX, or a
+  built-in CPU engine on any hardware
+- **AI Eye Contact** (gaze redirection) — NVIDIA RTX
+- **AI Interpolation** (doubles webcam FPS — Windows only for now) — NVIDIA RTX
 
-> **You need:** an **NVIDIA RTX GPU** for the AI effects, on Linux (X11/XWayland)
-> or Windows. On other hardware the overlay still works without the AI effects.
+> **You need:** an **NVIDIA RTX GPU** for AI Eye Contact and AI Interpolation.
+> **AI Green Screen** works on any hardware — RTX (via NVIDIA Maxine) gives the
+> best quality, with a built-in CPU engine as the fallback everywhere else.
 
 ## Install
 
@@ -55,10 +57,11 @@ bundles everything it needs. Windows SmartScreen will warn (unsigned): click
 **More info → Run anyway**. Uninstall from **Settings → Apps**; preferences are
 kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 
-> The AI effects ship with models for **RTX 20/30/40-series and Blackwell**
-> GPUs, but are only verified on **RTX 30-series & 20-series** so far - other RTX
-> architectures load best-effort. On non-RTX hardware the app still installs and
-> runs as a plain webcam overlay.
+> The Maxine AI effects ship with models for **RTX 20/30/40-series and
+> Blackwell** GPUs, but are only verified on **RTX 30-series & 20-series** so
+> far - other RTX architectures load best-effort. On non-RTX hardware AI Eye
+> Contact and AI Interpolation are unavailable, but **AI Green Screen still
+> works** via the built-in CPU engine.
 
 ## Using it
 
@@ -67,7 +70,7 @@ kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 - **Resize it** - scroll the mouse wheel over the overlay.
 - **Mirror / zoom** - toggle in the control panel.
 - **AI Green Screen** - removes your background with adjustable edge expand /
-  feather.
+  feather (NVIDIA Maxine on RTX, or a built-in CPU engine on any hardware).
 - **AI Eye Contact** - gently redirects your gaze toward the camera.
 
 Then record with NVIDIA ShadowPlay, Game Bar or stream live with the overlay
@@ -104,11 +107,20 @@ trademarks of NVIDIA Corporation; this project is not affiliated with NVIDIA.
 The AI effects use the **NVIDIA Maxine Video Effects SDK** (green screen) and
 **NVIDIA Maxine AR SDK** (eye contact). These are **not bundled** in the
 repository - download them from <https://developer.nvidia.com/maxine> and point
-the build at them. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+the build at them. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). Green
+screen also has a built-in, hardware-agnostic fallback - see below.
 
 The two SDKs each pin an exact CUDA + TensorRT runtime and **cannot mix** in one
 process. Use a co-versioned pair - verified: **VFX 1.2.0.0 + AR 1.1.1.0** (shared
 TensorRT 10.9 / CUDA 12.x).
+
+## Built-in CPU green-screen engine
+
+Green screen also runs with no NVIDIA SDK at all: a bundled **ONNX Runtime
+1.28** (CPU execution provider) plus the **MediaPipe selfie-segmentation**
+model (Apache License 2.0), resolved from `<app>/onnx/` with no env vars
+needed. Lower quality than Maxine, but works on any CPU, any OS, no GPU
+required. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 ## NVIDIA Optical Flow SDK
 
