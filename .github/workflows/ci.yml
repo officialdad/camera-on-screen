@@ -55,8 +55,7 @@ jobs:
           # /t:Rebuild: same output path as the stub build; SDK config must build LAST so
           # the App step deploys it (CLAUDE.md "deploy the right shim").
           msbuild native/shim/shim.vcxproj /t:Rebuild /p:Configuration=Release /p:Platform=x64 `
-            /p:CosVfxSdkDir=$env:GITHUB_WORKSPACE\.buildkit\vfx `
-            /p:CosArSdkDir=$env:GITHUB_WORKSPACE\.buildkit\ar `
+            /p:CosVfxSdkDir= /p:CosArSdkDir= `
             /warnaserror /nologo
           if ($LASTEXITCODE -ne 0) { throw "shim SDK build failed ($LASTEXITCODE)" }
 
