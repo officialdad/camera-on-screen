@@ -33,6 +33,35 @@ cp native/shim/build/libCameraOnScreen.Shim.so "$OUT/"
 COS_VFX_SDK_DIR="$VFX" COS_AR_SDK_DIR="$AR" COS_FRUC_SDK_DIR="$FRUC" \
   scripts/bundle-maxine-linux.sh "$OUT/maxine" | tail -2
 
+# ONNX green-screen runtime (issue #24): ORT + selfie-segmentation model -> $OUT/onnx
+# (the shim's bundled tier; COS_SEG_RUNTIME_DIR overrides in dev). Pinned + sha-verified;
+# cached under ~/.cache so rebuilds cost nothing.
+ORT_VER="1.28.0"
+ORT_SHA="a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407"
+MODEL_SHA="de212dabbc6266f0047711d1dfae80900f7b596b9ed5f7665f3d1cf68c5443ee"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/camera-on-screen"
+mkdir -p "$CACHE" "$OUT/onnx"
+[ -f "$CACHE/ort-$ORT_VER.tgz" ] || curl -fsSL -o "$CACHE/ort-$ORT_VER.tgz" \
+  "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VER/onnxruntime-linux-x64-$ORT_VER.tgz"
+echo "$ORT_SHA  $CACHE/ort-$ORT_VER.tgz" | sha256sum -c - >/dev/null
+[ -f "$CACHE/pinto109.tar.gz" ] || curl -fsSL -o "$CACHE/pinto109.tar.gz" \
+  "https://s3.ap-northeast-2.wasabisys.com/pinto-model-zoo/109_Selfie_Segmentation/resources.tar.gz"
+tar -xzf "$CACHE/ort-$ORT_VER.tgz" -C "$CACHE" \
+  "onnxruntime-linux-x64-$ORT_VER/lib/libonnxruntime.so.$ORT_VER" \
+  "onnxruntime-linux-x64-$ORT_VER/LICENSE" "onnxruntime-linux-x64-$ORT_VER/ThirdPartyNotices.txt"
+tar -xzf "$CACHE/pinto109.tar.gz" -C "$CACHE" saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx
+echo "$MODEL_SHA  $CACHE/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx" | sha256sum -c - >/dev/null
+cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/lib/libonnxruntime.so.$ORT_VER" "$OUT/onnx/libonnxruntime.so.1"
+cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/LICENSE" "$OUT/onnx/ONNXRUNTIME-LICENSE"
+cp "$CACHE/onnxruntime-linux-x64-$ORT_VER/ThirdPartyNotices.txt" "$OUT/onnx/ONNXRUNTIME-ThirdPartyNotices.txt"
+cp "$CACHE/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx" "$OUT/onnx/selfie_segmentation.onnx"
+# The PINTO tarball ships no LICENSE file (verified: `tar tzf` has no LICENSE/README entry) —
+# vendor the Apache-2.0 text the model is licensed under (native/shim/bundle/APACHE-2.0.txt,
+# already carrying the PINTO/Katsuya Hyodo copyright notice — same copyright holder as the
+# selfie-segmentation ONNX conversion per THIRD-PARTY-NOTICES.md).
+cp native/shim/bundle/APACHE-2.0.txt "$OUT/onnx/MODEL-LICENSE"
+cp THIRD-PARTY-NOTICES.md "$OUT/"
+
 if strings "$OUT/libCameraOnScreen.Shim.so" | grep -q "not built in"; then
   echo "ERROR: stub shim deployed (deploy-the-right-shim)" >&2; exit 1
 fi

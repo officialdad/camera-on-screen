@@ -1,5 +1,6 @@
 #include "capture.h"
 #include "aigs.h"
+#include "seg_onnx.h"
 #include "eyecontact.h"
 #include "superres.h"
 #include "fruc.h"
@@ -40,6 +41,7 @@ struct CaptureState {
     std::string           symbolicLink;
 
     std::atomic<bool>     greenScreenEnabled{false}; // set by UI thread, read by worker
+    std::atomic<int>      greenScreenBackend{0}; // 0 Auto, 1 Maxine, 2 ONNX (#24)
     std::atomic<double>   matteExpand{0.0};  // set by UI thread, read by worker
     std::atomic<double>   matteFeather{0.0}; // set by UI thread, read by worker
     std::atomic<bool>     greenScreenActive{false};  // set by worker
@@ -320,6 +322,7 @@ void Capture::WorkerLoop() {
     // Aigs must live entirely on the worker thread: CUDA stream/effect have thread
     // affinity. Declare here (after CoInitializeEx) so ctor/dtor run on this thread.
     Aigs aigs;
+    SegOnnx seg; int prevGsBackend = 0;
     EyeContact eyeContact;
     SuperRes superRes;
     int srAppliedQuality = 0, srAppliedScale = 0; // last (quality,scale) Start ran with; for live restart
@@ -476,34 +479,53 @@ void Capture::WorkerLoop() {
                 // Green screen composites onto it and writes the final premultiplied alpha.
                 std::vector<uint8_t>& cur = srApplied ? srOut : scratch;
 
-                // Lazily start/stop AIGS to match the enabled flag.
+                // Green screen composites last and authors the premultiplied alpha matte.
+                // Two engines (issue #24): Maxine AIGS (RTX) and SegOnnx (CPU, any hardware).
+                // Backend 0 = Auto (Maxine first, ONNX fallback), 1 = Maxine, 2 = ONNX.
                 const bool want = g_state.greenScreenEnabled.load(std::memory_order_acquire);
-                if (want && !aigs.IsReady()) {
-                    if (!aigs.Start()) {
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        const std::string& newErr = aigs.LastError();
-                        if (g_state.gsError != newErr) g_state.gsError = newErr;
-                    }
-                } else if (!want && aigs.IsReady()) {
-                    aigs.Stop();
+                const int  gsBackend = g_state.greenScreenBackend.load(std::memory_order_acquire);
+                if (gsBackend != prevGsBackend) { // selection changed: re-resolve from scratch
+                    if (aigs.IsReady()) aigs.Stop();
+                    if (seg.IsReady())  seg.Stop();
+                    prevGsBackend = gsBackend;
+                }
+                if (!want) {
+                    if (aigs.IsReady()) aigs.Stop();
+                    if (seg.IsReady())  seg.Stop();
                     // Clear any stale error: green screen is off, error is no longer relevant.
                     std::lock_guard<std::mutex> e(g_state.gsErrMtx);
                     if (!g_state.gsError.empty()) g_state.gsError.clear();
+                } else {
+                    // Bring up the selected engine. Auto tries Maxine, then falls back to
+                    // ONNX; once a fallback engine is up we stop retrying Maxine (stable,
+                    // no per-frame churn). Explicit selections retry their engine only.
+                    if ((gsBackend == 0 || gsBackend == 1) && !aigs.IsReady() && !seg.IsReady()) {
+                        if (!aigs.Start() && gsBackend == 1) {
+                            std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                            if (g_state.gsError != aigs.LastError()) g_state.gsError = aigs.LastError();
+                        }
+                    }
+                    if ((gsBackend == 0 || gsBackend == 2) && !aigs.IsReady() && !seg.IsReady()) {
+                        if (!seg.Start()) {
+                            std::lock_guard<std::mutex> e(g_state.gsErrMtx);
+                            if (g_state.gsError != seg.LastError()) g_state.gsError = seg.LastError();
+                        }
+                    }
                 }
-
                 bool applied = false;
-                if (want && aigs.IsReady()) {
+                if (want && (aigs.IsReady() || seg.IsReady())) {
                     const double expand  = g_state.matteExpand.load(std::memory_order_acquire);
                     const double feather = g_state.matteFeather.load(std::memory_order_acquire);
-                    applied = aigs.ProcessFrame(cur.data(), curW, curH, expand, feather);
+                    const std::string& engineErr = aigs.IsReady() ? aigs.LastError() : seg.LastError();
+                    applied = aigs.IsReady()
+                        ? aigs.ProcessFrame(cur.data(), curW, curH, expand, feather)
+                        : seg.ProcessFrame(cur.data(), curW, curH, expand, feather);
+                    std::lock_guard<std::mutex> e(g_state.gsErrMtx);
                     if (!applied) {
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        const std::string& newErr = aigs.LastError();
-                        if (g_state.gsError != newErr) g_state.gsError = newErr;
-                    } else {
+                        if (g_state.gsError != engineErr) g_state.gsError = engineErr;
+                    } else if (!g_state.gsError.empty()) {
                         // Frame succeeded — clear any stale error so status is consistent.
-                        std::lock_guard<std::mutex> e(g_state.gsErrMtx);
-                        if (!g_state.gsError.empty()) g_state.gsError.clear();
+                        g_state.gsError.clear();
                     }
                 }
                 g_state.greenScreenActive.store(applied, std::memory_order_release);
@@ -567,6 +589,7 @@ void Capture::WorkerLoop() {
     superRes.Stop();
     eyeContact.Stop();
     aigs.Stop();
+    seg.Stop();
     SafeRelease(reader);
     if (SUCCEEDED(coHr)) CoUninitialize();
 }
@@ -629,8 +652,9 @@ bool Capture::LatestFrame(std::vector<uint8_t>& out, int& w, int& h) {
     return true;
 }
 
-void Capture::SetGreenScreen(bool enabled) {
+void Capture::SetGreenScreen(bool enabled, int backend) {
     g_state.greenScreenEnabled.store(enabled, std::memory_order_release);
+    g_state.greenScreenBackend.store(backend, std::memory_order_release);
 }
 
 void Capture::SetMatteParams(double expand, double feather) {

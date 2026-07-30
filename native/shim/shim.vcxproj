@@ -110,6 +110,8 @@
     <ClCompile Include="shim.cpp" />
     <ClCompile Include="capture.cpp" />
     <ClCompile Include="aigs.cpp" />
+    <ClCompile Include="matte_ops.cpp" />
+    <ClCompile Include="seg_onnx.cpp" />
     <ClCompile Include="eyecontact.cpp" />
     <ClCompile Include="superres.cpp" />
     <ClCompile Include="fruc.cpp" />
@@ -137,6 +139,8 @@
     <ClInclude Include="shim.h" />
     <ClInclude Include="capture.h" />
     <ClInclude Include="aigs.h" />
+    <ClInclude Include="matte_ops.h" />
+    <ClInclude Include="seg_onnx.h" />
     <ClInclude Include="eyecontact.h" />
     <ClInclude Include="superres.h" />
     <ClInclude Include="fruc.h" />

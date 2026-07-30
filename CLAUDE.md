@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Camera-on-Screen: a cross-platform (**Linux + Windows**) webcam **desktop-overlay** app. A transparent, always-on-top, draggable overlay shows the live webcam so any screen recorder captures it live in one pass — no post-edit. Single-process **C# .NET 8** control panel (**Avalonia** on Linux, **WinUI 3** on Windows, shared `Core`) + a native **C++ C-ABI shim** (P/Invoke) doing capture (V4L2 / Media Foundation). **NVIDIA RTX required for effects** (Maxine is RTX-locked); plain overlay elsewhere. The C# side owns all windowing/compositing; the shim only captures and runs the optional Maxine effects. **Since 2026-07 the dev box and the release focus are Linux** (issue #27); Windows Maxine CI + installer releases are parked on #38.
+Camera-on-Screen: a cross-platform (**Linux + Windows**) webcam **desktop-overlay** app. A transparent, always-on-top, draggable overlay shows the live webcam so any screen recorder captures it live in one pass — no post-edit. Single-process **C# .NET 8** control panel (**Avalonia** on Linux, **WinUI 3** on Windows, shared `Core`) + a native **C++ C-ABI shim** (P/Invoke) doing capture (V4L2 / Media Foundation). **RTX required for the Maxine effects** (eye contact, super-res, FRUC frame interpolation); AI green screen also runs on ANY hardware via the bundled ONNX CPU engine; plain overlay everywhere else. The C# side owns all windowing/compositing; the shim only captures and runs the optional Maxine effects. **Since 2026-07 the dev box and the release focus are Linux** (issue #27); Windows Maxine CI + installer releases are parked on #38.
 
 Design intent lives in `docs/superpowers/specs/`; task plans in `docs/superpowers/plans/`. **Read the relevant spec before changing cross-component contracts.** Deferred work is tracked as GitHub issues.
 
@@ -118,7 +118,14 @@ is dlopened with **`RTLD_DEEPBIND`** — load-bearing: Maxine's preload puts its
 cudart in the global scope, and without DEEPBIND FRUC's unversioned refs would bind to it
 instead of its co-shipped CUDA-11 cudart (ELF flat namespace has no Windows
 distinct-DLL-name isolation). Deploy-the-right-shim check: `nm -D` shows `GetOSInfo` and
-`strings` lacks `"not built in"` = SDK build.
+`strings` lacks `"not built in"` = SDK build. **ONNX green screen (issue #24, 2026-07-30):**
+second green-screen engine `seg_onnx.{h,cpp}` — MediaPipe selfie-segmentation (256×256,
+Apache-2.0) in ONNX Runtime 1.28 **CPU EP**, works on any hardware, both OSes. No build flag:
+ORT is dlopen'd (`OrtGetApiBase`) from `COS_SEG_RUNTIME_DIR` else `<shim>/onnx/`
+(`libonnxruntime.so.1`/`onnxruntime.dll` + `selfie_segmentation.onnx`); vendored MIT C headers
+in `native/shim/third_party/onnxruntime/`. Backend select: `CosParams.green_screen_backend` 0
+Auto/1 Maxine/2 ONNX; worker dispatch in both capture backends; shared matte chain
+`matte_ops.{h,cpp}`. Smoke: `seg_probe` (runs REAL inference on hosted CI, no GPU).
 
 **DEPLOY THE RIGHT SHIM (cost a full debugging cycle).** The SDK build (`COS_HAS_MAXINE*`) and the CI stub (`/p:CosVfxSdkDir= /p:CosArSdkDir=`) write the **same** DLL path; whichever built **last** is what App `-t:Rebuild` deploys. Always build the SDK config **last** before running, else the app silently runs passthrough (toggles greyed). Verify the deployed DLL: `grep -a GreenScreen` **and** `grep -a GazeRedirection` present, `grep -a "not built in"` absent.
 

@@ -33,12 +33,12 @@ public class MainViewModelTests
     [Fact]
     public async Task Probe_unavailable_disables_effects_and_surfaces_detail()
     {
-        // Explicitly set GreenScreenAvailable = false; tier is irrelevant. After the async probe the
-        // VM must keep effects off AND surface the shim's real reason string (not a static message).
+        // Explicitly set both engines unavailable; tier is irrelevant. After the async probe the
+        // VM must keep effects off AND surface both unavailable reasons (#24).
         var vm = Build(GpuTier.NonRtx, out _, greenScreenAvailable: false);
         await vm.ProbeCapabilitiesAsync();
         Assert.False(vm.EffectsAvailable);
-        Assert.Equal("fake: unavailable", vm.CapabilityDetail);
+        Assert.Equal("fake: unavailable · fake: onnx unavailable", vm.CapabilityDetail);
     }
 
     [Fact]
@@ -394,6 +394,40 @@ public class MainViewModelTests
         Assert.False(vm.FingerControlEnabled);
         Assert.Equal(1.5, vm.FingerControlSensitivity);
         Assert.False(vm.FingerControlAvailable);
+    }
+
+    // --- GreenScreenBackend (Task 6) ---
+
+    [Fact]
+    public void GreenScreenBackend_RoundTripsThroughConfig()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.GreenScreenBackendIndex = 2;
+        var config = vm.ToAppConfig(0, 0, 100, 100);
+        Assert.Equal(2, config.Effects.GreenScreenBackend);
+
+        var vm2 = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm2.LoadFrom(config);
+        Assert.Equal(2, vm2.GreenScreenBackendIndex);
+    }
+
+    [Fact]
+    public void LoadFrom_ClampsBackendIndex()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.LoadFrom(new AppConfig { Effects = new EffectSettings { GreenScreenBackend = 9 } });
+        Assert.Equal(0, vm.GreenScreenBackendIndex); // out-of-range -> Auto (combo crash guard)
+    }
+
+    [Fact]
+    public void BuildParams_CarriesBackend()
+    {
+        var shim = new FakeShim();
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        vm.GreenScreenBackendIndex = 1;
+        Assert.Equal(1, vm.BuildParams().GreenScreenBackend);
     }
 
     private sealed class ControllableFpsShim : INativeShim

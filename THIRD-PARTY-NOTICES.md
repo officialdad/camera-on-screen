@@ -148,6 +148,20 @@ License 2.0, via the ONNX-conversion lineage documented in
 `models\hand\LICENSE.txt` (installed alongside the model files, both in the
 source repo's `Assets\models\hand\` and in the distributed installer).
 
+## ONNX Runtime
+
+Bundled as `onnx/libonnxruntime.so.1` (Linux). © Microsoft Corporation.
+Licensed under the MIT License — see `onnx/ONNXRUNTIME-LICENSE` in the
+distribution and https://github.com/microsoft/onnxruntime. Additional
+attributions: `onnx/ONNXRUNTIME-ThirdPartyNotices.txt`.
+
+## MediaPipe Selfie Segmentation model
+
+Bundled as `onnx/selfie_segmentation.onnx` — the Google MediaPipe selfie-
+segmentation model (© Google LLC), ONNX conversion from the PINTO model zoo
+(© Katsuya Hyodo), both licensed under the Apache License 2.0.
+https://github.com/google-ai-edge/mediapipe · https://github.com/PINTO0309/PINTO_model_zoo
+
 ## Trademarks
 
 NVIDIA, Maxine, RTX, GeForce, TensorRT, and CUDA are trademarks and/or

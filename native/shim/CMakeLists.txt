@@ -8,6 +8,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(CameraOnScreenShim CXX)
 
+# Default to an optimized build: the ONNX green-screen engine's CPU resamplers and
+# the shared matte ops are hot per-frame loops — unoptimized they blow the 33 ms
+# frame budget (42 ms vs 10 ms measured on the dev box).
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
 if(NOT UNIX OR APPLE)
   message(FATAL_ERROR "This CMake build targets Linux only; build shim.vcxproj on Windows.")
 endif()
@@ -26,6 +33,8 @@ add_library(shim SHARED
   fruc.cpp
   paths.cpp
   vfx_paths.cpp
+  matte_ops.cpp
+  seg_onnx.cpp
 )
 set_target_properties(shim PROPERTIES
   OUTPUT_NAME "CameraOnScreen.Shim"   # -> libCameraOnScreen.Shim.so
@@ -77,3 +86,9 @@ endif()
 add_executable(v4l2_probe smoke/v4l2_probe.cpp)
 target_compile_options(v4l2_probe PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(v4l2_probe PRIVATE shim)
+
+# ONNX green-screen smoke (issue #24): compiles the engine directly (shim symbols are
+# hidden). Needs COS_SEG_RUNTIME_DIR (ORT lib + model) at run time, not build time.
+add_executable(seg_probe smoke/seg_probe.cpp seg_onnx.cpp matte_ops.cpp paths.cpp)
+target_compile_options(seg_probe PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(seg_probe PRIVATE ${CMAKE_DL_LIBS})

@@ -34,6 +34,7 @@ typedef struct {
     int    exposure_lock_enabled;     // 1 = manual exposure (locks fps); 0 = auto (default)
     double exposure_value;            // 0..1 normalized; native maps to camera's IAMCameraControl range
     int    frame_interp_enabled;
+    int    green_screen_backend;      // 0 Auto (Maxine, else ONNX), 1 Maxine, 2 ONNX CPU (#24)
 } CosParams;
 
 typedef struct {
@@ -44,6 +45,8 @@ typedef struct {
     int  super_res_available;          // 1 if Maxine SuperRes can run
     int  frame_interp_available;
     char fi_detail[256];
+    int  gs_onnx_available;      // 1 if the ONNX CPU green-screen engine can run (#24)
+    char gs_onnx_detail[256];    // ONNX engine status/error (UTF-8, NUL-terminated)
 } CosCaps;
 
 COS_API int  cos_init(void* d3d11_device);

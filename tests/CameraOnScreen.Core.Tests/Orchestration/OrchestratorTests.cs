@@ -133,10 +133,11 @@ public class OrchestratorTests
     [Fact]
     public void ProbeCapabilities_Records_Detail_From_Shim()
     {
-        var shim = new FakeShim { GreenScreenAvailable = false };
+        // When both engines unavailable, detail shows both; when one available, shows its detail (#24).
+        var shim = new FakeShim { GreenScreenAvailable = false, GreenScreenOnnxAvailable = false };
         var orch = new Orchestrator(shim, GpuTier.Rtx);
         orch.ProbeCapabilities();
-        Assert.Equal("fake: unavailable", orch.CapabilityDetail);
+        Assert.Equal("fake: unavailable · fake: onnx unavailable", orch.CapabilityDetail);
     }
 
     // --- M4: split eye-contact gate ---
@@ -210,5 +211,39 @@ public class OrchestratorTests
         orch.ApplyParams(new ShimParams("cam", false, 0, 0, false, 0.5, 0.5,
             FrameInterpEnabled: true));
         Assert.True(shim.LastParams!.FrameInterpEnabled);
+    }
+
+    // --- Task 5: ONNX green-screen backend gate ---
+
+    [Fact]
+    public void ProbeCapabilities_OnnxOnly_EnablesGreenScreen()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false, GreenScreenOnnxAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.NonRtx);
+        orch.ProbeCapabilities();
+        Assert.True(orch.EffectsAvailable);
+        Assert.False(orch.GreenScreenMaxineAvailable);
+        Assert.True(orch.GreenScreenOnnxAvailable);
+    }
+
+    [Fact]
+    public void ApplyParams_ClampsUnavailableExplicitBackendToAuto()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false, GreenScreenOnnxAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.NonRtx);
+        orch.ProbeCapabilities();
+        orch.ApplyParams(new ShimParams(null, true, 0, 0, false, 0.5, 0.5, GreenScreenBackend: 1));
+        Assert.Equal(0, shim.LastParams!.GreenScreenBackend);   // Maxine unavailable -> Auto
+        Assert.True(shim.LastParams!.GreenScreenEnabled);       // ONNX carries the effect
+    }
+
+    [Fact]
+    public void ApplyParams_PassesAvailableBackendThrough()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true, GreenScreenOnnxAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        orch.ApplyParams(new ShimParams(null, true, 0, 0, false, 0.5, 0.5, GreenScreenBackend: 2));
+        Assert.Equal(2, shim.LastParams!.GreenScreenBackend);
     }
 }
