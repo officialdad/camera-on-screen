@@ -8,6 +8,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(CameraOnScreenShim CXX)
 
+# Default to an optimized build: the ONNX green-screen engine's CPU resamplers and
+# the shared matte ops are hot per-frame loops — unoptimized they blow the 33 ms
+# frame budget (42 ms vs 10 ms measured on the dev box).
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
 if(NOT UNIX OR APPLE)
   message(FATAL_ERROR "This CMake build targets Linux only; build shim.vcxproj on Windows.")
 endif()
