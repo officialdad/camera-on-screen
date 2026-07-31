@@ -1,9 +1,11 @@
-# Windows compile safety net on GitHub-hosted runners (the self-hosted RTX runner died
-# with the Windows dev box; primary dev is Linux, see ci-linux.yml). Covers the two
-# artifacts that can ONLY compile on Windows: shim.vcxproj (Media Foundation capture)
-# and the WinUI 3 App. STUB shim config only — no Maxine SDK / NGC / GPU on hosted
-# runners, so the Windows COS_HAS_MAXINE paths and the export-verify gate stay
-# unverified until a Windows box returns (they move back with it).
+# Windows PR-CI on GitHub-hosted runners (#38 option 1): hosted windows-latest has
+# MSVC v143 + .NET 8, and the shim's Maxine SDK config needs only headers + proxy
+# sources (the proxies LoadLibrary the runtime later; CI never runs the DLL). Those
+# files are NVIDIA-proprietary, so they live in the PRIVATE repo
+# officialdad/maxine-winci-buildkit (assembled by scripts/assemble-winci-buildkit.sh),
+# checked out via a read-only deploy key. Fork PRs have no secrets: SDK steps skip,
+# stub coverage still runs. Still parked on #38: FRUC compile (Optical Flow SDK is
+# developer-program-gated), runtime/GPU verification, installer releases (release.yml).
 name: ci
 
 on:
@@ -16,11 +18,21 @@ concurrency:
 
 jobs:
   windows-compile:
-    name: Windows compile (stub shim + WinUI App)
+    name: Windows compile (shim stub + SDK config + WinUI App)
     runs-on: windows-latest
+    env:
+      HAS_BUILDKIT: ${{ secrets.MAXINE_BUILDKIT_SSH_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout Maxine build kit (private, headers + proxies only)
+        if: env.HAS_BUILDKIT == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: officialdad/maxine-winci-buildkit
+          ssh-key: ${{ secrets.MAXINE_BUILDKIT_SSH_KEY }}
+          path: .buildkit
 
       - name: Locate MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -29,12 +41,34 @@ jobs:
         shell: pwsh
         run: |
           msbuild native/shim/shim.vcxproj /p:Configuration=Release /p:Platform=x64 /warnaserror /nologo
-          if ($LASTEXITCODE -ne 0) { throw "shim build failed ($LASTEXITCODE)" }
+          if ($LASTEXITCODE -ne 0) { throw "shim stub build failed ($LASTEXITCODE)" }
           $dll = "native/shim/x64/Release/CameraOnScreen.Shim.dll"
           if (-not (Test-Path $dll)) { throw "shim DLL missing: $dll" }
-          # Stub sanity: hosted runners have no SDK env, so this MUST be the passthrough stub.
+          # No SDK props passed => this MUST be the passthrough stub.
           $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
-          if ($strings -notmatch 'not built in') { throw "expected the stub build on a hosted runner" }
+          if ($strings -notmatch 'not built in') { throw "expected the stub build without SDK dirs" }
+
+      - name: Build native shim (Maxine SDK config, x64 Release)
+        if: env.HAS_BUILDKIT == 'true'
+        shell: pwsh
+        run: |
+          # /t:Rebuild: same output path as the stub build; SDK config must build LAST so
+          # the App step deploys it (CLAUDE.md "deploy the right shim").
+          msbuild native/shim/shim.vcxproj /t:Rebuild /p:Configuration=Release /p:Platform=x64 `
+            /p:CosVfxSdkDir=$env:GITHUB_WORKSPACE\.buildkit\vfx `
+            /p:CosArSdkDir=$env:GITHUB_WORKSPACE\.buildkit\ar `
+            /warnaserror /nologo
+          if ($LASTEXITCODE -ne 0) { throw "shim SDK build failed ($LASTEXITCODE)" }
+
+      - name: Export-verify deployed shim (SDK markers present, stub marker absent)
+        if: env.HAS_BUILDKIT == 'true'
+        shell: pwsh
+        run: |
+          $dll = "native/shim/x64/Release/CameraOnScreen.Shim.dll"
+          $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
+          if ($strings -notmatch 'GreenScreen')     { throw "export-verify: GreenScreen missing (VFX not compiled in)" }
+          if ($strings -notmatch 'GazeRedirection') { throw "export-verify: GazeRedirection missing (AR not compiled in)" }
+          if ($strings -match 'not built in')       { throw "export-verify: stub marker present (stale stub deployed)" }
 
       - name: Build App (copies shim, warnings = errors)
         shell: pwsh
