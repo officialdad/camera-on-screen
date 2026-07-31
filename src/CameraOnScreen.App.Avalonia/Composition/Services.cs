@@ -21,7 +21,7 @@ public static class Services
         INativeShim shim;
         try
         {
-            shim = new Native.PInvokeShim();
+            shim = new PInvokeShim();
             shim.Init(IntPtr.Zero); // no shared D3D device on Linux; first P/Invoke = load probe
         }
         catch (DllNotFoundException)
