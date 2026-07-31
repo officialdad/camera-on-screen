@@ -11,7 +11,7 @@ public static class Services
     {
         var store = new JsonSettingsStore(JsonSettingsStore.DefaultPath());
         var config = store.Load();
-        INativeShim shim = new CameraOnScreen.App.Native.PInvokeShim();
+        INativeShim shim = new PInvokeShim();
         // Shared device: hand the overlay's D3D device to the shim. In M2 the shim still returns a
         // CPU BGRA buffer and does not use the device for D3D, but the shared-device contract is
         // established now (M3 will move frame production onto it, CUDA<->D3D interop).

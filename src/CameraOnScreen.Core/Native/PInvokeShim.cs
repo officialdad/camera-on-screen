@@ -1,12 +1,16 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using CameraOnScreen.Core.Native;
 
-namespace CameraOnScreen.App.Native;
+namespace CameraOnScreen.Core.Native;
 
+// The one P/Invoke binding to the native shim's C ABI, shared by the WinUI and Avalonia
+// apps (#29 consolidation; was duplicated per-app). The struct mirrors below must match
+// shim.h byte-for-byte on x64 — this is now the single managed side of that contract.
+// The extension-less library name lets .NET probing resolve CameraOnScreen.Shim.dll
+// (Windows) and libCameraOnScreen.Shim.so (Linux) from the app directory.
 public sealed class PInvokeShim : INativeShim
 {
-    private const string Dll = "CameraOnScreen.Shim.dll";
+    private const string Dll = "CameraOnScreen.Shim";
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CosStatus
@@ -76,8 +80,8 @@ public sealed class PInvokeShim : INativeShim
 
     public void SetParams(ShimParams p)
     {
-        // Native side decodes camera_id as UTF-8 (MultiByteToWideChar with CP_UTF8),
-        // so marshal UTF-8 here (paired with FreeCoTaskMem below), not ANSI.
+        // Native side decodes camera_id as UTF-8, so marshal UTF-8 here (paired with
+        // FreeCoTaskMem below), not ANSI.
         var idPtr = p.CameraId is null ? IntPtr.Zero : Marshal.StringToCoTaskMemUTF8(p.CameraId);
         try
         {
