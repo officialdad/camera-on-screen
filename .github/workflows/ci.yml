@@ -65,6 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $dll = "native/shim/x64/Release/CameraOnScreen.Shim.dll"
+          if (-not (Test-Path $dll)) { throw "export-verify: shim DLL missing: $dll" }
           $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
           if ($strings -notmatch 'GreenScreen')     { throw "export-verify: GreenScreen missing (VFX not compiled in)" }
           if ($strings -notmatch 'GazeRedirection') { throw "export-verify: GazeRedirection missing (AR not compiled in)" }

@@ -27,6 +27,8 @@ for d in "$VFX_LINUX" "$VFX_CLONE" "$AR_CLONE"; do
     [ -d "$d" ] || { echo "missing SDK tree: $d" >&2; exit 1; }
 done
 
+# Clean kit payload (keep .git) so removed files don't linger across re-assembles.
+rm -rf "$OUT/vfx" "$OUT/ar" "$OUT/README.md"
 mkdir -p "$OUT/vfx/nvvfx/include" "$OUT/vfx/nvvfx/src" \
          "$OUT/vfx/features/nvvfxgreenscreen/include" \
          "$OUT/vfx/features/nvvfxvideosuperres/include" \
@@ -59,7 +61,11 @@ EOF
 cp "$AR_CLONE"/nvar/include/nvAR.h "$AR_CLONE"/nvar/include/nvAR_defs.h \
    "$AR_CLONE"/nvar/include/nvCVImage.h "$AR_CLONE"/nvar/include/nvCVStatus.h \
    "$OUT/ar/nvar/include/"
-cp "$AR_CLONE"/nvar/src/nvARProxy.cpp "$OUT/ar/nvar/src/"
+# nvCVImageProxy.cpp also under ar/: shim.vcxproj's AR-without-VFX variant compiles
+# $(CosArSdkDir)\nvar\src\nvCVImageProxy.cpp (unused while CI sets both dirs, but the
+# kit shouldn't silently miss a provisioned build variant).
+cp "$AR_CLONE"/nvar/src/nvARProxy.cpp "$AR_CLONE"/nvar/src/nvCVImageProxy.cpp \
+   "$OUT/ar/nvar/src/"
 
 cat > "$OUT/README.md" <<EOF
 # maxine-winci-buildkit (PRIVATE — do not make public)
@@ -86,7 +92,7 @@ for f in vfx/nvvfx/include/nvVideoEffects.h vfx/nvvfx/include/nvCVImage.h \
          vfx/features/nvvfxvideosuperres/include/nvVFXVideoSuperRes.h \
          ar/nvar/include/nvAR.h ar/nvar/include/nvAR_defs.h \
          ar/nvar/include/nvCVImage.h ar/nvar/include/nvCVStatus.h \
-         ar/nvar/src/nvARProxy.cpp; do
+         ar/nvar/src/nvARProxy.cpp ar/nvar/src/nvCVImageProxy.cpp; do
     [ -f "$OUT/$f" ] || { echo "SELF-CHECK FAILED: missing $f" >&2; exit 1; }
 done
 echo "kit assembled at $OUT"
