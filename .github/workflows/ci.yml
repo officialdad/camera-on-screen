@@ -3,9 +3,10 @@
 # sources (the proxies LoadLibrary the runtime later; CI never runs the DLL). Those
 # files are NVIDIA-proprietary, so they live in the PRIVATE repo
 # officialdad/maxine-winci-buildkit (assembled by scripts/assemble-winci-buildkit.sh),
-# checked out via a read-only deploy key. Fork PRs have no secrets: SDK steps skip,
-# stub coverage still runs. Still parked on #38: FRUC compile (Optical Flow SDK is
-# developer-program-gated), runtime/GPU verification, installer releases (release.yml).
+# checked out via a read-only deploy key. FRUC compiles too: NvOFFRUC.h ships in the kit
+# (Optical Flow SDK is developer-program-gated) and cuda.h/cuda.lib come from NVIDIA's
+# public cuda_cudart redist zip. Fork PRs have no secrets: SDK steps skip, stub coverage
+# still runs. Still parked on #38: runtime/GPU verification, installer releases (release.yml).
 name: ci
 
 on:
@@ -48,6 +49,26 @@ jobs:
           $strings = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
           if ($strings -notmatch 'not built in') { throw "expected the stub build without SDK dirs" }
 
+      - name: Fetch CUDA driver-API headers (public cuda_cudart redist, for FRUC)
+        if: env.HAS_BUILDKIT == 'true'
+        shell: pwsh
+        run: |
+          # shim.vcxproj's COS_HAS_FRUC config needs $(CosCudaDir)\include\cuda.h +
+          # $(CosCudaDir)\lib\x64\cuda.lib. NVIDIA's public redist ships both in a ~3 MB
+          # zip — no CUDA toolkit install. Pinned + hash-verified.
+          $ver = "12.8.90"
+          $name = "cuda_cudart-windows-x86_64-$ver-archive"
+          $zip = "$env:RUNNER_TEMP\$name.zip"
+          Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/$name.zip" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($hash -ne "4A39058FD8519444A81CFC7AE055D136F48D1A31FFA41AE255B35B2EDD61E13B") {
+            throw "cuda_cudart redist sha256 mismatch: $hash"
+          }
+          Expand-Archive $zip -DestinationPath "$env:GITHUB_WORKSPACE\.cuda"
+          foreach ($f in "include\cuda.h", "lib\x64\cuda.lib") {
+            if (-not (Test-Path "$env:GITHUB_WORKSPACE\.cuda\$name\$f")) { throw "redist missing $f" }
+          }
+
       - name: Build native shim (Maxine SDK config, x64 Release)
         if: env.HAS_BUILDKIT == 'true'
         shell: pwsh
@@ -57,6 +78,8 @@ jobs:
           msbuild native/shim/shim.vcxproj /t:Rebuild /p:Configuration=Release /p:Platform=x64 `
             /p:CosVfxSdkDir=$env:GITHUB_WORKSPACE\.buildkit\vfx `
             /p:CosArSdkDir=$env:GITHUB_WORKSPACE\.buildkit\ar `
+            /p:CosFrucSdkDir=$env:GITHUB_WORKSPACE\.buildkit\fruc `
+            /p:CosCudaDir=$env:GITHUB_WORKSPACE\.cuda\cuda_cudart-windows-x86_64-12.8.90-archive `
             /warnaserror /nologo
           if ($LASTEXITCODE -ne 0) { throw "shim SDK build failed ($LASTEXITCODE)" }
 
@@ -70,6 +93,10 @@ jobs:
           if ($strings -notmatch 'GreenScreen')     { throw "export-verify: GreenScreen missing (VFX not compiled in)" }
           if ($strings -notmatch 'GazeRedirection') { throw "export-verify: GazeRedirection missing (AR not compiled in)" }
           if ($strings -match 'not built in')       { throw "export-verify: stub marker present (stale stub deployed)" }
+          # FRUC markers: 'NvOFFRUC' appears only in the COS_HAS_FRUC build; the stub's
+          # message is 'COS_HAS_FRUC unset' (deliberately not 'not built in' — FRUC is optional).
+          if ($strings -notmatch 'NvOFFRUC')          { throw "export-verify: NvOFFRUC missing (FRUC not compiled in)" }
+          if ($strings -match 'COS_HAS_FRUC unset')   { throw "export-verify: FRUC stub marker present" }
 
       - name: Build App (copies shim, warnings = errors)
         shell: pwsh
