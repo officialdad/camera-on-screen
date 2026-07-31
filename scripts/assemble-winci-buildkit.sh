@@ -8,6 +8,8 @@
 #                                signatures verified identical to the 1.2 proxy's wrappers)
 #   Maxine-AR-SDK GitHub clone  (AR 1.1.1.0 headers + nvARProxy.cpp — same tree the old
 #                                Windows box built against)
+#   Optical Flow SDK 5.0.7      (NvOFFRUC.h only — FRUC compile; DesignWorks license,
+#                                developer-program-gated so no anonymous CI fetch)
 # nvVFXVideoSuperRes.h is a COMPILE-COMPAT STAND-IN authored below (the real header ships
 # only in the Windows VSR feature install, which died with the old dev box; NGC SDK zips
 # are NVAIE-gated). Replace it with the real header when a Windows SDK install exists.
@@ -22,17 +24,19 @@ OUT="${1:-$HOME/dev/maxine-winci-buildkit}"
 VFX_LINUX="$HOME/dev/VideoFX-linux/VideoFX"
 VFX_CLONE="$HOME/dev/Maxine-VFX-SDK"
 AR_CLONE="$HOME/dev/Maxine-AR-SDK"
+FRUC_SDK="$HOME/dev/Optical_Flow_SDK_5.0.7"
 
-for d in "$VFX_LINUX" "$VFX_CLONE" "$AR_CLONE"; do
+for d in "$VFX_LINUX" "$VFX_CLONE" "$AR_CLONE" "$FRUC_SDK"; do
     [ -d "$d" ] || { echo "missing SDK tree: $d" >&2; exit 1; }
 done
 
 # Clean kit payload (keep .git) so removed files don't linger across re-assembles.
-rm -rf "$OUT/vfx" "$OUT/ar" "$OUT/README.md"
+rm -rf "$OUT/vfx" "$OUT/ar" "$OUT/fruc" "$OUT/README.md"
 mkdir -p "$OUT/vfx/nvvfx/include" "$OUT/vfx/nvvfx/src" \
          "$OUT/vfx/features/nvvfxgreenscreen/include" \
          "$OUT/vfx/features/nvvfxvideosuperres/include" \
-         "$OUT/ar/nvar/include" "$OUT/ar/nvar/src"
+         "$OUT/ar/nvar/include" "$OUT/ar/nvar/src" \
+         "$OUT/fruc/NvOFFRUC/Interface"
 
 cp "$VFX_LINUX"/include/nvVideoEffects.h "$VFX_LINUX"/include/nvCVImage.h \
    "$VFX_LINUX"/include/nvCVStatus.h "$OUT/vfx/nvvfx/include/"
@@ -67,6 +71,11 @@ cp "$AR_CLONE"/nvar/include/nvAR.h "$AR_CLONE"/nvar/include/nvAR_defs.h \
 cp "$AR_CLONE"/nvar/src/nvARProxy.cpp "$AR_CLONE"/nvar/src/nvCVImageProxy.cpp \
    "$OUT/ar/nvar/src/"
 
+# FRUC: the one header shim.vcxproj's COS_HAS_FRUC config includes
+# ($(CosFrucSdkDir)\NvOFFRUC\Interface). cuda.h/cuda.lib come from NVIDIA's public
+# cuda_cudart redist zip fetched at CI time — not kit material.
+cp "$FRUC_SDK"/NvOFFRUC/Interface/NvOFFRUC.h "$OUT/fruc/NvOFFRUC/Interface/"
+
 cat > "$OUT/README.md" <<EOF
 # maxine-winci-buildkit (PRIVATE — do not make public)
 
@@ -78,6 +87,8 @@ internal use only, no redistribution. No runtime DLLs or models.
   nvTransferD3D{,11}.h from the MIT GitHub clone; nvVFXVideoSuperRes.h is an authored
   compile-compat stand-in, see its header comment)
 - ar/:  AR 1.1.1.0 from the Maxine-AR-SDK GitHub clone @ $(git -C "$AR_CLONE" rev-parse HEAD)
+- fruc/: NvOFFRUC.h from Optical Flow SDK 5.0.7 (NVIDIA DesignWorks SDK License —
+  internal use only, no redistribution; separate product from Maxine VFX/AR)
 
 Regenerate: scripts/assemble-winci-buildkit.sh in officialdad/camera-on-screen.
 Consumed by: .github/workflows/ci.yml (deploy-key checkout, path .buildkit).
@@ -92,7 +103,8 @@ for f in vfx/nvvfx/include/nvVideoEffects.h vfx/nvvfx/include/nvCVImage.h \
          vfx/features/nvvfxvideosuperres/include/nvVFXVideoSuperRes.h \
          ar/nvar/include/nvAR.h ar/nvar/include/nvAR_defs.h \
          ar/nvar/include/nvCVImage.h ar/nvar/include/nvCVStatus.h \
-         ar/nvar/src/nvARProxy.cpp ar/nvar/src/nvCVImageProxy.cpp; do
+         ar/nvar/src/nvARProxy.cpp ar/nvar/src/nvCVImageProxy.cpp \
+         fruc/NvOFFRUC/Interface/NvOFFRUC.h; do
     [ -f "$OUT/$f" ] || { echo "SELF-CHECK FAILED: missing $f" >&2; exit 1; }
 done
 echo "kit assembled at $OUT"
