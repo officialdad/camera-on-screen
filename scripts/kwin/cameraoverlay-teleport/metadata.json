@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Id": "cameraoverlay-teleport",
+        "Name": "Camera Overlay Teleport",
+        "Description": "Global shortcut (default Ctrl+Alt+O) teleports the Camera-on-Screen overlay to the cursor",
+        "Version": "1.0",
+        "License": "MIT",
+        "Authors": [{ "Name": "Camera-on-Screen" }]
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}
