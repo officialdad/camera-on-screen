@@ -146,17 +146,6 @@
                             </StackPanel>
                             <ToggleSwitch Content="Smooth 60 fps (AI)" IsEnabled="{Binding FrameInterpAvailable}"
                                           IsChecked="{Binding FrameInterpEnabled, Mode=TwoWay}" />
-                            <ToggleSwitch Content="Hand grab (fist ✊ to move overlay)"
-                                          IsEnabled="{Binding FingerControlAvailable}"
-                                          IsChecked="{Binding FingerControlEnabled, Mode=TwoWay}" />
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Grab sensitivity" />
-                                <Slider Minimum="0.5" Maximum="3" TickFrequency="0.1" IsSnapToTickEnabled="True"
-                                        IsEnabled="{Binding FingerControlEnabled}"
-                                        Value="{Binding FingerControlSensitivity, Mode=TwoWay}" />
-                            </StackPanel>
-                            <TextBlock Text="{Binding FingerControlDetail}" IsVisible="{Binding !FingerControlAvailable}"
-                                       TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
                             <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !EffectsAvailable}"
                                        TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
                         </StackPanel>

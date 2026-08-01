@@ -35,10 +35,6 @@ public static class Services
         vm.LoadFrom(config);
         if (vm.SelectedCamera is null && vm.Cameras.Count > 0) vm.SelectedCamera = vm.Cameras[0];
 
-        // ORT hand-inference is not wired on Linux yet (Phase 3+): grey the toggle honestly.
-        vm.FingerControlAvailable = false;
-        vm.FingerControlDetail = "Finger control not available on Linux yet";
-
         _ = vm.ProbeCapabilitiesAsync();
         return new AppServices(vm, store, config);
     }
