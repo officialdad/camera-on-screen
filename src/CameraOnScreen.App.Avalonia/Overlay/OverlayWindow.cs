@@ -29,10 +29,11 @@ public sealed class OverlayWindow : Window
     private WriteableBitmap? _bitmap;
 
     public OverlayWindow(INativeShim shim, double x, double y, double w, double h, bool mirror,
-                         HotkeyModifiers teleportChord = HotkeyModifiers.Control | HotkeyModifiers.Alt)
+                         HotkeyModifiers teleportChord = HotkeyModifiers.Control)
     {
         _shim = shim;
         _teleportMask = ToXModMask(teleportChord);
+        Log($"overlay open chord={teleportChord} mask=0x{_teleportMask:X4}");
         SystemDecorations = SystemDecorations.None;
         Topmost = true;
         ShowInTaskbar = false;
@@ -163,9 +164,21 @@ public sealed class OverlayWindow : Window
     // ponytail: click is NOT swallowed (the app under the cursor also sees it); add a passive
     // XGrabButton on the root window if that ever bites.
     private readonly uint _teleportMask;   // X11 modifier mask of the chord; 0 = teleport disabled
-    private bool _teleportHeld;
+    private bool _btn1Held;
 
     private const uint Button1Mask = 1u << 8;
+
+    // Diagnostic log beside config.json (launcher runs with no terminal). One line per click
+    // edge, not per tick — cheap enough to leave on.
+    private static readonly string LogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "CameraOnScreen", "teleport.log");
+
+    private static void Log(string msg)
+    {
+        try { System.IO.File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} {msg}\n"); }
+        catch { /* logging must never break the pump */ }
+    }
 
     private static uint ToXModMask(HotkeyModifiers m) =>
         (m.HasFlag(HotkeyModifiers.Shift) ? 1u : 0)            // ShiftMask
@@ -175,19 +188,24 @@ public sealed class OverlayWindow : Window
 
     private void PollTeleport()
     {
-        if (_teleportMask == 0) return;
-        if (!TryGetRootPointer(out int rx, out int ry, out uint mask)) return;
-        bool chordClick = (mask & _teleportMask) == _teleportMask && (mask & Button1Mask) != 0;
-        if (chordClick && !_teleportHeld && !_dragging)
+        if (!TryGetRootPointer(out int rx, out int ry, out uint mask)) { return; }
+        bool btn1 = (mask & Button1Mask) != 0;
+        bool chord = _teleportMask != 0 && (mask & _teleportMask) == _teleportMask;
+        if (btn1 && !_btn1Held)
         {
-            var wa = (Screens.ScreenFromPoint(new PixelPoint(rx, ry)) ?? Screens.Primary)?.WorkingArea
-                     ?? new PixelRect(0, 0, 1920, 1080);
-            var next = CameraOnScreen.Core.Overlay.OverlaySizer.CenterOn(
-                new CoreRect(Position.X, Position.Y, (int)Width, (int)Height), rx, ry,
-                new CoreRect(wa.X, wa.Y, wa.Width, wa.Height));
-            Position = new PixelPoint(next.X, next.Y);
+            Log($"press root=({rx},{ry}) mask=0x{mask:X4} chordMask=0x{_teleportMask:X4} chord={chord} dragging={_dragging}");
+            if (chord && !_dragging)
+            {
+                var wa = (Screens.ScreenFromPoint(new PixelPoint(rx, ry)) ?? Screens.Primary)?.WorkingArea
+                         ?? new PixelRect(0, 0, 1920, 1080);
+                var next = CameraOnScreen.Core.Overlay.OverlaySizer.CenterOn(
+                    new CoreRect(Position.X, Position.Y, (int)Width, (int)Height), rx, ry,
+                    new CoreRect(wa.X, wa.Y, wa.Width, wa.Height));
+                Log($"teleport ({Position.X},{Position.Y}) -> ({next.X},{next.Y}) wa=({wa.X},{wa.Y},{wa.Width},{wa.Height})");
+                Position = new PixelPoint(next.X, next.Y);
+            }
         }
-        _teleportHeld = chordClick;
+        _btn1Held = btn1;
     }
 
     private IntPtr _dpy;   // persistent Xlib connection for pointer polling; closed with the window
