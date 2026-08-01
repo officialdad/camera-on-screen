@@ -23,8 +23,6 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     private int _topmostTick; // re-assert HWND_TOPMOST every ~1s (30 ticks @ 33ms) — see EnsureTopmost
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveTimer; // debounces persist after wheel-resize
     private Overlay.OverlayMouseHook? _mouseHook;
-    private FingerControl.HandInference? _handInference;
-    private bool _fingerArmed; // last armed state from the inference thread (UI-thread copy)
     private Microsoft.UI.Windowing.AppWindow? _appWindow; // this control-panel window, for size restore/persist
     // Last control-panel size (physical px) loaded from config; 0 => first launch (size to content).
     private readonly double _savedPanelW, _savedPanelH;
@@ -87,12 +85,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         _timer.Tick += (_, _) =>
         {
             if (Vm.IsRunning && Vm.ShimRef.TryGetFrame(_frameBuf, out int w, out int h) && w > 0)
-            {
                 _overlay.PresentFrame(_frameBuf, w, h);
-                // cos_get_frame is consume-on-read: this pump is the sole shim consumer. Republish
-                // the frame it just presented so HandInference never races it for the same frame.
-                _handInference?.PublishFrame(_frameBuf, w, h);
-            }
             // Handle drag is polled here (not in the mouse hook) to avoid a synthesized-move feedback
             // loop: follow the live cursor at the captured grab offset, preserving the current size.
             if (_dragging && Overlay.Interop.GetCursorPos(out var cur))
@@ -123,16 +116,6 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         // The callback runs on the UI thread (the hook is installed here), so it touches the overlay
         // directly. Returning true swallows the event so the app under the cursor doesn't also see it.
         _mouseHook = new Overlay.OverlayMouseHook(OnMouse);
-
-        // Finger control: CPU ONNX hand tracking, independent of the Maxine probe (works non-RTX).
-        _handInference = FingerControl.HandInference.TryCreate(out var fingerDetail);
-        Vm.FingerControlAvailable = _handInference is not null;
-        Vm.FingerControlDetail = _handInference is null ? fingerDetail : "";
-        if (_handInference is not null)
-        {
-            _handInference.Nudge += OnFingerNudge;
-            _handInference.Failed += OnFingerFailed;
-        }
 
         // Probe effect availability OFF the UI thread (the real probe does a ~1s TensorRT model
         // load — running it in the ctor froze startup). Until it completes, EffectsAvailable is false
@@ -191,13 +174,6 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
         Save(); // final persist with the closing geometry/state + panel size
         _hotkeys.Dispose(); // unregister all hotkeys
         Vm.PropertyChanged -= OnVmPropertyChanged;
-        if (_handInference is not null)
-        {
-            _handInference.Nudge -= OnFingerNudge;
-            _handInference.Failed -= OnFingerFailed;
-            _handInference.Dispose();
-            _handInference = null;
-        }
         Vm.Dispose();
         _overlay.Dispose();
     }
@@ -233,56 +209,6 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 // ToggleLock/ToggleClickThrough: no-ops now (overlay always interactive); enum kept.
             }
         });
-    }
-
-    // Inference loop died (runs on the inference thread) — surface it and grey the toggle (spec §7).
-    private void OnFingerFailed(string message)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            Vm.FingerControlAvailable = false;
-            Vm.FingerControlDetail = $"Finger control disabled: {message}";
-            if (_fingerArmed) { _fingerArmed = false; _overlay.SetHandleVisible(false); }
-        });
-    }
-
-    // Runs on the inference thread — marshal to the UI thread before touching the overlay.
-    private void OnFingerNudge(Core.FingerControl.NudgeResult r)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            bool armedChanged = _fingerArmed != r.Armed;
-            _fingerArmed = r.Armed;
-            if (armedChanged) _overlay.SetHandleVisible(_fingerArmed); // armed indicator: handle shown
-            if (_dragging || !r.Armed || (r.DxPx == 0 && r.DyPx == 0)) return; // manual drag wins
-            var (x, y, w, h) = _overlay.GetBounds();
-            var wa = GetWorkArea(_overlay.Hwnd);
-            int nx = (int)Math.Clamp(x + r.DxPx, wa.X - w + 48, wa.X + wa.W - 48);
-            int ny = (int)Math.Clamp(y + r.DyPx, wa.Y - h + 48, wa.Y + wa.H - 48);
-            _overlay.SetBounds(nx, ny, w, h);
-            _saveTimer?.Stop(); _saveTimer?.Start(); // debounced persist, same as wheel-resize
-        });
-    }
-
-    // ponytail: 48px of the overlay always stays inside the work area — cheap anti-lost clamp,
-    // full virtual-screen multi-monitor clamping if anyone drags across monitors by finger.
-    private void SyncFingerControl()
-    {
-        if (_handInference is null) return;
-        _handInference.Tracker.Gain = Vm.FingerControlSensitivity;
-        // FingerControlAvailable gates restarts too: after a Failed (loop death) the toggle greys
-        // but stays on, and a camera stop/start must not resurrect the dead loop.
-        if (Vm.IsRunning && Vm.FingerControlEnabled && Vm.FingerControlAvailable)
-        {
-            _handInference.Start();
-        }
-        else
-        {
-            _handInference.Stop();
-            // Stop() resets the tracker to disarmed; mirror that on the UI-thread copy of the armed
-            // state so a stale handle doesn't linger visible after the loop stops.
-            if (_fingerArmed) { _fingerArmed = false; _overlay.SetHandleVisible(false); }
-        }
     }
 
     // Runs on the UI thread for every hooked mouse event. Returns true to swallow (so the app under
@@ -322,7 +248,7 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
                 var b = _overlay.GetBounds();
                 bool over = _overlay.IsInteractive
                     && pt.x >= b.x && pt.x < b.x + b.w && pt.y >= b.y && pt.y < b.y + b.h;
-                _overlay.SetHandleVisible(over || _fingerArmed);
+                _overlay.SetHandleVisible(over);
                 return false;
 
             case Overlay.MouseEventKind.LeftUp:
@@ -368,9 +294,6 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility EyeContactNotAvailableVisibility =>
         Vm.EyeContactAvailable ? Visibility.Collapsed : Visibility.Visible;
 
-    public Visibility FingerControlNotAvailableVisibility =>
-        Vm.FingerControlAvailable ? Visibility.Collapsed : Visibility.Visible;
-
     // SR sub-controls gate on the probe AND the chosen mode. x:Bind re-runs these when either
     // argument (SuperResAvailable / SuperResModeIndex) raises PropertyChanged. Mode 0 = Off, 1 = Upscale.
     public static bool QualityEnabled(bool available, int modeIndex) => available && modeIndex != 0;
@@ -387,22 +310,14 @@ public sealed partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Independent `if`s (not else-if) because IsRunning must feed BOTH the StatusLine refresh
-        // AND SyncFingerControl below — an else-if chain would only let the first match fire.
         if (e.PropertyName is nameof(MainViewModel.IsRunning) or nameof(MainViewModel.Fps))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusLine)));
-        if (e.PropertyName is nameof(MainViewModel.FingerControlEnabled)
-                 or nameof(MainViewModel.FingerControlSensitivity)
-                 or nameof(MainViewModel.IsRunning))
-            SyncFingerControl();
         if (e.PropertyName == nameof(MainViewModel.EffectsAvailable))
             // The note's Visibility is derived from EffectsAvailable; re-evaluate it when the probe
             // result lands (Text is bound directly to Vm.CapabilityDetail and updates on its own).
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NotAvailableVisibility)));
         if (e.PropertyName == nameof(MainViewModel.EyeContactAvailable))
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EyeContactNotAvailableVisibility)));
-        if (e.PropertyName == nameof(MainViewModel.FingerControlAvailable))
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FingerControlNotAvailableVisibility)));
         if (e.PropertyName == nameof(MainViewModel.Mirror))
             _overlay.SetMirror(Vm.Mirror);
         // Locked/ClickThrough/Zoom branches removed — those props no longer exist.
