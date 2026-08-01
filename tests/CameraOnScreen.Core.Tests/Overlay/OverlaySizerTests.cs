@@ -70,4 +70,32 @@ public class OverlaySizerTests
         Assert.Equal(500, result.W);
         Assert.Equal(250, result.H);
     }
+
+    // Teleport (#53)
+
+    [Fact]
+    public void CenterOn_centers_overlay_on_point_keeping_size()
+    {
+        var result = OverlaySizer.CenterOn(new Rect(0, 0, 320, 240), 1000, 600, BigWorkArea);
+        Assert.Equal(new Rect(840, 480, 320, 240), result);
+    }
+
+    [Fact]
+    public void CenterOn_clamps_to_work_area_edges()
+    {
+        var wa = new Rect(100, 50, 1920, 1080);
+        // Click near top-left corner: pinned to work-area origin, never off-screen.
+        Assert.Equal(new Rect(100, 50, 320, 240), OverlaySizer.CenterOn(new Rect(0, 0, 320, 240), 105, 55, wa));
+        // Click near bottom-right corner: pinned so the far edge stays inside.
+        Assert.Equal(new Rect(100 + 1920 - 320, 50 + 1080 - 240, 320, 240),
+            OverlaySizer.CenterOn(new Rect(0, 0, 320, 240), 2015, 1125, wa));
+    }
+
+    [Fact]
+    public void CenterOn_overlay_larger_than_work_area_pins_to_origin()
+    {
+        var result = OverlaySizer.CenterOn(new Rect(0, 0, 4000, 3000), 200, 150, new Rect(0, 0, 1920, 1080));
+        Assert.Equal(0, result.X);
+        Assert.Equal(0, result.Y);
+    }
 }

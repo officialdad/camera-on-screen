@@ -19,6 +19,9 @@ public sealed record OverlaySettings
     public double Zoom { get; init; } = 1.0;
     public bool Locked { get; init; }
     public bool ClickThrough { get; init; }
+    // Teleport chord (#53): hold these modifiers + left-click anywhere to center the overlay on
+    // the click point. None disables teleport. Config-only knob, no UI.
+    public HotkeyModifiers TeleportModifiers { get; init; } = HotkeyModifiers.Control | HotkeyModifiers.Alt;
 }
 
 public sealed record EffectSettings

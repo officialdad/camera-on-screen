@@ -17,6 +17,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // defaults so ToAppConfig is valid even if LoadFrom is never called.
     private IReadOnlyList<HotkeyBinding> _hotkeys = AppConfig.DefaultHotkeys();
 
+    // Same round-trip rule as _hotkeys: config-only knob (#53, no UI) — retain the loaded value so
+    // ToAppConfig's fresh OverlaySettings doesn't reset a customised chord to the default.
+    private HotkeyModifiers _teleportModifiers = new OverlaySettings().TeleportModifiers;
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
@@ -120,6 +124,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         FingerControlEnabled = config.Effects.FingerControlEnabled;
         FingerControlSensitivity = Math.Clamp(config.Effects.FingerControlSensitivity, 0.5, 3.0);
         Mirror = config.Overlay.Mirror;
+        _teleportModifiers = config.Overlay.TeleportModifiers;
         _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
             SelectedCamera = Cameras.FirstOrDefault(c => c.Id == config.CameraId);
@@ -136,7 +141,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             // ponytail: Locked/ClickThrough/Zoom intentionally omitted — fields kept on the record
             // (default false/false/1.0) so config stays schema-stable; the overlay is always
             // interactive and unzoomed now.
-            Mirror = Mirror
+            Mirror = Mirror,
+            TeleportModifiers = _teleportModifiers
         },
         Effects = new EffectSettings
         {
