@@ -49,4 +49,16 @@ public static class OverlaySizer
         int cy = current.Y + current.H / 2;
         return new Rect(cx - newW / 2, cy - newH / 2, newW, newH);
     }
+
+    /// <summary>
+    /// Teleport (#53): returns <paramref name="current"/> re-centered on point (<paramref name="px"/>,
+    /// <paramref name="py"/>), clamped so the overlay stays fully inside <paramref name="workArea"/>
+    /// (anti-lost). Size is unchanged; an overlay larger than the work area pins to its origin.
+    /// </summary>
+    public static Rect CenterOn(Rect current, int px, int py, Rect workArea)
+    {
+        int x = Math.Clamp(px - current.W / 2, workArea.X, Math.Max(workArea.X, workArea.X + workArea.W - current.W));
+        int y = Math.Clamp(py - current.H / 2, workArea.Y, Math.Max(workArea.Y, workArea.Y + workArea.H - current.H));
+        return current with { X = x, Y = y };
+    }
 }

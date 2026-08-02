@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using CameraOnScreen.Core.Config;
 using CameraOnScreen.Core.Native;
 using System.Runtime.InteropServices;
 using CoreRect = CameraOnScreen.Core.Overlay.Rect;
@@ -27,9 +28,12 @@ public sealed class OverlayWindow : Window
     private readonly DispatcherTimer _pump;
     private WriteableBitmap? _bitmap;
 
-    public OverlayWindow(INativeShim shim, double x, double y, double w, double h, bool mirror)
+    public OverlayWindow(INativeShim shim, double x, double y, double w, double h, bool mirror,
+                         HotkeyModifiers teleportChord = HotkeyModifiers.Control)
     {
         _shim = shim;
+        _teleportMask = ToXModMask(teleportChord);
+        Log($"overlay open chord={teleportChord} mask=0x{_teleportMask:X4}");
         SystemDecorations = SystemDecorations.None;
         Topmost = true;
         ShowInTaskbar = false;
@@ -42,7 +46,7 @@ public sealed class OverlayWindow : Window
         SetMirror(mirror);
 
         _pump = new DispatcherTimer(TimeSpan.FromMilliseconds(PumpMs),
-            DispatcherPriority.Render, (_, _) => { if (_dragging) PollDrag(); Present(); });
+            DispatcherPriority.Render, (_, _) => { PollTeleport(); if (_dragging) PollDrag(); Present(); });
         _pump.Start();
         Closed += (_, _) => { _pump.Stop(); if (_dpy != IntPtr.Zero) { XCloseDisplay(_dpy); _dpy = IntPtr.Zero; } };
 
@@ -130,8 +134,11 @@ public sealed class OverlayWindow : Window
     {
         base.OnPointerPressed(e);
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-            && TryGetRootPointer(out int rx, out int ry))
+            && TryGetRootPointer(out int rx, out int ry, out uint mask))
         {
+            // Chord + click over the overlay itself is a teleport (#53), not a drag start —
+            // letting both run would have PollDrag and PollTeleport fight over Position.
+            if (_teleportMask != 0 && (mask & _teleportMask) == _teleportMask) return;
             _grabDX = rx - Position.X;
             _grabDY = ry - Position.Y;
             _dragging = true;
@@ -147,20 +154,71 @@ public sealed class OverlayWindow : Window
 
     private void PollDrag()
     {
-        if (!TryGetRootPointer(out int rx, out int ry)) { _dragging = false; return; }
+        if (!TryGetRootPointer(out int rx, out int ry, out _)) { _dragging = false; return; }
         Position = new PixelPoint(rx - _grabDX, ry - _grabDY);
+    }
+
+    // Teleport (#53): hold the chord + left-click anywhere on screen and the overlay recenters on
+    // the click point. XQueryPointer's mask already carries modifiers + buttons, so this rides the
+    // existing pump poll — no new event plumbing. Latch = one jump per press, not one per tick.
+    // ponytail: click is NOT swallowed (the app under the cursor also sees it); add a passive
+    // XGrabButton on the root window if that ever bites.
+    private readonly uint _teleportMask;   // X11 modifier mask of the chord; 0 = teleport disabled
+    private bool _btn1Held;
+
+    private const uint Button1Mask = 1u << 8;
+
+    // Diagnostic log beside config.json (launcher runs with no terminal). One line per click
+    // edge, not per tick — cheap enough to leave on.
+    private static readonly string LogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "CameraOnScreen", "teleport.log");
+
+    private static void Log(string msg)
+    {
+        try { System.IO.File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff} {msg}\n"); }
+        catch { /* logging must never break the pump */ }
+    }
+
+    private static uint ToXModMask(HotkeyModifiers m) =>
+        (m.HasFlag(HotkeyModifiers.Shift) ? 1u : 0)            // ShiftMask
+        | (m.HasFlag(HotkeyModifiers.Control) ? 1u << 2 : 0)   // ControlMask
+        | (m.HasFlag(HotkeyModifiers.Alt) ? 1u << 3 : 0)       // Mod1Mask
+        | (m.HasFlag(HotkeyModifiers.Win) ? 1u << 6 : 0);      // Mod4Mask
+
+    private void PollTeleport()
+    {
+        if (!TryGetRootPointer(out int rx, out int ry, out uint mask)) { return; }
+        bool btn1 = (mask & Button1Mask) != 0;
+        bool chord = _teleportMask != 0 && (mask & _teleportMask) == _teleportMask;
+        if (btn1 && !_btn1Held)
+        {
+            Log($"press root=({rx},{ry}) mask=0x{mask:X4} chordMask=0x{_teleportMask:X4} chord={chord} dragging={_dragging}");
+            if (chord && !_dragging)
+            {
+                var wa = (Screens.ScreenFromPoint(new PixelPoint(rx, ry)) ?? Screens.Primary)?.WorkingArea
+                         ?? new PixelRect(0, 0, 1920, 1080);
+                var next = CameraOnScreen.Core.Overlay.OverlaySizer.CenterOn(
+                    new CoreRect(Position.X, Position.Y, (int)Width, (int)Height), rx, ry,
+                    new CoreRect(wa.X, wa.Y, wa.Width, wa.Height));
+                Log($"teleport ({Position.X},{Position.Y}) -> ({next.X},{next.Y}) wa=({wa.X},{wa.Y},{wa.Width},{wa.Height})");
+                Position = new PixelPoint(next.X, next.Y);
+            }
+        }
+        _btn1Held = btn1;
     }
 
     private IntPtr _dpy;   // persistent Xlib connection for pointer polling; closed with the window
 
-    private bool TryGetRootPointer(out int rootX, out int rootY)
+    private bool TryGetRootPointer(out int rootX, out int rootY, out uint mask)
     {
         rootX = rootY = 0;
+        mask = 0;
         if (!OperatingSystem.IsLinux()) return false;
         if (_dpy == IntPtr.Zero) _dpy = XOpenDisplay(IntPtr.Zero);
         if (_dpy == IntPtr.Zero) return false;
         return XQueryPointer(_dpy, XDefaultRootWindow(_dpy), out _, out _,
-                             out rootX, out rootY, out _, out _, out _);
+                             out rootX, out rootY, out _, out _, out mask);
     }
 
     private double _wheelAccum;
