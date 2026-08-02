@@ -132,22 +132,6 @@ out (the rest of the app runs normally).
 > your application" terms (§1–2). For absolute certainty, written confirmation from NVIDIA can be
 > obtained per the license's amendment clause (§18); the conditions above are the basis relied upon.
 
-## MediaPipe hand models (palm detection + hand landmark)
-
-The optional Finger Control feature (point at the overlay to move it) runs two
-ONNX models fully **on-device via CPU inference** — no data leaves the machine,
-no NVIDIA GPU required.
-
-Bundled at `models\hand\` (`palm_detection.onnx`, `hand_landmark.onnx`).
-Source: **`PINTO0309/hand-gesture-recognition-using-onnx`**
-(https://github.com/PINTO0309/hand-gesture-recognition-using-onnx), licensed
-**Apache License 2.0**. That repo's ONNX exports are derived from **Google
-MediaPipe Hands** (https://github.com/google-ai-edge/mediapipe), also Apache
-License 2.0, via the ONNX-conversion lineage documented in
-`src/CameraOnScreen.App/Assets/models/hand/README.md`. Full license text:
-`models\hand\LICENSE.txt` (installed alongside the model files, both in the
-source repo's `Assets\models\hand\` and in the distributed installer).
-
 ## ONNX Runtime
 
 Bundled as `onnx/libonnxruntime.so.1` (Linux). © Microsoft Corporation.

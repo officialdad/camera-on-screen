@@ -130,8 +130,4 @@ internal static class Interop
     [DllImport("user32.dll")]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
-    // ---- Primary-monitor pixel size (finger-control gain scaling) ----------------------------
-    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
-    public const int SM_CXSCREEN = 0;
-    public const int SM_CYSCREEN = 1;
 }
