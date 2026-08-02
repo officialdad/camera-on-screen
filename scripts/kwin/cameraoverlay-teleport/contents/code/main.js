@@ -27,4 +27,4 @@ function teleport() {
 }
 
 registerShortcut("CameraOverlayTeleport", "Camera overlay: teleport to cursor",
-    "Ctrl+Alt+O", teleport);
+    "Ctrl+Alt+B", teleport);
