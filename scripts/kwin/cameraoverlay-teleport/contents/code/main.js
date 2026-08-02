@@ -9,6 +9,13 @@
 // Overlay identification: the app's XWayland windows share one resource class;
 // the overlay is the one skipping the taskbar (ShowInTaskbar=false) or typed as
 // a KDE critical notification (#40). The control panel is a normal taskbar window.
+// On-screen feedback via Plasma's OSD (the volume-popup surface): journal output from
+// KWin scripts is filtered out by default, so silent failures are undebuggable without it.
+function osd(text) {
+    callDBus("org.kde.plasmashell", "/org/kde/osdService", "org.kde.osdService",
+        "showText", "camera-web", text);
+}
+
 function teleport() {
     const c = workspace.cursorPos;
     let hit = false;
@@ -21,9 +28,9 @@ function teleport() {
         const y = Math.max(area.y, Math.min(c.y - g.height / 2, area.y + area.height - g.height));
         w.frameGeometry = Qt.rect(x, y, g.width, g.height);
         hit = true;
-        console.info("cameraoverlay-teleport: moved", w.resourceClass, "to", x, y);
+        osd("Overlay → " + Math.round(x) + "," + Math.round(y));
     }
-    if (!hit) console.info("cameraoverlay-teleport: no overlay window found");
+    if (!hit) osd("Camera overlay not found — start the camera first");
 }
 
 registerShortcut("CameraOverlayTeleport", "Camera overlay: teleport to cursor",
