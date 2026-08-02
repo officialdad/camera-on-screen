@@ -26,7 +26,10 @@ function teleport() {
         const area = workspace.clientArea(KWin.PlacementArea, w);
         const x = Math.max(area.x, Math.min(c.x - g.width / 2, area.x + area.width - g.width));
         const y = Math.max(area.y, Math.min(c.y - g.height / 2, area.y + area.height - g.height));
-        w.frameGeometry = Qt.rect(x, y, g.width, g.height);
+        // Plain object, NOT Qt.rect() — the Qt global doesn't exist in plain (non-QML) KWin
+        // scripts, and the resulting throw silently killed the whole handler. Also works
+        // despite moveable=false on the critical-notification layer.
+        w.frameGeometry = { x: x, y: y, width: g.width, height: g.height };
         hit = true;
         osd("Overlay → " + Math.round(x) + "," + Math.round(y));
     }

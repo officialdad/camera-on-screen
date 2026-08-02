@@ -8,15 +8,16 @@ pkg="$(dirname "$0")/kwin/cameraoverlay-teleport"
 kpackagetool6 --type KWin/Script -u "$pkg" 2>/dev/null || kpackagetool6 --type KWin/Script -i "$pkg"
 kwriteconfig6 --file kwinrc --group Plugins --key cameraoverlay-teleportEnabled true
 
-# Load AND run it in the live session (enabled scripts otherwise only start at next login).
-# Gotcha (cost a debug cycle): Scripting.start is a no-op for scripts loaded after KWin
-# startup — the per-script org.kde.kwin.Script.run is what actually executes it.
+# Live activation order matters (cost a debug cycle): reconfigure makes KWin reparse
+# kwinrc (sees the Plugins flag), then Scripting.start loads newly-enabled scripts through
+# the native path — the only one where registerShortcut actually wires the global shortcut.
+# (Manual Scripting.loadScript runs the code but its shortcut never fires.)
 dbus-send --session --print-reply --dest=org.kde.KWin /Scripting \
   org.kde.kwin.Scripting.unloadScript string:cameraoverlay-teleport >/dev/null 2>&1 || true
-id=$(dbus-send --session --print-reply --dest=org.kde.KWin /Scripting \
-  org.kde.kwin.Scripting.loadScript \
-  string:"$HOME/.local/share/kwin/scripts/cameraoverlay-teleport/contents/code/main.js" \
-  string:cameraoverlay-teleport 2>/dev/null | awk '/int32/{print $2}')
-dbus-send --session --print-reply --dest=org.kde.KWin "/Scripting/Script$id" \
-  org.kde.kwin.Script.run >/dev/null
-echo "OK: KWin teleport script installed + running (Ctrl+Alt+B)"
+dbus-send --session --dest=org.kde.KWin /KWin org.kde.KWin.reconfigure
+sleep 1
+dbus-send --session --print-reply --dest=org.kde.KWin /Scripting \
+  org.kde.kwin.Scripting.start >/dev/null
+loaded=$(dbus-send --session --print-reply --dest=org.kde.KWin /Scripting \
+  org.kde.kwin.Scripting.isScriptLoaded string:cameraoverlay-teleport 2>/dev/null | awk '/boolean/{print $2}')
+echo "OK: KWin teleport script installed, loaded=$loaded (Ctrl+Alt+B)"
