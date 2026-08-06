@@ -90,10 +90,16 @@ COS_API void cos_get_status(CosStatus* out) {
     out->green_screen_active = g_capture.GreenScreenActive() ? 1 : 0;
     out->eye_contact_active = g_capture.EyeContactActive() ? 1 : 0;
     out->exposure_supported = g_capture.ExposureSupported() ? 1 : 0;
+    // Each source string is bare ("NvVFX_Run failed", "out of memory"), and the merge below is the
+    // only place that still knows which effect produced it — so name it here rather than in either
+    // panel. Labels are verbatim the panel's control captions so the message points at a control
+    // the user can see (#59).
     std::string err = g_capture.GreenScreenError();
-    if (err.empty()) err = g_capture.EyeContactError();
-    if (err.empty()) err = g_capture.SuperResError();
-    if (err.empty()) err = g_capture.FrameInterpError();
+    const char* who = "AI Green Screen";
+    if (err.empty()) { err = g_capture.EyeContactError();  who = "Eye Contact"; }
+    if (err.empty()) { err = g_capture.SuperResError();    who = "AI Sharpness"; }
+    if (err.empty()) { err = g_capture.FrameInterpError(); who = "Smooth 60 fps (AI)"; }
+    if (!err.empty()) err = std::string(who) + ": " + err;
     if (!err.empty()) {
         size_t n = err.size() < 255 ? err.size() : 255;
         std::memcpy(out->error, err.data(), n);

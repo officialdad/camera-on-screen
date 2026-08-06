@@ -670,6 +670,28 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void StatusError_round_trips_the_native_error_and_clears_when_it_goes_away()
+    {
+        // #59: the panel binds StatusError raw, with no sticky latch of its own, because the
+        // native side owns the string's lifetime — both capture backends clear all four effect
+        // error strings on effect-off, on the next successful frame, and in Capture::Stop. That
+        // non-sticky round-trip is what makes a plain always-visible-when-set binding correct,
+        // and what keeps CameraError (sticky until the next Start) from needing priority logic
+        // against it. If StatusError were ever latched like CameraError, the panel would grow a
+        // red line that never goes away and nothing else in this suite would notice.
+        var vm = Build(GpuTier.Rtx, out _);
+
+        vm.OnStatus(new ShimStatus(Running: true, Fps: 30, Gaze: GazeState.Unknown,
+            GreenScreenActive: false, EyeContactActive: false,
+            Error: "AI Green Screen: NvVFX_Run failed"));
+        Assert.Equal("AI Green Screen: NvVFX_Run failed", vm.StatusError);
+
+        vm.OnStatus(new ShimStatus(Running: true, Fps: 30, Gaze: GazeState.Unknown,
+            GreenScreenActive: true, EyeContactActive: false, Error: null));
+        Assert.Null(vm.StatusError);
+    }
+
+    [Fact]
     public void Start_clears_a_stale_camera_error()
     {
         // A watchdog-triggered stop leaves CameraError on screen. Starting again must clear it,
