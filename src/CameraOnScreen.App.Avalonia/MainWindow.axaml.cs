@@ -19,6 +19,11 @@ public partial class MainWindow : Window
     // Last-known overlay geometry: seeded from config, refreshed every time the overlay
     // closes, written back to config on panel exit.
     private (double X, double Y, double W, double H) _overlayBounds;
+    // Latched true by the Opened event, never reset. Guards the minimize-to-tray handler
+    // below: without it, a transient WindowState == Minimized during X11 map (or a WM
+    // restoring a previously iconified state) fires Hide() before the window has ever been
+    // shown to the user — the unattributed "tray icon but no panel window" launch.
+    private bool _opened;
 
     public MainWindow()
     {
@@ -31,15 +36,21 @@ public partial class MainWindow : Window
 
         _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
 
+        Opened += (_, _) => _opened = true;
+
         // Minimize means "get out of the way", same as close: hide to the tray instead. Do NOT
         // also write WindowState = Normal here — that write races the WM's own async iconify
-        // and wins, so the window never actually unmaps (measured on KDE/XWayland: map state
-        // stayed 1 through the minimize). ShowPanel() already resets WindowState to Normal on
-        // restore, so a later restore still comes back as a normal window, not a minimized one.
+        // and wins, so the window never actually unmaps (measured on KDE/XWayland: the window
+        // never left the mapped state, because the WindowState = Normal write beat the WM's
+        // async deiconify). ShowPanel() already resets WindowState to Normal on restore, so a
+        // later restore still comes back as a normal window, not a minimized one. Gated on
+        // _opened: without that latch, a transient WindowState == Minimized during X11 map (or
+        // a WM restoring a previously iconified state) hides the window before it was ever shown.
         PropertyChanged += (_, e) =>
         {
             if (e.Property == WindowStateProperty
                 && WindowState == WindowState.Minimized
+                && _opened
                 && _services.Vm.MinimizeToTray)
             {
                 Hide();
@@ -67,7 +78,12 @@ public partial class MainWindow : Window
             // Save on the way to the tray too, not just on a real exit: an app killed while
             // sitting in the tray then loses nothing it would not already have lost.
             _services.Store.Save(_services.Vm.ToAppConfig(b.X, b.Y, b.W, b.H));
-            if (_services.Vm.MinimizeToTray && !_quitting)
+            // Only an ordinary window close (the X button / our own Close() call) becomes a
+            // hide. OwnerWindowClosing/ApplicationShutdown/OSShutdown mean the session or the
+            // process is going away regardless of what we do here — cancelling those into a
+            // Hide() would strand the capture worker (cos_shutdown never runs) instead of
+            // tearing down cleanly.
+            if (_services.Vm.MinimizeToTray && !_quitting && e.CloseReason == WindowCloseReason.WindowClosing)
             {
                 e.Cancel = true;
                 Hide();

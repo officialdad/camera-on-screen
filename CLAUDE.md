@@ -72,6 +72,14 @@ the way to the tray as well as on exit, so hiding still persists overlay geometr
 stays armed; `FrameReportingActive` tracks the overlay, never the panel. There is deliberately
 no StatusNotifierItem-availability probe — on a desktop with no tray host the icon silently
 never appears, and the recovery is the panel toggle or `"MinimizeToTray": false` in config.json.
+**Do NOT write `WindowState = Normal` inside the minimize handler before `Hide()`** — that write
+races the WM's own async deiconify and wins, so the window bounces back visible and the panel
+cannot be minimized at all; `ShowPanel()` sets `WindowState = Normal` on the *restore* side,
+which is where it belongs. The minimize handler is also latched on an `_opened` flag (set from
+the `Opened` event, never reset) so a transient `WindowState == Minimized` during X11 map, or a
+WM restoring a previously-iconified state, can't `Hide()` the window before it was ever shown.
+There is no single-instance guard: with the panel hidden in the tray, launching the app again
+starts a second process that fights the first for `/dev/video*`.
 
 ```bash
 cmake -S native/shim -B native/shim/build && cmake --build native/shim/build   # -Wall -Wextra -Werror
