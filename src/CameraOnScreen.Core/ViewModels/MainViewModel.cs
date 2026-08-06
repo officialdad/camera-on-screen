@@ -26,6 +26,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // against re-selecting the camera already running (a restart is a full worker teardown).
     private string? _activeCameraId;
 
+    // Set by OnFrameReceived. Task 4's watchdog reads it; null means no frame has arrived yet
+    // since the last (re)start.
+    private long? _lastFrameMs;
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
@@ -50,6 +54,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
     public void PollStatusTick() => _orchestrator.PollStatus();
+
+    /// <summary>Called by the overlay's frame pump for every frame it successfully pulls.
+    /// TryGetFrame returning true IS the liveness signal — Capture::LatestFrame clears its
+    /// new-frame flag on read, so a true return means a genuinely new frame arrived.
+    /// <paramref name="nowMs"/> is passed in rather than read from the clock so the watchdog
+    /// (CheckLiveness) is unit-testable without a clock abstraction; callers pass
+    /// Environment.TickCount64.</summary>
+    public void OnFrameReceived(int width, int height, long nowMs)
+    {
+        _lastFrameMs = nowMs;
+        if (width == FrameWidth && height == FrameHeight) return; // hot path: usually unchanged
+        FrameWidth = width;
+        FrameHeight = height;
+    }
 
     /// <summary>Runs the native capability probe off the UI thread, then publishes the result to the
     /// observable props. The probe does a ~1s TensorRT model load, so it must not block startup. In
@@ -106,6 +124,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool superResAvailable;
     [ObservableProperty] private bool frameInterpAvailable;
+    [ObservableProperty] private int frameWidth;    // negotiated capture size; 0 until the first frame
+    [ObservableProperty] private int frameHeight;
     [ObservableProperty] private bool exposureLock;             // #16: lock exposure to hold fps
     [ObservableProperty] private double exposureValue = 0.5;    // 0..1 normalized; only meaningful when locked
     [ObservableProperty] private bool exposureSupported;        // camera exposes manual exposure (status poll, while running)

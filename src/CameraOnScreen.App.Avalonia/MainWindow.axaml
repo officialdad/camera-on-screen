@@ -61,6 +61,8 @@
                                         <MultiBinding Converter="{StaticResource StatusLine}">
                                             <Binding Path="IsRunning" />
                                             <Binding Path="Fps" />
+                                            <Binding Path="FrameWidth" />
+                                            <Binding Path="FrameHeight" />
                                         </MultiBinding>
                                     </TextBlock.Text>
                                 </TextBlock>

@@ -9,14 +9,18 @@ namespace CameraOnScreen.App.Avalonia;
 // (StatusLine, ExposureSliderEnabled, QualityEnabled) become MultiBinding converters.
 // The `!available` visibilities use Avalonia's built-in `{Binding !Prop}` negation instead.
 
-/// <summary>[IsRunning(bool), Fps(double)] -> status string. Mirrors WinUI MainWindow.StatusLine.</summary>
+/// <summary>[IsRunning(bool), Fps(double), FrameWidth(int), FrameHeight(int)] -> status string.</summary>
 public sealed class StatusLineConverter : IMultiValueConverter
 {
     public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
     {
         bool running = values.Count > 0 && values[0] is bool b && b;
         double fps = values.Count > 1 && values[1] is double d ? d : 0;
-        return running ? $"Running — {fps:F0} fps" : "Stopped";
+        int w = values.Count > 2 && values[2] is int iw ? iw : 0;
+        int h = values.Count > 3 && values[3] is int ih ? ih : 0;
+        if (!running) return "Stopped";
+        // Size stays hidden until the first frame lands, so it never shows a stale 0×0.
+        return w > 0 && h > 0 ? $"Running — {fps:F0} fps — {w}×{h}" : $"Running — {fps:F0} fps";
     }
 }
 

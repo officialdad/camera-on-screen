@@ -66,7 +66,8 @@ public partial class MainWindow : Window
         {
             var b = ClampToAScreen(_overlayBounds);
             var w = new Overlay.OverlayWindow(_services.Vm.ShimRef, b.X, b.Y, b.W, b.H, _services.Vm.Mirror,
-                _services.Loaded.Overlay.TeleportModifiers);
+                _services.Loaded.Overlay.TeleportModifiers,
+                (fw, fh) => _services.Vm.OnFrameReceived(fw, fh, Environment.TickCount64));
             // Alt+F4 on the frameless overlay closes it directly: remember where it was and
             // let capture keep running; the next Stop/Start round-trip reopens it.
             w.Closed += (_, _) => { if (ReferenceEquals(_overlay, w)) { _overlayBounds = BoundsOf(w); _overlay = null; } };

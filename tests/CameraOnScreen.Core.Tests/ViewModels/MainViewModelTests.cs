@@ -502,6 +502,20 @@ public class MainViewModelTests
         Assert.Equal(1, shim.StartCount); // no spurious restart
     }
 
+    [Fact]
+    public void OnFrameReceived_publishes_the_negotiated_frame_size()
+    {
+        // Resolution varies a lot by source — a Brio 100 falls back to 640x480 YUYV while a
+        // scrcpy loopback runs 2560x1440 — and the panel had no way to show which you got.
+        var vm = BuildWithCameras(out _, "a");
+        Assert.Equal(0, vm.FrameWidth);
+
+        vm.OnFrameReceived(2560, 1440, nowMs: 1000);
+
+        Assert.Equal(2560, vm.FrameWidth);
+        Assert.Equal(1440, vm.FrameHeight);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
