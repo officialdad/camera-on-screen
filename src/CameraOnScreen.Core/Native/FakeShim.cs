@@ -14,7 +14,8 @@ public sealed class FakeShim : INativeShim
     public bool Init(IntPtr d3dDevice) => true;
     public IReadOnlyList<CameraInfo> EnumerateCameras() => Cameras;
     public void SetParams(ShimParams p) => LastParams = p;
-    public void Start() => _running = true;
+    public int StartCount { get; private set; }
+    public void Start() { _running = true; StartCount++; }
     public void Stop() => _running = false;
 
     public ShimStatus GetStatus() => new(

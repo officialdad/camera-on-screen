@@ -21,6 +21,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // ToAppConfig's fresh OverlaySettings doesn't reset a customised chord to the default.
     private HotkeyModifiers _teleportModifiers = new OverlaySettings().TeleportModifiers;
 
+    // The camera capture is actually running on — distinct from SelectedCamera, which is whatever
+    // the combo shows. Guards the hot-swap against a transient null during a list refresh and
+    // against re-selecting the camera already running (a restart is a full worker teardown).
+    private string? _activeCameraId;
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
@@ -171,6 +176,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnExposureLockChanged(bool value) => ApplyLiveParams();
     partial void OnExposureValueChanged(double value) => ApplyLiveParams();
 
+    // The camera equivalent of the live param push above. Native Capture::Start opens with
+    // StopLocked() (capture_v4l2.cpp:591, capture.cpp:602), so calling Start again is a clean
+    // restart on the new device. IsRunning deliberately does NOT change: SyncOverlay keys off it
+    // alone, so leaving it true keeps the overlay window, its geometry, and its mirror state.
+    partial void OnSelectedCameraChanged(CameraInfo? value)
+    {
+        if (!IsRunning || value is null || value.Value.Id == _activeCameraId) return;
+        _orchestrator.Start(BuildParams());
+        _activeCameraId = value.Value.Id;
+    }
+
     private void ApplyLiveParams()
     {
         if (IsRunning) _orchestrator.ApplyParams(BuildParams());
@@ -215,6 +231,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void Start()
     {
         _orchestrator.Start(BuildParams());
+        _activeCameraId = SelectedCamera?.Id;
         IsRunning = true;
     }
 
@@ -222,6 +239,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void Stop()
     {
         _orchestrator.Stop();
+        _activeCameraId = null;
         IsRunning = false;
     }
 }

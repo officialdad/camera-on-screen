@@ -401,6 +401,66 @@ public class MainViewModelTests
         Assert.Equal(1, vm.BuildParams().GreenScreenBackend);
     }
 
+    // --- Camera hot-swap (#57) ---
+
+    private static MainViewModel BuildWithCameras(out FakeShim shim, params string[] ids)
+    {
+        shim = new FakeShim();
+        foreach (var id in ids) shim.Cameras.Add(new CameraInfo(id, id));
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        foreach (var cam in shim.Cameras) vm.Cameras.Add(cam);
+        return vm;
+    }
+
+    [Fact]
+    public void Selecting_a_different_camera_while_running_restarts_capture()
+    {
+        // The whole point of #57: no Stop/Start round-trip. Native Capture::Start tears the
+        // old session down first, so a second Start IS the swap.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        Assert.Equal(1, shim.StartCount);
+
+        vm.SelectedCamera = vm.Cameras[1];
+
+        Assert.Equal(2, shim.StartCount);
+        Assert.Equal("b", shim.LastParams?.CameraId);
+        Assert.True(vm.IsRunning); // IsRunning must NOT flip, or the overlay would close and reopen
+    }
+
+    [Fact]
+    public void Selecting_a_camera_while_stopped_does_not_start_capture()
+    {
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.SelectedCamera = vm.Cameras[1];
+        Assert.Equal(0, shim.StartCount);
+        Assert.False(vm.IsRunning);
+    }
+
+    [Fact]
+    public void Reselecting_the_active_camera_does_not_restart_capture()
+    {
+        // A restart is a full worker teardown + device reopen + Maxine re-init. Not for a no-op.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.SelectedCamera = vm.Cameras[0];
+        Assert.Equal(1, shim.StartCount);
+    }
+
+    [Fact]
+    public void Clearing_the_selection_while_running_does_not_restart_capture()
+    {
+        // RefreshCameras (Task 2) can drop the selected camera, which sets this to null.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.SelectedCamera = null;
+        Assert.Equal(1, shim.StartCount);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
