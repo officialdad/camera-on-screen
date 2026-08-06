@@ -110,9 +110,10 @@ re-reads it.
 ## Under the hood
 
 Curious how it works, or want to build it yourself? See
-[`CLAUDE.md`](CLAUDE.md) for the architecture, build and runtime details, and
+[`CLAUDE.md`](CLAUDE.md) for the architecture, build and runtime details,
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to get set up and the bar pull
-requests need to clear.
+requests need to clear, and [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)
+for the bundled third-party components.
 
 ## Contributing
 

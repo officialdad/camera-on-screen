@@ -28,6 +28,12 @@ public partial class MainWindow : Window
     // up), or a 1 s grace timer from Opened for the quiet launch that emits no transition at all.
     private bool _armed;
 
+    // #61 scroll debounce: see the StatusErrorText handler below. Seeded 10 s *before*
+    // construction time, not 0 — Environment.TickCount64 counts from system boot, not app
+    // start, so a 0 seed would suppress a genuine first error inside the first 10 s of uptime.
+    private long _lastErrorScrollMs = Environment.TickCount64 - ErrorScrollDebounceMs;
+    private const long ErrorScrollDebounceMs = 10_000;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -77,10 +83,25 @@ public partial class MainWindow : Window
         // scroll to a stale rect. Deliberately NOT applied to CapabilityDetail/EyeContactDetail:
         // those go visible when the startup capability probe lands, so scrolling them would open
         // the panel pre-scrolled to the bottom on every launch on non-RTX hardware.
+        //
+        // Debounced to at most once per 10 s: the native error string is cleared on effect-off,
+        // on the next good frame, and in Capture::Stop, and OnStatus writes StatusError verbatim
+        // on every 250 ms poll, so an intermittent effect failure (fails, recovers, fails again)
+        // produces a repeating false->true edge — without the debounce, each edge force-scrolls
+        // the panel away from wherever the user is reading.
         StatusErrorText.PropertyChanged += (_, e) =>
         {
-            if (e.Property == IsVisibleProperty && StatusErrorText.IsVisible)
-                Dispatcher.UIThread.Post(() => StatusErrorText.BringIntoView(), DispatcherPriority.Loaded);
+            if (e.Property != IsVisibleProperty || !StatusErrorText.IsVisible) return;
+            var now = Environment.TickCount64;
+            if (now - _lastErrorScrollMs < ErrorScrollDebounceMs) return;
+            _lastErrorScrollMs = now;
+            Dispatcher.UIThread.Post(() =>
+            {
+                // Re-check IsVisible: an element that went hidden again before this callback
+                // ran keeps a zero-size layout slot, and BringIntoView on it can still scroll
+                // the viewer.
+                if (StatusErrorText.IsVisible) StatusErrorText.BringIntoView();
+            }, DispatcherPriority.Loaded);
         };
 
         Closing += (_, e) =>

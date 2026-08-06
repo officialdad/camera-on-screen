@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO="officialdad/camera-on-screen"
 EXE="CameraOnScreen.App.Avalonia"
-DEST="${COS_INSTALL_DIR:-$HOME/.local/share/camera-on-screen}"
+DEST="${COS_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/camera-on-screen}"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 # DEST gets rm -rf'd below — refuse anything that isn't a safe, absolute, non-home path.
@@ -43,7 +43,13 @@ if pgrep -f "$EXE" >/dev/null 2>&1; then
   exit 1
 fi
 
-TMP="$(mktemp -d)"
+# mktemp -d defaults to /tmp, which is a RAM-backed tmpfs on systemd-default distros — a
+# ~1.9 GB download would eat 1.9 GB of RAM there and can fail after a long download on a
+# tmpfs capped at 50% of RAM. Put TMP beside DEST instead, on disk, and on the same
+# filesystem so the later extract isn't a cross-device copy. DEST's parent may not exist
+# yet on a first install.
+mkdir -p "$(dirname "$DEST")"
+TMP="$(mktemp -d -p "$(dirname "$DEST")")"
 trap 'rm -rf "$TMP"' EXIT
 
 if [ -n "${COS_INSTALL_TARBALL:-}" ]; then
