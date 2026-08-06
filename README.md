@@ -41,7 +41,8 @@ folder, and adds Camera-on-Screen to your application menu. No admin rights.
 curl -fsSL https://raw.githubusercontent.com/officialdad/camera-on-screen/main/scripts/install.sh | bash
 ```
 
-Re-run the same command later to upgrade.
+Re-run the same command later to upgrade — quit Camera-on-Screen first, since the
+installer refuses to run while it's still open.
 
 Piping a script straight into `bash` runs it before you can read it. To read it
 first:
@@ -74,7 +75,7 @@ click **More info → Run anyway**. Uninstall from **Settings → Apps**.
 
 - **Move it** — drag the centre **+** handle (Windows) or drag anywhere (Linux).
 - **Resize it** — scroll the mouse wheel over the overlay.
-- **Mirror / zoom** — toggle in the control panel.
+- **Mirror** — toggle in the control panel.
 - **Pick a camera** — switch cameras from the control panel while it is running.
 - **Minimize to tray** (Linux) — closing or minimizing the control panel sends
   it to the system tray while the overlay keeps running. Click the tray icon, or
