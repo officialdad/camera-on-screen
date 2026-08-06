@@ -24,7 +24,9 @@ public sealed class OverlayWindow : Window
 
     private readonly INativeShim _shim;
     private readonly Image _image = new() { Stretch = Stretch.Uniform };
-    private readonly byte[] _buffer = new byte[1920 * 1080 * 4];
+    // 4K, matching the Windows panel: cos_get_frame rejects any frame larger than the
+    // buffer, and virtual cameras (v4l2loopback / scrcpy) commonly run above 1080p.
+    private readonly byte[] _buffer = new byte[3840 * 2160 * 4];
     private readonly DispatcherTimer _pump;
     private WriteableBitmap? _bitmap;
 
