@@ -54,6 +54,12 @@ public partial class MainWindow : Window
         };
     }
 
+    // Opening the dropdown is exactly the moment the list needs to be true, and it costs no
+    // extra chrome. Enumeration opens every /dev/video* node — see the manual gate in the plan
+    // for the check that this does not perturb a live capture.
+    private void CameraCombo_DropDownOpened(object? sender, EventArgs e) =>
+        _services.Vm.RefreshCameras();
+
     private void SyncOverlay()
     {
         if (_services.Vm.IsRunning && _overlay is null)

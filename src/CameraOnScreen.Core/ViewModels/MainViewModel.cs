@@ -70,6 +70,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
 
+    /// <summary>Re-enumerate devices and diff into <see cref="Cameras"/> by Id: drop what's gone,
+    /// add what's new, leave existing entries alone. Diff rather than clear-and-refill so the
+    /// ComboBox selection never churns — a Clear() nulls SelectedItem, and the re-add would fire
+    /// OnSelectedCameraChanged twice for what the user experiences as no change.
+    /// Called when the camera dropdown opens: a v4l2loopback device (scrcpy, OBS) only announces
+    /// itself while its writer is attached, so the startup enumeration goes stale.</summary>
+    public void RefreshCameras()
+    {
+        var live = ShimRef.EnumerateCameras();
+        for (int i = Cameras.Count - 1; i >= 0; i--)
+            if (!live.Any(c => c.Id == Cameras[i].Id))
+                Cameras.RemoveAt(i);
+        foreach (var cam in live)
+            if (!Cameras.Any(c => c.Id == cam.Id))
+                Cameras.Add(cam);
+    }
+
     [ObservableProperty] private CameraInfo? selectedCamera;
     [ObservableProperty] private bool greenScreenEnabled = true;
     [ObservableProperty] private double greenScreenExpand;

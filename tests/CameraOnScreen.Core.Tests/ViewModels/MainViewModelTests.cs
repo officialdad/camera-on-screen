@@ -461,6 +461,47 @@ public class MainViewModelTests
         Assert.Equal(1, shim.StartCount);
     }
 
+    [Fact]
+    public void RefreshCameras_adds_devices_that_appeared()
+    {
+        // A v4l2loopback node only announces VIDEO_CAPTURE while a writer is attached, so
+        // starting scrcpy after the app is exactly this case.
+        var vm = BuildWithCameras(out var shim, "a");
+        shim.Cameras.Add(new CameraInfo("b", "b"));
+
+        vm.RefreshCameras();
+
+        Assert.Equal(2, vm.Cameras.Count);
+        Assert.Contains(vm.Cameras, c => c.Id == "b");
+    }
+
+    [Fact]
+    public void RefreshCameras_removes_devices_that_vanished()
+    {
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        shim.Cameras.RemoveAll(c => c.Id == "b");
+
+        vm.RefreshCameras();
+
+        Assert.Single(vm.Cameras);
+        Assert.Equal("a", vm.Cameras[0].Id);
+    }
+
+    [Fact]
+    public void RefreshCameras_leaves_an_unchanged_selection_alone()
+    {
+        // Diff, not clear-and-refill: a Clear() would null the ComboBox selection and fire
+        // OnSelectedCameraChanged twice for what the user sees as no change.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[1];
+        vm.StartCommand.Execute(null);
+
+        vm.RefreshCameras();
+
+        Assert.Equal("b", vm.SelectedCamera?.Id);
+        Assert.Equal(1, shim.StartCount); // no spurious restart
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }
