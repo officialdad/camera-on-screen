@@ -31,15 +31,17 @@ public partial class MainWindow : Window
 
         _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
 
-        // Minimize means "get out of the way", same as close. Bounce the state back to Normal
-        // before hiding so a later restore comes back as a normal window, not a minimized one.
+        // Minimize means "get out of the way", same as close: hide to the tray instead. Do NOT
+        // also write WindowState = Normal here — that write races the WM's own async iconify
+        // and wins, so the window never actually unmaps (measured on KDE/XWayland: map state
+        // stayed 1 through the minimize). ShowPanel() already resets WindowState to Normal on
+        // restore, so a later restore still comes back as a normal window, not a minimized one.
         PropertyChanged += (_, e) =>
         {
             if (e.Property == WindowStateProperty
                 && WindowState == WindowState.Minimized
                 && _services.Vm.MinimizeToTray)
             {
-                WindowState = WindowState.Normal;
                 Hide();
             }
         };
