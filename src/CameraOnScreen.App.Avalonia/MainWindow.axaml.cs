@@ -19,11 +19,14 @@ public partial class MainWindow : Window
     // Last-known overlay geometry: seeded from config, refreshed every time the overlay
     // closes, written back to config on panel exit.
     private (double X, double Y, double W, double H) _overlayBounds;
-    // Latched true by the Opened event, never reset. Guards the minimize-to-tray handler
-    // below: without it, a transient WindowState == Minimized during X11 map (or a WM
-    // restoring a previously iconified state) fires Hide() before the window has ever been
-    // shown to the user — the unattributed "tray icon but no panel window" launch.
-    private bool _opened;
+    // Gates the minimize-to-tray handler below. NOT latched on Opened (#62): Window.ShowCore
+    // raises Opened synchronously right after PlatformImpl.Show, and X11Window.Show is only
+    // XMapWindow + XFlush, so every WindowState transition arrives later from a PropertyNotify
+    // on _NET_WM_STATE — an Opened latch is already true before any state change can be seen and
+    // blocks nothing. Set instead by whichever comes first: a transition to a non-Minimized
+    // state (the WM clearing its transient _NET_WM_STATE_HIDDEN, i.e. the window is genuinely
+    // up), or a 1 s grace timer from Opened for the quiet launch that emits no transition at all.
+    private bool _armed;
 
     public MainWindow()
     {
@@ -36,25 +39,21 @@ public partial class MainWindow : Window
 
         _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
 
-        Opened += (_, _) => _opened = true;
+        Opened += (_, _) => DispatcherTimer.RunOnce(() => _armed = true, TimeSpan.FromSeconds(1));
 
         // Minimize means "get out of the way", same as close: hide to the tray instead. Do NOT
-        // also write WindowState = Normal here — that write races the WM's own async iconify
-        // and wins, so the window never actually unmaps (measured on KDE/XWayland: the window
-        // never left the mapped state, because the WindowState = Normal write beat the WM's
-        // async deiconify). ShowPanel() already resets WindowState to Normal on restore, so a
-        // later restore still comes back as a normal window, not a minimized one. Gated on
-        // _opened: without that latch, a transient WindowState == Minimized during X11 map (or
-        // a WM restoring a previously iconified state) hides the window before it was ever shown.
+        // also write WindowState = Normal here — that write races the WM's own async deiconify
+        // and wins, so the window bounces back visible and cannot be minimized at all (measured
+        // on KDE/XWayland). ShowPanel() sets WindowState = Normal on the restore side, which is
+        // where it belongs. Gated on _armed so a transient _NET_WM_STATE_HIDDEN during X11 map
+        // cannot hide the panel before the user has ever seen it (#62).
         PropertyChanged += (_, e) =>
         {
-            if (e.Property == WindowStateProperty
-                && WindowState == WindowState.Minimized
-                && _opened
-                && _services.Vm.MinimizeToTray)
-            {
-                Hide();
-            }
+            if (e.Property != WindowStateProperty) return;
+            // Any non-minimized state means the window is genuinely up — arm immediately rather
+            // than waiting out the grace timer.
+            if (WindowState != WindowState.Minimized) { _armed = true; return; }
+            if (_armed && _services.Vm.MinimizeToTray) Hide();
         };
 
         // Status is polled, never pushed (repo contract). The overlay runs its own 33 ms

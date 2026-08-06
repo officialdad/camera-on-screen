@@ -75,9 +75,14 @@ never appears, and the recovery is the panel toggle or `"MinimizeToTray": false`
 **Do NOT write `WindowState = Normal` inside the minimize handler before `Hide()`** — that write
 races the WM's own async deiconify and wins, so the window bounces back visible and the panel
 cannot be minimized at all; `ShowPanel()` sets `WindowState = Normal` on the *restore* side,
-which is where it belongs. The minimize handler is also latched on an `_opened` flag (set from
-the `Opened` event, never reset) so a transient `WindowState == Minimized` during X11 map, or a
-WM restoring a previously-iconified state, can't `Hide()` the window before it was ever shown.
+which is where it belongs. The minimize handler is gated on an `_armed` flag so a transient
+`_NET_WM_STATE_HIDDEN` during X11 map can't `Hide()` the panel before the user has ever seen it
+(#62). **An `Opened` latch does not work here** — `Window.ShowCore` raises `Opened`
+*synchronously* after `PlatformImpl.Show`, and `X11Window.Show` is only `XMapWindow` + `XFlush`,
+so every `WindowState` transition arrives later from a `PropertyNotify` and the latch is already
+true. `_armed` is set by whichever lands first: a transition to a non-`Minimized` state (the WM
+clearing the transient), or a 1 s `DispatcherTimer.RunOnce` grace from `Opened`. Cost: a genuine
+minimize inside that first second leaves an ordinary minimized window instead of a tray hide.
 There is no single-instance guard: with the panel hidden in the tray, launching the app again
 starts a second process that fights the first for `/dev/video*`.
 
