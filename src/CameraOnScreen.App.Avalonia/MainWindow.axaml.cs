@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using CameraOnScreen.App.Avalonia.Composition;
 using CameraOnScreen.Core.ViewModels;
@@ -10,10 +11,19 @@ public partial class MainWindow : Window
 {
     private readonly Services.AppServices _services;
     private readonly DispatcherTimer _statusTimer;
+    private readonly Tray.TrayController _tray;
+    // Set only by the tray's Quit item: tells Closing to let the close through instead of
+    // cancelling it into a Hide().
+    private bool _quitting;
     private Overlay.OverlayWindow? _overlay;
     // Last-known overlay geometry: seeded from config, refreshed every time the overlay
     // closes, written back to config on panel exit.
     private (double X, double Y, double W, double H) _overlayBounds;
+    // Latched true by the Opened event, never reset. Guards the minimize-to-tray handler
+    // below: without it, a transient WindowState == Minimized during X11 map (or a WM
+    // restoring a previously iconified state) fires Hide() before the window has ever been
+    // shown to the user — the unattributed "tray icon but no panel window" launch.
+    private bool _opened;
 
     public MainWindow()
     {
@@ -23,6 +33,29 @@ public partial class MainWindow : Window
 
         var o = _services.Loaded.Overlay;
         _overlayBounds = (o.X, o.Y, o.Width, o.Height);
+
+        _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
+
+        Opened += (_, _) => _opened = true;
+
+        // Minimize means "get out of the way", same as close: hide to the tray instead. Do NOT
+        // also write WindowState = Normal here — that write races the WM's own async iconify
+        // and wins, so the window never actually unmaps (measured on KDE/XWayland: the window
+        // never left the mapped state, because the WindowState = Normal write beat the WM's
+        // async deiconify). ShowPanel() already resets WindowState to Normal on restore, so a
+        // later restore still comes back as a normal window, not a minimized one. Gated on
+        // _opened: without that latch, a transient WindowState == Minimized during X11 map (or
+        // a WM restoring a previously iconified state) hides the window before it was ever shown.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty
+                && WindowState == WindowState.Minimized
+                && _opened
+                && _services.Vm.MinimizeToTray)
+            {
+                Hide();
+            }
+        };
 
         // Status is polled, never pushed (repo contract). The overlay runs its own 33 ms
         // frame pump; this panel-side timer only refreshes fps/error/running at 4 Hz.
@@ -38,19 +71,37 @@ public partial class MainWindow : Window
                 _overlay?.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
         };
 
-        Closing += (_, _) =>
+        Closing += (_, e) =>
         {
             CaptureOverlayBounds();
             var b = _overlayBounds;
+            // Save on the way to the tray too, not just on a real exit: an app killed while
+            // sitting in the tray then loses nothing it would not already have lost.
             _services.Store.Save(_services.Vm.ToAppConfig(b.X, b.Y, b.W, b.H));
+            // Only an ordinary window close (the X button / our own Close() call) becomes a
+            // hide. OwnerWindowClosing/ApplicationShutdown/OSShutdown mean the session or the
+            // process is going away regardless of what we do here — cancelling those into a
+            // Hide() would strand the capture worker (cos_shutdown never runs) instead of
+            // tearing down cleanly.
+            if (_services.Vm.MinimizeToTray && !_quitting && e.CloseReason == WindowCloseReason.WindowClosing)
+            {
+                e.Cancel = true;
+                Hide();
+            }
         };
         Closed += (_, _) =>
         {
             _statusTimer.Stop();
+            _tray.Dispose();
             _overlay?.Close();
             // Joins the native capture worker (cos_shutdown) — without this the global
             // std::thread is destroyed joinable at process exit -> std::terminate.
             _services.Vm.Dispose();
+            // Closed only fires when Closing did not cancel, so reaching here always means a
+            // real exit — whether via the tray's Quit or via X with MinimizeToTray off. Under
+            // ShutdownMode.OnExplicitShutdown nothing else ends the process.
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d)
+                d.Shutdown();
         };
     }
 
@@ -59,6 +110,19 @@ public partial class MainWindow : Window
     // for the check that this does not perturb a live capture.
     private void CameraCombo_DropDownOpened(object? sender, EventArgs e) =>
         _services.Vm.RefreshCameras();
+
+    private void ShowPanel()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void Quit()
+    {
+        _quitting = true;
+        Close();   // Closing saves, Closed tears down and shuts the app down.
+    }
 
     private void SyncOverlay()
     {

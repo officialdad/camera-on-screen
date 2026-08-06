@@ -18,6 +18,12 @@
           Link="libCameraOnScreen.Shim.so" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Repo-root app icon, surfaced to Avalonia as avares://CameraOnScreen.App.Avalonia/Assets/cos.png
+       (window icon + system-tray icon). Linked, not copied — one binary in the repo. -->
+  <ItemGroup>
+    <AvaloniaResource Include="$(MSBuildThisFileDirectory)..\..\cos.png" Link="Assets/cos.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />

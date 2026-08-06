@@ -56,6 +56,11 @@ public sealed record AppConfig
     // Control-panel window size in physical pixels (0 = unset → first launch sizes to content).
     public double PanelWidth { get; init; }
     public double PanelHeight { get; init; }
+    // Close/minimize send the control panel to the system tray instead of quitting /
+    // taskbar-minimizing, leaving capture and the overlay running. Linux (Avalonia) panel only;
+    // the WinUI panel ignores it (#38). Default on — absent from an older config.json, the
+    // initializer wins, so existing users get it on upgrade.
+    public bool MinimizeToTray { get; init; } = true;
 
     // VK codes: F10=0x79, F11=0x7A. (ToggleLock/ToggleClickThrough F8/F9 defaults removed; enum members kept.)
     public static IReadOnlyList<HotkeyBinding> DefaultHotkeys() => Array.AsReadOnly(new[]
@@ -70,11 +75,12 @@ public sealed record AppConfig
         && Effects == other.Effects
         && PanelWidth == other.PanelWidth
         && PanelHeight == other.PanelHeight
+        && MinimizeToTray == other.MinimizeToTray
         && Hotkeys.SequenceEqual(other.Hotkeys);
 
     public override int GetHashCode()
     {
         var hk = Hotkeys.Aggregate(0, (h, b) => HashCode.Combine(h, b));
-        return HashCode.Combine(CameraId, Overlay, Effects, hk, PanelWidth, PanelHeight);
+        return HashCode.Combine(CameraId, Overlay, Effects, hk, PanelWidth, PanelHeight, MinimizeToTray);
     }
 }
