@@ -133,12 +133,18 @@ implementation and no native change.
 it is unit-testable without injecting a clock abstraction. Callers pass
 `Environment.TickCount64`.
 
-**The watchdog is opt-in** (`Vm.LivenessWatchdogEnabled`, set by the Avalonia
-composition root). `PollStatusTick` is shared Core, but only the Avalonia
-overlay pump reports frames — with Windows deferred (§9), an always-on
-watchdog would see zero frames on Windows and auto-stop a perfectly healthy
-capture after 5 s. The flag makes "nobody is reporting frames" mean *disabled*
-rather than *dead*. Windows flips it to true when its pump is wired.
+**The watchdog is opt-in** (`Vm.FrameReportingActive`), owned by the Avalonia
+panel and true only while an overlay window exists. `PollStatusTick` is shared
+Core, but only the Avalonia overlay pump reports frames, so the flag makes
+"nobody is reporting frames" mean *disabled* rather than *dead*. It covers two
+cases, which is why it tracks the overlay's lifetime rather than being set once
+at composition:
+
+- **Windows** (§9) never sets it, so its capture is unaffected.
+- **Alt+F4 on the overlay** closes it while capture keeps running (an existing
+  behaviour — `MainWindow.axaml.cs:66`). The pump dies with the window, so
+  without the flag the watchdog would read that silence as a dead camera and
+  stop a healthy capture.
 
 ## 7. Testing
 
@@ -165,7 +171,7 @@ Manual gate (visual confirmation is an inherent human gate in this repo):
 | `Core/ViewModels/MainViewModel.cs` | `OnSelectedCameraChanged`, `_activeCameraId`, `RefreshCameras`, `OnFrameReceived`, `CheckLiveness`, frame-size observables |
 | `App.Avalonia/Overlay/OverlayWindow.cs` | `onFrame` ctor param, invoked in `Present()` |
 | `App.Avalonia/MainWindow.axaml{,.cs}` | `DropDownOpened` wiring, pass `OnFrameReceived`, status line |
-| `App.Avalonia/Composition/Services.cs` | Set `LivenessWatchdogEnabled` |
+| `App.Avalonia/MainWindow.axaml.cs` | Own `FrameReportingActive` across the overlay's lifetime |
 | `Core.Tests/` | Cases above |
 
 Native shim: unchanged. WinUI panel: unchanged (§9).
