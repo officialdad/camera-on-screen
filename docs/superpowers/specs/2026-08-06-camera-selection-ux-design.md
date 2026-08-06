@@ -94,7 +94,7 @@ by definition present, so nothing is lost.
 
 `OverlayWindow` takes a `Action<int,int>? onFrame` ctor param, invoked from
 `Present()` when `TryGetFrame` succeeds. `MainWindow` passes
-`Vm.OnFrameReceived`. The Windows panel's pump does the same.
+`Vm.OnFrameReceived`.
 
 This single signal feeds both remaining features, which is why it is one
 callback and not two:
@@ -133,6 +133,13 @@ implementation and no native change.
 it is unit-testable without injecting a clock abstraction. Callers pass
 `Environment.TickCount64`.
 
+**The watchdog is opt-in** (`Vm.LivenessWatchdogEnabled`, set by the Avalonia
+composition root). `PollStatusTick` is shared Core, but only the Avalonia
+overlay pump reports frames — with Windows deferred (§9), an always-on
+watchdog would see zero frames on Windows and auto-stop a perfectly healthy
+capture after 5 s. The flag makes "nobody is reporting frames" mean *disabled*
+rather than *dead*. Windows flips it to true when its pump is wired.
+
 ## 7. Testing
 
 Core unit tests (added to the existing 75):
@@ -158,7 +165,25 @@ Manual gate (visual confirmation is an inherent human gate in this repo):
 | `Core/ViewModels/MainViewModel.cs` | `OnSelectedCameraChanged`, `_activeCameraId`, `RefreshCameras`, `OnFrameReceived`, `CheckLiveness`, frame-size observables |
 | `App.Avalonia/Overlay/OverlayWindow.cs` | `onFrame` ctor param, invoked in `Present()` |
 | `App.Avalonia/MainWindow.axaml{,.cs}` | `DropDownOpened` wiring, pass `OnFrameReceived`, status line |
-| `App/MainWindow.xaml{,.cs}` | Same for WinUI (unbuildable on this box — compile-checked in CI) |
+| `App.Avalonia/Composition/Services.cs` | Set `LivenessWatchdogEnabled` |
 | `Core.Tests/` | Cases above |
 
-Native shim: unchanged.
+Native shim: unchanged. WinUI panel: unchanged (§9).
+
+## 9. Windows deferred
+
+The WinUI panel is not touched. It cannot be built on this box (no WinUI
+workload — see CLAUDE.md), so any change there would ship verified only by a
+compile in CI, and #38 has not yet restored a Windows RTX environment to run
+it on.
+
+Every change here is additive to `Core`, so Windows behavior is unchanged:
+the new observables go unread by its XAML, `RefreshCameras` is never called
+without the `DropDownOpened` wiring, and the watchdog stays off via §6's flag.
+Hot-swap is the one feature Windows would get for free — `OnSelectedCameraChanged`
+is in shared Core and `capture.cpp:602` already restarts correctly — but it
+goes unverified there until #38 lands.
+
+Follow-up for when Windows returns: wire `DropDownOpened`, pass
+`OnFrameReceived` from the WinUI pump, add the resolution to its status line,
+and set the watchdog flag.
