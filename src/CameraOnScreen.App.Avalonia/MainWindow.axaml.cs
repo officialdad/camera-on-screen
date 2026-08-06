@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using CameraOnScreen.App.Avalonia.Composition;
 using CameraOnScreen.Core.ViewModels;
@@ -10,6 +11,10 @@ public partial class MainWindow : Window
 {
     private readonly Services.AppServices _services;
     private readonly DispatcherTimer _statusTimer;
+    private readonly Tray.TrayController _tray;
+    // Set only by the tray's Quit item: tells Closing to let the close through instead of
+    // cancelling it into a Hide().
+    private bool _quitting;
     private Overlay.OverlayWindow? _overlay;
     // Last-known overlay geometry: seeded from config, refreshed every time the overlay
     // closes, written back to config on panel exit.
@@ -23,6 +28,21 @@ public partial class MainWindow : Window
 
         var o = _services.Loaded.Overlay;
         _overlayBounds = (o.X, o.Y, o.Width, o.Height);
+
+        _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
+
+        // Minimize means "get out of the way", same as close. Bounce the state back to Normal
+        // before hiding so a later restore comes back as a normal window, not a minimized one.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty
+                && WindowState == WindowState.Minimized
+                && _services.Vm.MinimizeToTray)
+            {
+                WindowState = WindowState.Normal;
+                Hide();
+            }
+        };
 
         // Status is polled, never pushed (repo contract). The overlay runs its own 33 ms
         // frame pump; this panel-side timer only refreshes fps/error/running at 4 Hz.
@@ -38,19 +58,32 @@ public partial class MainWindow : Window
                 _overlay?.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
         };
 
-        Closing += (_, _) =>
+        Closing += (_, e) =>
         {
             CaptureOverlayBounds();
             var b = _overlayBounds;
+            // Save on the way to the tray too, not just on a real exit: an app killed while
+            // sitting in the tray then loses nothing it would not already have lost.
             _services.Store.Save(_services.Vm.ToAppConfig(b.X, b.Y, b.W, b.H));
+            if (_services.Vm.MinimizeToTray && !_quitting)
+            {
+                e.Cancel = true;
+                Hide();
+            }
         };
         Closed += (_, _) =>
         {
             _statusTimer.Stop();
+            _tray.Dispose();
             _overlay?.Close();
             // Joins the native capture worker (cos_shutdown) — without this the global
             // std::thread is destroyed joinable at process exit -> std::terminate.
             _services.Vm.Dispose();
+            // Closed only fires when Closing did not cancel, so reaching here always means a
+            // real exit — whether via the tray's Quit or via X with MinimizeToTray off. Under
+            // ShutdownMode.OnExplicitShutdown nothing else ends the process.
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d)
+                d.Shutdown();
         };
     }
 
@@ -59,6 +92,19 @@ public partial class MainWindow : Window
     // for the check that this does not perturb a live capture.
     private void CameraCombo_DropDownOpened(object? sender, EventArgs e) =>
         _services.Vm.RefreshCameras();
+
+    private void ShowPanel()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void Quit()
+    {
+        _quitting = true;
+        Close();   // Closing saves, Closed tears down and shuts the app down.
+    }
 
     private void SyncOverlay()
     {

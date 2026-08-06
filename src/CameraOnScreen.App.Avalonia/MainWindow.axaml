@@ -7,6 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="720"
         x:Class="CameraOnScreen.App.Avalonia.MainWindow"
         Width="440" Height="720"
+        Icon="avares://CameraOnScreen.App.Avalonia/Assets/cos.png"
         Title="Camera On Screen">
 
     <!-- Phase 1: control-panel parity with the WinUI MainWindow.xaml, bound to the reused
@@ -74,6 +75,8 @@
                             <ToggleSwitch Content="Lock exposure (steady FPS)"
                                           IsEnabled="{Binding ExposureSupported}"
                                           IsChecked="{Binding ExposureLock, Mode=TwoWay}" />
+                            <ToggleSwitch Content="Minimize to tray"
+                                          IsChecked="{Binding MinimizeToTray, Mode=TwoWay}" />
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Exposure" />
                                 <Slider Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
