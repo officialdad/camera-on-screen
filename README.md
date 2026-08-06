@@ -44,6 +44,9 @@ Included NVIDIA powered features such as
 
 Preferences are kept at `$XDG_CONFIG_HOME/CameraOnScreen/config.json`
 (`~/.config/CameraOnScreen/config.json`).
+If your desktop has no system-tray host, the panel can hide with no way back —
+set `"MinimizeToTray": false` in that file to restore the plain close-to-quit
+behavior.
 
 ### Windows
 
@@ -67,6 +70,10 @@ kept at `%LOCALAPPDATA%\CameraOnScreen\config.json`.
 - **Move it** - drag the centre **+** handle (Windows) or drag anywhere (Linux).
 - **Hand grab** (Windows) — make a fist ✊ at the camera to grab the overlay, move your hand to drag it, open your hand to drop it. Point ☝ freely — pointing never moves the overlay. Runs on-device (CPU, MediaPipe hand models); works on any GPU.
 - **Resize it** - scroll the mouse wheel over the overlay.
+- **Minimize to tray** (Linux) - closing or minimizing the control panel sends it
+  to the system tray while the overlay keeps running. Left-click the tray icon to
+  bring the panel back; the tray menu can start/stop the camera and quit. Turn it
+  off with the **Minimize to tray** toggle in the control panel.
 - **Mirror / zoom** - toggle in the control panel.
 - **AI Green Screen** - removes your background with adjustable edge expand /
   feather (NVIDIA Maxine on RTX, or a built-in CPU engine on any hardware).
