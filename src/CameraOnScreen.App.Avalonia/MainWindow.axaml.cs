@@ -54,24 +54,41 @@ public partial class MainWindow : Window
         };
     }
 
+    // Opening the dropdown is exactly the moment the list needs to be true, and it costs no
+    // extra chrome. Enumeration opens every /dev/video* node — see the manual gate in the plan
+    // for the check that this does not perturb a live capture.
+    private void CameraCombo_DropDownOpened(object? sender, EventArgs e) =>
+        _services.Vm.RefreshCameras();
+
     private void SyncOverlay()
     {
         if (_services.Vm.IsRunning && _overlay is null)
         {
             var b = ClampToAScreen(_overlayBounds);
             var w = new Overlay.OverlayWindow(_services.Vm.ShimRef, b.X, b.Y, b.W, b.H, _services.Vm.Mirror,
-                _services.Loaded.Overlay.TeleportModifiers);
+                _services.Loaded.Overlay.TeleportModifiers,
+                (fw, fh) => _services.Vm.OnFrameReceived(fw, fh, Environment.TickCount64));
             // Alt+F4 on the frameless overlay closes it directly: remember where it was and
-            // let capture keep running; the next Stop/Start round-trip reopens it.
-            w.Closed += (_, _) => { if (ReferenceEquals(_overlay, w)) { _overlayBounds = BoundsOf(w); _overlay = null; } };
+            // let capture keep running; the next Stop/Start round-trip reopens it. Frame
+            // reporting stops with it, so the watchdog must stand down or it would read the
+            // closed pump's silence as a dead camera.
+            w.Closed += (_, _) =>
+            {
+                if (!ReferenceEquals(_overlay, w)) return;
+                _overlayBounds = BoundsOf(w);
+                _overlay = null;
+                _services.Vm.FrameReportingActive = false;
+            };
             w.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
             _overlay = w;
+            _services.Vm.FrameReportingActive = true;
             w.Show();
         }
         else if (!_services.Vm.IsRunning && _overlay is not null)
         {
             var w = _overlay;
             _overlay = null;
+            _services.Vm.FrameReportingActive = false;
             _overlayBounds = BoundsOf(w);
             w.Close();
         }

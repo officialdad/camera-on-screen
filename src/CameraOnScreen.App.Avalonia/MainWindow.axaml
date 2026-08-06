@@ -44,7 +44,8 @@
                                 <TextBlock Text="Camera" />
                                 <ComboBox HorizontalAlignment="Stretch"
                                           ItemsSource="{Binding Cameras}"
-                                          SelectedItem="{Binding SelectedCamera, Mode=TwoWay}">
+                                          SelectedItem="{Binding SelectedCamera, Mode=TwoWay}"
+                                          DropDownOpened="CameraCombo_DropDownOpened">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Name}" />
@@ -60,10 +61,15 @@
                                         <MultiBinding Converter="{StaticResource StatusLine}">
                                             <Binding Path="IsRunning" />
                                             <Binding Path="Fps" />
+                                            <Binding Path="FrameWidth" />
+                                            <Binding Path="FrameHeight" />
                                         </MultiBinding>
                                     </TextBlock.Text>
                                 </TextBlock>
                             </StackPanel>
+                            <TextBlock Text="{Binding CameraError}" TextWrapping="Wrap"
+                                       Foreground="#E06C75"
+                                       IsVisible="{Binding CameraError, Converter={x:Static ObjectConverters.IsNotNull}}" />
                             <ToggleSwitch Content="Mirror (selfie view)" IsChecked="{Binding Mirror, Mode=TwoWay}" />
                             <ToggleSwitch Content="Lock exposure (steady FPS)"
                                           IsEnabled="{Binding ExposureSupported}"

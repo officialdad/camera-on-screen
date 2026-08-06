@@ -401,6 +401,289 @@ public class MainViewModelTests
         Assert.Equal(1, vm.BuildParams().GreenScreenBackend);
     }
 
+    // --- Camera hot-swap (#57) ---
+
+    private static MainViewModel BuildWithCameras(out FakeShim shim, params string[] ids)
+    {
+        shim = new FakeShim();
+        foreach (var id in ids) shim.Cameras.Add(new CameraInfo(id, id));
+        var vm = new MainViewModel(new Orchestrator(shim, GpuTier.Rtx), shim);
+        foreach (var cam in shim.Cameras) vm.Cameras.Add(cam);
+        return vm;
+    }
+
+    [Fact]
+    public void Selecting_a_different_camera_while_running_restarts_capture()
+    {
+        // The whole point of #57: no Stop/Start round-trip. Native Capture::Start tears the
+        // old session down first, so a second Start IS the swap.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        Assert.Equal(1, shim.StartCount);
+
+        vm.SelectedCamera = vm.Cameras[1];
+
+        Assert.Equal(2, shim.StartCount);
+        Assert.Equal("b", shim.LastParams?.CameraId);
+        Assert.True(vm.IsRunning); // IsRunning must NOT flip, or the overlay would close and reopen
+    }
+
+    [Fact]
+    public void Selecting_a_camera_while_stopped_does_not_start_capture()
+    {
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.SelectedCamera = vm.Cameras[1];
+        Assert.Equal(0, shim.StartCount);
+        Assert.False(vm.IsRunning);
+    }
+
+    [Fact]
+    public void Reselecting_the_active_camera_does_not_restart_capture()
+    {
+        // A restart is a full worker teardown + device reopen + Maxine re-init. Not for a no-op.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.SelectedCamera = vm.Cameras[0];
+        Assert.Equal(1, shim.StartCount);
+    }
+
+    [Fact]
+    public void Clearing_the_selection_while_running_does_not_restart_capture()
+    {
+        // RefreshCameras (Task 2) can drop the selected camera, which sets this to null.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.SelectedCamera = null;
+        Assert.Equal(1, shim.StartCount);
+    }
+
+    [Fact]
+    public void RefreshCameras_adds_devices_that_appeared()
+    {
+        // A v4l2loopback node only announces VIDEO_CAPTURE while a writer is attached, so
+        // starting scrcpy after the app is exactly this case.
+        var vm = BuildWithCameras(out var shim, "a");
+        shim.Cameras.Add(new CameraInfo("b", "b"));
+
+        vm.RefreshCameras();
+
+        Assert.Equal(2, vm.Cameras.Count);
+        Assert.Contains(vm.Cameras, c => c.Id == "b");
+    }
+
+    [Fact]
+    public void RefreshCameras_removes_devices_that_vanished()
+    {
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        shim.Cameras.RemoveAll(c => c.Id == "b");
+
+        vm.RefreshCameras();
+
+        Assert.Single(vm.Cameras);
+        Assert.Equal("a", vm.Cameras[0].Id);
+    }
+
+    [Fact]
+    public void RefreshCameras_leaves_an_unchanged_selection_alone()
+    {
+        // Diff, not clear-and-refill: a Clear() would null the ComboBox selection and fire
+        // OnSelectedCameraChanged twice for what the user sees as no change.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[1];
+        vm.StartCommand.Execute(null);
+
+        vm.RefreshCameras();
+
+        Assert.Equal("b", vm.SelectedCamera?.Id);
+        Assert.Equal(1, shim.StartCount); // no spurious restart
+    }
+
+    [Fact]
+    public void OnFrameReceived_publishes_the_negotiated_frame_size()
+    {
+        // Resolution varies a lot by source — a Brio 100 falls back to 640x480 YUYV while a
+        // scrcpy loopback runs 2560x1440 — and the panel had no way to show which you got.
+        var vm = BuildWithCameras(out _, "a");
+        Assert.Equal(0, vm.FrameWidth);
+
+        vm.OnFrameReceived(2560, 1440, nowMs: 1000);
+
+        Assert.Equal(2560, vm.FrameWidth);
+        Assert.Equal(1440, vm.FrameHeight);
+    }
+
+    [Fact]
+    public void Hot_swap_clears_the_previous_cameras_frame_size()
+    {
+        // IsRunning deliberately stays true across a hot-swap, so without an explicit reset the
+        // status line would keep showing the OLD camera's resolution for the whole restart
+        // (worker join + device open + possible Maxine engine load — seconds), and indefinitely
+        // if the new camera never delivers a frame.
+        var vm = BuildWithCameras(out _, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.OnFrameReceived(2560, 1440, nowMs: 1000);
+        Assert.Equal(2560, vm.FrameWidth);
+
+        vm.SelectedCamera = vm.Cameras[1];
+
+        Assert.Equal(0, vm.FrameWidth);
+        Assert.Equal(0, vm.FrameHeight);
+    }
+
+    // --- Disconnect watchdog (#57 / Task 4) ---
+
+    // Drives the watchdog with an explicit clock. The first CheckLiveness call after a (re)start
+    // anchors the window, mirroring what the 4 Hz status timer does in the app.
+    private static MainViewModel BuildRunningWithWatchdog(out FakeShim shim, long anchorMs)
+    {
+        var vm = BuildWithCameras(out shim, "a");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.FrameReportingActive = true;
+        vm.CheckLiveness(anchorMs);
+        return vm;
+    }
+
+    [Fact]
+    public void Watchdog_stops_capture_when_frames_stop_arriving()
+    {
+        // Killing scrcpy does not make v4l2loopback error — it just goes quiet. select() times
+        // out forever and the worker's break paths never fire, so only a timeout catches this.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.OnFrameReceived(1280, 720, nowMs: 1000);
+
+        vm.CheckLiveness(2999);
+        Assert.True(vm.IsRunning);      // 1999 ms of silence — not yet
+
+        vm.CheckLiveness(3001);
+        Assert.False(vm.IsRunning);     // 2001 ms — overlay closes via SyncOverlay
+        Assert.Equal("Camera disconnected", vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_stops_capture_when_no_first_frame_ever_arrives()
+    {
+        // The #55 symptom: device opens, negotiation fails, worker returns, nothing is surfaced.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+
+        vm.CheckLiveness(5999);
+        Assert.True(vm.IsRunning);      // 4999 ms — Start can legitimately take seconds
+                                        // while a Maxine effect initializes
+        vm.CheckLiveness(6001);
+        Assert.False(vm.IsRunning);
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_does_not_fire_while_frames_keep_arriving()
+    {
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        for (long t = 1000; t <= 20_000; t += 500)
+        {
+            vm.OnFrameReceived(1280, 720, t);
+            vm.CheckLiveness(t + 400); // realistic 400 ms elapsed, still well under DisconnectMs
+        }
+        Assert.True(vm.IsRunning);
+        Assert.Null(vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_is_off_when_nothing_reports_frames()
+    {
+        // PollStatusTick is shared Core but only the Avalonia overlay reports frames. With the
+        // WinUI panel unwired (spec §9), an always-on watchdog would read Windows' silence as a
+        // dead camera and stop a healthy capture.
+        var vm = BuildWithCameras(out _, "a");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        // FrameReportingActive left false
+        vm.CheckLiveness(1000);
+        vm.CheckLiveness(999_000);
+        Assert.True(vm.IsRunning);
+        Assert.Null(vm.CameraError);
+    }
+
+    [Fact]
+    public void Hot_swap_resets_the_watchdog()
+    {
+        // A swap restarts capture on a new device, which gets its own grace period — otherwise
+        // the old camera's last-frame stamp would condemn the new one.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.FrameReportingActive = true;
+        vm.CheckLiveness(1000);
+        vm.OnFrameReceived(640, 480, nowMs: 1000);
+
+        vm.SelectedCamera = vm.Cameras[1];   // swap at an unknown wall-clock instant
+        vm.CheckLiveness(1500);              // anchors the new window here
+
+        vm.CheckLiveness(3400);
+        Assert.True(vm.IsRunning);           // 1900 ms into the 5000 ms no-first-frame window
+        Assert.Equal(2, shim.StartCount);
+    }
+
+    [Fact]
+    public void Effect_toggle_while_running_gets_the_no_first_frame_grace_not_the_disconnect_window()
+    {
+        // FINDING 1 (post-review fix): flipping a discrete effect (e.g. green screen) while
+        // running brings the worker's Maxine engine up inline (NvAR_Load / NvVFX_Load), which
+        // can take seconds and publishes no frames meanwhile. Without re-arming the watchdog,
+        // the stale _lastFrameMs from before the toggle would apply the short 2s DisconnectMs
+        // window and auto-stop a healthy capture mid-engine-load.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.OnFrameReceived(1280, 720, nowMs: 1000);
+
+        vm.GreenScreenEnabled = false;   // discrete toggle -> re-arms the watchdog
+
+        vm.CheckLiveness(3001);          // anchors here; 2001 ms past the OLD stale frame stamp —
+        Assert.True(vm.IsRunning);       // would have tripped "Camera disconnected" without the fix
+        Assert.Null(vm.CameraError);
+
+        vm.CheckLiveness(7999);
+        Assert.True(vm.IsRunning);       // 4998 ms into the new 5000 ms no-first-frame window — not yet
+
+        vm.CheckLiveness(8001);
+        Assert.False(vm.IsRunning);      // 5000 ms — grace expired, no frame arrived since the toggle
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void CameraError_survives_a_status_poll()
+    {
+        // The entire reason CameraError exists separately from StatusError: OnStatus fires on
+        // every PollStatusTick (every 250 ms in the app) and unconditionally overwrites
+        // StatusError, so a message written there would be wiped almost immediately. Assert the
+        // OnStatus round-trip inside PollStatusTick does not clear CameraError.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.CheckLiveness(6001); // no first frame ever -> watchdog stops, sets CameraError
+        Assert.Equal("No frames from camera", vm.CameraError);
+
+        vm.PollStatusTick();
+
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void Start_clears_a_stale_camera_error()
+    {
+        // A watchdog-triggered stop leaves CameraError on screen. Starting again must clear it,
+        // or a successful capture would run with "Camera disconnected" still displayed.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.CheckLiveness(6001);
+        Assert.Equal("No frames from camera", vm.CameraError);
+        Assert.False(vm.IsRunning);
+
+        vm.StartCommand.Execute(null);
+
+        Assert.Null(vm.CameraError);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

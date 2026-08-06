@@ -21,9 +21,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // ToAppConfig's fresh OverlaySettings doesn't reset a customised chord to the default.
     private HotkeyModifiers _teleportModifiers = new OverlaySettings().TeleportModifiers;
 
+    // The camera capture is actually running on — distinct from SelectedCamera, which is whatever
+    // the combo shows. Guards the hot-swap against a transient null during a list refresh and
+    // against re-selecting the camera already running (a restart is a full worker teardown).
+    private string? _activeCameraId;
+
+    // Set by OnFrameReceived. Task 4's watchdog reads it; null means no frame has arrived yet
+    // since the last (re)start.
+    private long? _lastFrameMs;
+
+    // Silence thresholds. The no-first-frame window is the longer of the two: Start can
+    // legitimately take seconds while a Maxine effect loads its TensorRT engine.
+    private const long DisconnectMs = 2000;
+    private const long NoFirstFrameMs = 5000;
+
+    // Anchors the no-first-frame window. Set on the first CheckLiveness after a (re)start rather
+    // than at Start, so the VM never reads a clock itself and the tests stay deterministic.
+    private long? _livenessAnchorMs;
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
+
+    /// <summary>True only while something is pumping frames and reporting them via
+    /// <see cref="OnFrameReceived"/> — i.e. while the Avalonia overlay window is open. The
+    /// watchdog is off otherwise, so "nobody is reporting frames" means disabled, not dead.
+    /// The WinUI panel never sets this (spec §9), so Windows behaviour is unchanged.</summary>
+    public bool FrameReportingActive { get; set; }
 
     public MainViewModel(Orchestrator orchestrator, INativeShim shim)
     {
@@ -43,8 +67,73 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _orchestrator.StatusChanged += _statusHandler;
     }
 
-    // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
-    public void PollStatusTick() => _orchestrator.PollStatus();
+    // Driven by the UI-thread status timer each tick to refresh status (fps/gaze/error) and to
+    // run the camera liveness watchdog.
+    public void PollStatusTick()
+    {
+        _orchestrator.PollStatus();
+        CheckLiveness(Environment.TickCount64);
+    }
+
+    /// <summary>Called by the overlay's frame pump for every frame it successfully pulls.
+    /// TryGetFrame returning true IS the liveness signal — Capture::LatestFrame clears its
+    /// new-frame flag on read, so a true return means a genuinely new frame arrived.
+    /// <paramref name="nowMs"/> is passed in rather than read from the clock so the watchdog
+    /// (CheckLiveness) is unit-testable without a clock abstraction; callers pass
+    /// Environment.TickCount64.</summary>
+    public void OnFrameReceived(int width, int height, long nowMs)
+    {
+        _lastFrameMs = nowMs;
+        FrameWidth = width;
+        FrameHeight = height;
+    }
+
+    /// <summary>Auto-stop when the selected camera goes silent. Deliberately a timeout rather
+    /// than native error detection: when scrcpy dies, v4l2loopback does not report an error — it
+    /// just goes quiet, select() times out forever, and the capture worker's break paths never
+    /// fire. A timeout catches that, genuine ioctl failures, and the Windows equivalents with one
+    /// implementation. A frozen stale frame silently baked into a recording is worse than the
+    /// overlay visibly closing.</summary>
+    public void CheckLiveness(long nowMs)
+    {
+        // Disarmed: clear _lastFrameMs too, not just the anchor. Otherwise a stale stamp from
+        // before the pump went away (e.g. Alt+F4 on the overlay) sits armed indefinitely, and
+        // the next FrameReportingActive false->true (reopening the overlay) would see a stale
+        // _lastFrameMs, apply the short DisconnectMs window instead of the no-first-frame grace,
+        // and fire "Camera disconnected" on the very first tick. A freshly-armed pump has
+        // reported no frame, so the 5s window is the correct one for it.
+        if (!IsRunning || !FrameReportingActive) { _lastFrameMs = null; _livenessAnchorMs = null; return; }
+        _livenessAnchorMs ??= nowMs;
+
+        long since = nowMs - (_lastFrameMs ?? _livenessAnchorMs.Value);
+        if (since < (_lastFrameMs is null ? NoFirstFrameMs : DisconnectMs)) return;
+
+        CameraError = _lastFrameMs is null ? "No frames from camera" : "Camera disconnected";
+        Stop();
+    }
+
+    // Clears the frame history so a (re)started camera gets its own grace period, instead of
+    // being condemned by the previous camera's last-frame stamp.
+    private void ResetLiveness()
+    {
+        _lastFrameMs = null;
+        _livenessAnchorMs = null;
+        CameraError = null;
+    }
+
+    // Clears the negotiated frame size at the two session-start points (Start, hot-swap restart).
+    // Deliberately NOT folded into ResetLiveness: that method also runs from
+    // ResetLivenessIfRunning() on every discrete effect toggle, and blanking the size there would
+    // flicker the status line to 0x0 on each toggle for no reason — a restart is the only case
+    // where the OLD camera's resolution is actually stale. Without this, a hot-swap keeps
+    // rendering the previous camera's resolution for the whole restart (worker join + device open
+    // + possible Maxine engine load — seconds), and indefinitely if the new camera never delivers
+    // a frame, until the watchdog trips.
+    private void ResetFrameSize()
+    {
+        FrameWidth = 0;
+        FrameHeight = 0;
+    }
 
     /// <summary>Runs the native capability probe off the UI thread, then publishes the result to the
     /// observable props. The probe does a ~1s TensorRT model load, so it must not block startup. In
@@ -65,6 +154,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
 
+    /// <summary>Re-enumerate devices and diff into <see cref="Cameras"/> by Id: drop what's gone,
+    /// add what's new, leave existing entries alone. Diff rather than clear-and-refill so the
+    /// ComboBox selection never churns — a Clear() nulls SelectedItem, and the re-add would fire
+    /// OnSelectedCameraChanged twice for what the user experiences as no change.
+    /// Called when the camera dropdown opens: a v4l2loopback device (scrcpy, OBS) only announces
+    /// itself while its writer is attached, so the startup enumeration goes stale.</summary>
+    public void RefreshCameras()
+    {
+        var live = ShimRef.EnumerateCameras();
+        for (int i = Cameras.Count - 1; i >= 0; i--)
+            if (!live.Any(c => c.Id == Cameras[i].Id))
+                Cameras.RemoveAt(i);
+        foreach (var cam in live)
+            if (!Cameras.Any(c => c.Id == cam.Id))
+                Cameras.Add(cam);
+    }
+
     [ObservableProperty] private CameraInfo? selectedCamera;
     [ObservableProperty] private bool greenScreenEnabled = true;
     [ObservableProperty] private double greenScreenExpand;
@@ -84,6 +190,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool superResAvailable;
     [ObservableProperty] private bool frameInterpAvailable;
+    [ObservableProperty] private int frameWidth;    // negotiated capture size; 0 until the first frame
+    [ObservableProperty] private int frameHeight;
     [ObservableProperty] private bool exposureLock;             // #16: lock exposure to hold fps
     [ObservableProperty] private double exposureValue = 0.5;    // 0..1 normalized; only meaningful when locked
     [ObservableProperty] private bool exposureSupported;        // camera exposes manual exposure (status poll, while running)
@@ -92,6 +200,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
+    [ObservableProperty] private string? cameraError;   // sticky: OnStatus must not clear it
 
     // VSR QualityLevel base per mode (Denoise=8, Deblur=12) + quality 0..3. Off => 0.
     // Upscale (1-4) dropped: wasted on a downscaled overlay.
@@ -158,22 +267,51 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // green screen did nothing until the next Stop→Start. Gated on IsRunning so config load (LoadFrom)
     // and pre-start changes don't drive a not-yet-started shim — Start sends the initial params.
     // The MVVM-toolkit source generator calls these On…Changed partials after each property setter.
-    partial void OnGreenScreenEnabledChanged(bool value) => ApplyLiveParams();
+    //
+    // The six discrete-selection partials below also call ResetLivenessIfRunning(): flipping one of
+    // these brings the capture worker's engine up inline on the worker thread (NvAR_Load /
+    // NvVFX_Load — eyecontact.cpp/aigs.cpp), which publishes no frames for the load duration. With
+    // _lastFrameMs already set from before the toggle, CheckLiveness would otherwise apply the short
+    // 2s DisconnectMs window and auto-stop a healthy capture mid-engine-load. Re-arming gives that
+    // load the same 5s no-first-frame grace Start gets. NOT applied to the continuous sliders or
+    // ExposureLock: none of them can trigger an engine load, and re-arming on every slider tick would
+    // let a real disconnect hide behind idle UI fiddling for 5s at a time.
+    partial void OnGreenScreenEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnGreenScreenExpandChanged(double value) => ApplyLiveParams();
     partial void OnGreenScreenFeatherChanged(double value) => ApplyLiveParams();
-    partial void OnGreenScreenBackendIndexChanged(int value) => ApplyLiveParams();
-    partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnGreenScreenBackendIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnEyeContactEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
-    partial void OnSuperResModeIndexChanged(int value) => ApplyLiveParams();
-    partial void OnSuperResQualityIndexChanged(int value) => ApplyLiveParams();
-    partial void OnFrameInterpEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnSuperResModeIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnSuperResQualityIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnFrameInterpEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnExposureLockChanged(bool value) => ApplyLiveParams();
     partial void OnExposureValueChanged(double value) => ApplyLiveParams();
+
+    // The camera equivalent of the live param push above. Native Capture::Start opens with
+    // StopLocked() (capture_v4l2.cpp:591, capture.cpp:602), so calling Start again is a clean
+    // restart on the new device. IsRunning deliberately does NOT change: SyncOverlay keys off it
+    // alone, so leaving it true keeps the overlay window, its geometry, and its mirror state.
+    partial void OnSelectedCameraChanged(CameraInfo? value)
+    {
+        if (!IsRunning || value is null || value.Value.Id == _activeCameraId) return;
+        _orchestrator.Start(BuildParams());
+        _activeCameraId = value.Value.Id;
+        ResetLiveness();
+        ResetFrameSize();
+    }
 
     private void ApplyLiveParams()
     {
         if (IsRunning) _orchestrator.ApplyParams(BuildParams());
+    }
+
+    // Gated on IsRunning the same way ApplyLiveParams is, so a config load (LoadFrom) or a
+    // pre-Start change doesn't touch watchdog state.
+    private void ResetLivenessIfRunning()
+    {
+        if (IsRunning) ResetLiveness();
     }
 
     public ShimParams BuildParams() => new(
@@ -215,6 +353,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void Start()
     {
         _orchestrator.Start(BuildParams());
+        _activeCameraId = SelectedCamera?.Id;
+        ResetLiveness();
+        ResetFrameSize();
         IsRunning = true;
     }
 
@@ -222,6 +363,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void Stop()
     {
         _orchestrator.Stop();
+        _activeCameraId = null;
         IsRunning = false;
     }
 }

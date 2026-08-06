@@ -29,11 +29,14 @@ public sealed class OverlayWindow : Window
     private readonly byte[] _buffer = new byte[3840 * 2160 * 4];
     private readonly DispatcherTimer _pump;
     private WriteableBitmap? _bitmap;
+    private readonly Action<int, int>? _onFrame;
 
     public OverlayWindow(INativeShim shim, double x, double y, double w, double h, bool mirror,
-                         HotkeyModifiers teleportChord = HotkeyModifiers.Control)
+                         HotkeyModifiers teleportChord = HotkeyModifiers.Control,
+                         Action<int, int>? onFrame = null)
     {
         _shim = shim;
+        _onFrame = onFrame;
         _teleportMask = ToXModMask(teleportChord);
         Log($"overlay open chord={teleportChord} mask=0x{_teleportMask:X4}");
         SystemDecorations = SystemDecorations.None;
@@ -103,6 +106,7 @@ public sealed class OverlayWindow : Window
     private void Present()
     {
         if (!_shim.TryGetFrame(_buffer, out int w, out int h) || w <= 0) return;
+        _onFrame?.Invoke(w, h);
 
         if (_bitmap is null || _bitmap.PixelSize.Width != w || _bitmap.PixelSize.Height != h)
         {
