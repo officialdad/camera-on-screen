@@ -23,7 +23,7 @@ Established before designing:
   capture error. That is what puts it in the AI Effects card rather than the Camera card.
 - It is **not sticky**. Both capture backends clear all four strings when the effect is switched
   off, when a frame succeeds, and in `Capture::Stop` (`capture_v4l2.cpp:496-532,611-623`;
-  `capture.cpp:425-544,628-638`). So after a watchdog auto-stop `StatusError` goes null on the
+  `capture.cpp:422-573,623-644`). So after a watchdog auto-stop `StatusError` goes null on the
   next poll, and `CameraError` (sticky until the next `Start`) plus `StatusError` can only
   overlap for one 250 ms tick. **No priority or stacking logic is needed.**
 - `PInvokeShim` maps an empty native string to `null` (`PInvokeShim.cs:120`), so
@@ -77,7 +77,20 @@ disposes of the issue's stack/priority/share question.
 `Caution` resources and repoint both error blocks at it. Net +1 line, keeps the two error lines
 from drifting apart.
 
-### 4. Test
+### 4. Make the clearing rule actually hold
+
+Found during the branch's final review, and load-bearing for §2's no-latch binding: only the
+green-screen block cleared its error unconditionally on effect-off. Eye contact, super-res
+(Windows only — Linux stubs it) and FRUC gated the clear behind `IsReady()`, so an engine whose
+`Start()` had failed kept its error string forever — neither branch fired when the user switched
+the effect off, and `Capture::Start`'s restart path goes through `StopLocked()`, which does not
+clear. FRUC also never cleared on success, so one transient `Process` failure latched
+permanently. Since `cos_get_status` merges in a fixed order, a latched earlier error also masks
+every live later one. Fix in both backends: ungate the effect-off clear (keeping `Stop()` behind
+`IsReady()`), and give FRUC a clear-on-success mirroring the green-screen block. The strings were
+always latching; this branch is only what made it visible.
+
+### 5. Test
 
 One xUnit test in `tests/CameraOnScreen.Core.Tests/ViewModels/MainViewModelTests.cs`, next to
 `CameraError_survives_a_status_poll`: `OnStatus` publishes `ShimStatus.Error` to `StatusError`,
