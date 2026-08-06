@@ -516,6 +516,25 @@ public class MainViewModelTests
         Assert.Equal(1440, vm.FrameHeight);
     }
 
+    [Fact]
+    public void Hot_swap_clears_the_previous_cameras_frame_size()
+    {
+        // IsRunning deliberately stays true across a hot-swap, so without an explicit reset the
+        // status line would keep showing the OLD camera's resolution for the whole restart
+        // (worker join + device open + possible Maxine engine load — seconds), and indefinitely
+        // if the new camera never delivers a frame.
+        var vm = BuildWithCameras(out _, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.OnFrameReceived(2560, 1440, nowMs: 1000);
+        Assert.Equal(2560, vm.FrameWidth);
+
+        vm.SelectedCamera = vm.Cameras[1];
+
+        Assert.Equal(0, vm.FrameWidth);
+        Assert.Equal(0, vm.FrameHeight);
+    }
+
     // --- Disconnect watchdog (#57 / Task 4) ---
 
     // Drives the watchdog with an explicit clock. The first CheckLiveness call after a (re)start
@@ -567,7 +586,7 @@ public class MainViewModelTests
         for (long t = 1000; t <= 20_000; t += 500)
         {
             vm.OnFrameReceived(1280, 720, t);
-            vm.CheckLiveness(t);
+            vm.CheckLiveness(t + 400); // realistic 400 ms elapsed, still well under DisconnectMs
         }
         Assert.True(vm.IsRunning);
         Assert.Null(vm.CameraError);
@@ -632,6 +651,37 @@ public class MainViewModelTests
         vm.CheckLiveness(8001);
         Assert.False(vm.IsRunning);      // 5000 ms — grace expired, no frame arrived since the toggle
         Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void CameraError_survives_a_status_poll()
+    {
+        // The entire reason CameraError exists separately from StatusError: OnStatus fires on
+        // every PollStatusTick (every 250 ms in the app) and unconditionally overwrites
+        // StatusError, so a message written there would be wiped almost immediately. Assert the
+        // OnStatus round-trip inside PollStatusTick does not clear CameraError.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.CheckLiveness(6001); // no first frame ever -> watchdog stops, sets CameraError
+        Assert.Equal("No frames from camera", vm.CameraError);
+
+        vm.PollStatusTick();
+
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void Start_clears_a_stale_camera_error()
+    {
+        // A watchdog-triggered stop leaves CameraError on screen. Starting again must clear it,
+        // or a successful capture would run with "Camera disconnected" still displayed.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.CheckLiveness(6001);
+        Assert.Equal("No frames from camera", vm.CameraError);
+        Assert.False(vm.IsRunning);
+
+        vm.StartCommand.Execute(null);
+
+        Assert.Null(vm.CameraError);
     }
 
     private sealed class ControllableFpsShim : INativeShim

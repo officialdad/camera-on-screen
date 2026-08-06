@@ -84,7 +84,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void OnFrameReceived(int width, int height, long nowMs)
     {
         _lastFrameMs = nowMs;
-        if (width == FrameWidth && height == FrameHeight) return; // hot path: usually unchanged
         FrameWidth = width;
         FrameHeight = height;
     }
@@ -120,6 +119,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _lastFrameMs = null;
         _livenessAnchorMs = null;
         CameraError = null;
+    }
+
+    // Clears the negotiated frame size at the two session-start points (Start, hot-swap restart).
+    // Deliberately NOT folded into ResetLiveness: that method also runs from
+    // ResetLivenessIfRunning() on every discrete effect toggle, and blanking the size there would
+    // flicker the status line to 0x0 on each toggle for no reason — a restart is the only case
+    // where the OLD camera's resolution is actually stale. Without this, a hot-swap keeps
+    // rendering the previous camera's resolution for the whole restart (worker join + device open
+    // + possible Maxine engine load — seconds), and indefinitely if the new camera never delivers
+    // a frame, until the watchdog trips.
+    private void ResetFrameSize()
+    {
+        FrameWidth = 0;
+        FrameHeight = 0;
     }
 
     /// <summary>Runs the native capability probe off the UI thread, then publishes the result to the
@@ -286,6 +299,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _orchestrator.Start(BuildParams());
         _activeCameraId = value.Value.Id;
         ResetLiveness();
+        ResetFrameSize();
     }
 
     private void ApplyLiveParams()
@@ -341,6 +355,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _orchestrator.Start(BuildParams());
         _activeCameraId = SelectedCamera?.Id;
         ResetLiveness();
+        ResetFrameSize();
         IsRunning = true;
     }
 
