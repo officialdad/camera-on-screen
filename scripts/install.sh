@@ -19,6 +19,16 @@ EXE="CameraOnScreen.App.Avalonia"
 DEST="${COS_INSTALL_DIR:-$HOME/.local/share/camera-on-screen}"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
+# DEST gets rm -rf'd below — refuse anything that isn't a safe, absolute, non-home path.
+case "$DEST" in
+  /*) ;;
+  *) echo "ERROR: COS_INSTALL_DIR must be an absolute path (got '$DEST')." >&2; exit 1 ;;
+esac
+if [ "$DEST" = "/" ] || [ "$DEST" = "$HOME" ]; then
+  echo "ERROR: refusing to install into '$DEST'." >&2
+  exit 1
+fi
+
 for tool in curl tar zstd; do
   command -v "$tool" >/dev/null 2>&1 \
     || { echo "ERROR: '$tool' is required but not installed." >&2; exit 1; }
@@ -42,9 +52,11 @@ if [ -n "${COS_INSTALL_TARBALL:-}" ]; then
 else
   echo "Finding the latest release..."
   # The asset name carries the version, so there is no fixed /releases/latest/download/ URL.
+  # `|| true`: under pipefail, a no-match grep (or a failed curl) makes this whole
+  # assignment fail and set -e would abort here, before the check below ever runs.
   URL="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
     | grep -o '"browser_download_url": *"[^"]*linux-x64\.tar\.zst"' \
-    | head -1 | cut -d'"' -f4)"
+    | head -1 | cut -d'"' -f4)" || true
   [ -n "$URL" ] || { echo "ERROR: no Linux release asset found for $REPO." >&2; exit 1; }
   echo "Downloading $(basename "$URL") — about 1.9 GB, this takes a while..."
   TARBALL="$TMP/cos.tar.zst"
