@@ -16,7 +16,7 @@
 - `dotnet` is not on `PATH`. Use the absolute path `/home/ariff/.dotnet/dotnet`. `cmake` is `/home/ariff/.local/bin/cmake`.
 - Builds and tests must be **pristine — 0 warnings**. Native is `-Wall -Wextra -Werror`; C# is `TreatWarningsAsErrors`.
 - **Do not touch `src/CameraOnScreen.App/`** (WinUI). It cannot be compile-checked on this box and the Windows half of #59 is blocked on #38.
-- Effect labels are verbatim the Avalonia panel's control captions: `AI Green Screen`, `Eye Contact`, `AI Sharpness`, `Smooth 60 fps`.
+- Effect labels are verbatim the Avalonia panel's control captions: `AI Green Screen`, `Eye Contact`, `AI Sharpness`, `Smooth 60 fps (AI)`.
 - No new files in `src/` or `native/`. Every change is an edit to an existing file.
 
 ---
@@ -57,7 +57,7 @@ Replace those first four lines with the labelled form. Leave the `memcpy`/trunca
     const char* who = "AI Green Screen";
     if (err.empty()) { err = g_capture.EyeContactError();  who = "Eye Contact"; }
     if (err.empty()) { err = g_capture.SuperResError();    who = "AI Sharpness"; }
-    if (err.empty()) { err = g_capture.FrameInterpError(); who = "Smooth 60 fps"; }
+    if (err.empty()) { err = g_capture.FrameInterpError(); who = "Smooth 60 fps (AI)"; }
     if (!err.empty()) err = std::string(who) + ": " + err;
 ```
 

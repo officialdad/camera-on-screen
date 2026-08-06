@@ -45,7 +45,7 @@ std::string err = g_capture.GreenScreenError();
 const char* who = "AI Green Screen";
 if (err.empty()) { err = g_capture.EyeContactError();  who = "Eye Contact"; }
 if (err.empty()) { err = g_capture.SuperResError();    who = "AI Sharpness"; }
-if (err.empty()) { err = g_capture.FrameInterpError(); who = "Smooth 60 fps"; }
+if (err.empty()) { err = g_capture.FrameInterpError(); who = "Smooth 60 fps (AI)"; }
 if (!err.empty()) err = std::string(who) + ": " + err;
 ```
 
