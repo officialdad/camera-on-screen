@@ -69,16 +69,26 @@ public partial class MainWindow : Window
                 _services.Loaded.Overlay.TeleportModifiers,
                 (fw, fh) => _services.Vm.OnFrameReceived(fw, fh, Environment.TickCount64));
             // Alt+F4 on the frameless overlay closes it directly: remember where it was and
-            // let capture keep running; the next Stop/Start round-trip reopens it.
-            w.Closed += (_, _) => { if (ReferenceEquals(_overlay, w)) { _overlayBounds = BoundsOf(w); _overlay = null; } };
+            // let capture keep running; the next Stop/Start round-trip reopens it. Frame
+            // reporting stops with it, so the watchdog must stand down or it would read the
+            // closed pump's silence as a dead camera.
+            w.Closed += (_, _) =>
+            {
+                if (!ReferenceEquals(_overlay, w)) return;
+                _overlayBounds = BoundsOf(w);
+                _overlay = null;
+                _services.Vm.FrameReportingActive = false;
+            };
             w.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
             _overlay = w;
+            _services.Vm.FrameReportingActive = true;
             w.Show();
         }
         else if (!_services.Vm.IsRunning && _overlay is not null)
         {
             var w = _overlay;
             _overlay = null;
+            _services.Vm.FrameReportingActive = false;
             _overlayBounds = BoundsOf(w);
             w.Close();
         }

@@ -516,6 +516,99 @@ public class MainViewModelTests
         Assert.Equal(1440, vm.FrameHeight);
     }
 
+    // --- Disconnect watchdog (#57 / Task 4) ---
+
+    // Drives the watchdog with an explicit clock. The first CheckLiveness call after a (re)start
+    // anchors the window, mirroring what the 4 Hz status timer does in the app.
+    private static MainViewModel BuildRunningWithWatchdog(out FakeShim shim, long anchorMs)
+    {
+        var vm = BuildWithCameras(out shim, "a");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.FrameReportingActive = true;
+        vm.CheckLiveness(anchorMs);
+        return vm;
+    }
+
+    [Fact]
+    public void Watchdog_stops_capture_when_frames_stop_arriving()
+    {
+        // Killing scrcpy does not make v4l2loopback error — it just goes quiet. select() times
+        // out forever and the worker's break paths never fire, so only a timeout catches this.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.OnFrameReceived(1280, 720, nowMs: 1000);
+
+        vm.CheckLiveness(2999);
+        Assert.True(vm.IsRunning);      // 1999 ms of silence — not yet
+
+        vm.CheckLiveness(3001);
+        Assert.False(vm.IsRunning);     // 2001 ms — overlay closes via SyncOverlay
+        Assert.Equal("Camera disconnected", vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_stops_capture_when_no_first_frame_ever_arrives()
+    {
+        // The #55 symptom: device opens, negotiation fails, worker returns, nothing is surfaced.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+
+        vm.CheckLiveness(5999);
+        Assert.True(vm.IsRunning);      // 4999 ms — Start can legitimately take seconds
+                                        // while a Maxine effect initializes
+        vm.CheckLiveness(6001);
+        Assert.False(vm.IsRunning);
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_does_not_fire_while_frames_keep_arriving()
+    {
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        for (long t = 1000; t <= 20_000; t += 500)
+        {
+            vm.OnFrameReceived(1280, 720, t);
+            vm.CheckLiveness(t);
+        }
+        Assert.True(vm.IsRunning);
+        Assert.Null(vm.CameraError);
+    }
+
+    [Fact]
+    public void Watchdog_is_off_when_nothing_reports_frames()
+    {
+        // PollStatusTick is shared Core but only the Avalonia overlay reports frames. With the
+        // WinUI panel unwired (spec §9), an always-on watchdog would read Windows' silence as a
+        // dead camera and stop a healthy capture.
+        var vm = BuildWithCameras(out _, "a");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        // FrameReportingActive left false
+        vm.CheckLiveness(1000);
+        vm.CheckLiveness(999_000);
+        Assert.True(vm.IsRunning);
+        Assert.Null(vm.CameraError);
+    }
+
+    [Fact]
+    public void Hot_swap_resets_the_watchdog()
+    {
+        // A swap restarts capture on a new device, which gets its own grace period — otherwise
+        // the old camera's last-frame stamp would condemn the new one.
+        var vm = BuildWithCameras(out var shim, "a", "b");
+        vm.SelectedCamera = vm.Cameras[0];
+        vm.StartCommand.Execute(null);
+        vm.FrameReportingActive = true;
+        vm.CheckLiveness(1000);
+        vm.OnFrameReceived(640, 480, nowMs: 1000);
+
+        vm.SelectedCamera = vm.Cameras[1];   // swap at an unknown wall-clock instant
+        vm.CheckLiveness(1500);              // anchors the new window here
+
+        vm.CheckLiveness(3400);
+        Assert.True(vm.IsRunning);           // 1900 ms into the 5000 ms no-first-frame window
+        Assert.Equal(2, shim.StartCount);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

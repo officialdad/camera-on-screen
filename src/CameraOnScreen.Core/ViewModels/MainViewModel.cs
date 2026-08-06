@@ -30,9 +30,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // since the last (re)start.
     private long? _lastFrameMs;
 
+    // Silence thresholds. The no-first-frame window is the longer of the two: Start can
+    // legitimately take seconds while a Maxine effect loads its TensorRT engine.
+    private const long DisconnectMs = 2000;
+    private const long NoFirstFrameMs = 5000;
+
+    // Anchors the no-first-frame window. Set on the first CheckLiveness after a (re)start rather
+    // than at Start, so the VM never reads a clock itself and the tests stay deterministic.
+    private long? _livenessAnchorMs;
+
     // Shared shim instance — the frame pump (Task 12) pulls frames via ShimRef.TryGetFrame.
     // MUST be the same instance the Orchestrator drives, so Start/Stop and frame production agree.
     public INativeShim ShimRef { get; }
+
+    /// <summary>True only while something is pumping frames and reporting them via
+    /// <see cref="OnFrameReceived"/> — i.e. while the Avalonia overlay window is open. The
+    /// watchdog is off otherwise, so "nobody is reporting frames" means disabled, not dead.
+    /// The WinUI panel never sets this (spec §9), so Windows behaviour is unchanged.</summary>
+    public bool FrameReportingActive { get; set; }
 
     public MainViewModel(Orchestrator orchestrator, INativeShim shim)
     {
@@ -52,8 +67,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _orchestrator.StatusChanged += _statusHandler;
     }
 
-    // Driven by the UI-thread frame pump each tick to refresh status (fps/gaze/error).
-    public void PollStatusTick() => _orchestrator.PollStatus();
+    // Driven by the UI-thread status timer each tick to refresh status (fps/gaze/error) and to
+    // run the camera liveness watchdog.
+    public void PollStatusTick()
+    {
+        _orchestrator.PollStatus();
+        CheckLiveness(Environment.TickCount64);
+    }
 
     /// <summary>Called by the overlay's frame pump for every frame it successfully pulls.
     /// TryGetFrame returning true IS the liveness signal — Capture::LatestFrame clears its
@@ -67,6 +87,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (width == FrameWidth && height == FrameHeight) return; // hot path: usually unchanged
         FrameWidth = width;
         FrameHeight = height;
+    }
+
+    /// <summary>Auto-stop when the selected camera goes silent. Deliberately a timeout rather
+    /// than native error detection: when scrcpy dies, v4l2loopback does not report an error — it
+    /// just goes quiet, select() times out forever, and the capture worker's break paths never
+    /// fire. A timeout catches that, genuine ioctl failures, and the Windows equivalents with one
+    /// implementation. A frozen stale frame silently baked into a recording is worse than the
+    /// overlay visibly closing.</summary>
+    public void CheckLiveness(long nowMs)
+    {
+        if (!IsRunning || !FrameReportingActive) { _livenessAnchorMs = null; return; }
+        _livenessAnchorMs ??= nowMs;
+
+        long since = nowMs - (_lastFrameMs ?? _livenessAnchorMs.Value);
+        if (since < (_lastFrameMs is null ? NoFirstFrameMs : DisconnectMs)) return;
+
+        CameraError = _lastFrameMs is null ? "No frames from camera" : "Camera disconnected";
+        Stop();
+    }
+
+    // Clears the frame history so a (re)started camera gets its own grace period, instead of
+    // being condemned by the previous camera's last-frame stamp.
+    private void ResetLiveness()
+    {
+        _lastFrameMs = null;
+        _livenessAnchorMs = null;
+        CameraError = null;
     }
 
     /// <summary>Runs the native capability probe off the UI thread, then publishes the result to the
@@ -134,6 +181,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
+    [ObservableProperty] private string? cameraError;   // sticky: OnStatus must not clear it
 
     // VSR QualityLevel base per mode (Denoise=8, Deblur=12) + quality 0..3. Off => 0.
     // Upscale (1-4) dropped: wasted on a downscaled overlay.
@@ -222,6 +270,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (!IsRunning || value is null || value.Value.Id == _activeCameraId) return;
         _orchestrator.Start(BuildParams());
         _activeCameraId = value.Value.Id;
+        ResetLiveness();
     }
 
     private void ApplyLiveParams()
@@ -269,6 +318,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _orchestrator.Start(BuildParams());
         _activeCameraId = SelectedCamera?.Id;
+        ResetLiveness();
         IsRunning = true;
     }
 

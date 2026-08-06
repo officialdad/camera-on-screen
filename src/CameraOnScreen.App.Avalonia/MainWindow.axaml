@@ -67,6 +67,9 @@
                                     </TextBlock.Text>
                                 </TextBlock>
                             </StackPanel>
+                            <TextBlock Text="{Binding CameraError}" TextWrapping="Wrap"
+                                       Foreground="#E06C75"
+                                       IsVisible="{Binding CameraError, Converter={x:Static ObjectConverters.IsNotNull}}" />
                             <ToggleSwitch Content="Mirror (selfie view)" IsChecked="{Binding Mirror, Mode=TwoWay}" />
                             <ToggleSwitch Content="Lock exposure (steady FPS)"
                                           IsEnabled="{Binding ExposureSupported}"
