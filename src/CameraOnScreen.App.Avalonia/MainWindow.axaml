@@ -155,12 +155,9 @@
                                           IsChecked="{Binding FrameInterpEnabled, Mode=TwoWay}" />
                             <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !EffectsAvailable}"
                                        TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
-                            <!-- #59: native effect errors (green screen / eye contact / sharpness /
-                                 FRUC), polled every 250 ms. Bound raw and unlatched — cos_get_status
-                                 supplies the effect label and the capture backends clear the string
-                                 themselves, so there is nothing to format or reset here. Lives in
-                                 this card, not next to CameraError, because CosStatus.error only
-                                 ever carries effect failures. -->
+                            <!-- #59: labelled native effect error (green screen / eye contact /
+                                 sharpness / FRUC), polled every 250 ms. Lifetime contract lives in
+                                 CLAUDE.md's "Two error channels" bullet, not here. -->
                             <TextBlock Text="{Binding StatusError}" TextWrapping="Wrap"
                                        Foreground="{StaticResource Danger}"
                                        IsVisible="{Binding StatusError, Converter={x:Static ObjectConverters.IsNotNull}}" />

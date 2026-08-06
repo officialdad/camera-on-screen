@@ -22,7 +22,7 @@ Established before designing:
   (`native/shim/shim.cpp:93-101`). So `StatusError` carries **effect errors only** — never a
   capture error. That is what puts it in the AI Effects card rather than the Camera card.
 - It is **not sticky**. Both capture backends clear all four strings when the effect is switched
-  off, when a frame succeeds, and in `Capture::Stop` (`capture_v4l2.cpp:496-532,607-619`;
+  off, when a frame succeeds, and in `Capture::Stop` (`capture_v4l2.cpp:496-532,611-623`;
   `capture.cpp:425-544,628-638`). So after a watchdog auto-stop `StatusError` goes null on the
   next poll, and `CameraError` (sticky until the next `Start`) plus `StatusError` can only
   overlap for one 250 ms tick. **No priority or stacking logic is needed.**
@@ -108,7 +108,9 @@ Visual check is a throwaway, because **the app deliberately makes a post-probe e
 unreachable**: an unavailable engine is `IsEnabled="False"` in the combo, `EffectsAvailable`
 gates the toggles, and `Orchestrator.ApplyParams` coerces backend `2 → 0` when ONNX is
 unavailable — so no combination of `COS_*` env vars produces an error string in a running
-session. Procedure: add one scratch line in `capture_v4l2.cpp`'s worker setting
-`g_state.gsError`, run `scripts/publish-linux.sh`, launch, confirm the labelled red line renders
-in the AI Effects card and wraps, then `git checkout -- native/shim/capture_v4l2.cpp`. Confirm
-the scratch line is gone before committing.
+session. Procedure: add one scratch line in `cos_get_status` (`shim.cpp`) forcing `err`/`who`
+before the label is applied, `cmake --build native/shim/build`, then `dotnet run --project
+src/CameraOnScreen.App.Avalonia` — no camera, no running capture needed, since the status timer
+starts polling from panel startup and the scratch line is on the merge path itself. Confirm the
+labelled red line renders in the AI Effects card and wraps, then `git checkout -- native/shim/shim.cpp`
+and rebuild. Confirm the scratch line is gone before committing.

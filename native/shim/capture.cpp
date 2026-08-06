@@ -419,8 +419,8 @@ void Capture::WorkerLoop() {
                         const std::string& newErr = eyeContact.LastError();
                         if (g_state.ecError != newErr) g_state.ecError = newErr;
                     }
-                } else if (!ecWant && eyeContact.IsReady()) {
-                    eyeContact.Stop();
+                } else if (!ecWant) {
+                    if (eyeContact.IsReady()) eyeContact.Stop();
                     std::lock_guard<std::mutex> e(g_state.ecErrMtx);
                     if (!g_state.ecError.empty()) g_state.ecError.clear();
                 }
@@ -456,8 +456,8 @@ void Capture::WorkerLoop() {
                     } else {
                         srAppliedQuality = srQuality; srAppliedScale = srScale;
                     }
-                } else if (!srWant && superRes.IsReady()) {
-                    superRes.Stop();
+                } else if (!srWant) {
+                    if (superRes.IsReady()) superRes.Stop();
                     std::lock_guard<std::mutex> e(g_state.srErrMtx);
                     if (!g_state.srError.empty()) g_state.srError.clear();
                 }
@@ -538,8 +538,8 @@ void Capture::WorkerLoop() {
                     if (fruc.Start(curW, curH)) { fiW = curW; fiH = curH; }
                     else { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
                            if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError(); }
-                } else if (fruc.IsReady() && (!fiWant || curW != fiW || curH != fiH)) {
-                    fruc.Stop();
+                } else if (!fiWant || curW != fiW || curH != fiH) {
+                    if (fruc.IsReady()) fruc.Stop();
                     if (!fiWant) { std::lock_guard<std::mutex> e(g_state.fiErrMtx);
                                    if (!g_state.fiError.empty()) g_state.fiError.clear(); }
                 }
@@ -555,15 +555,19 @@ void Capture::WorkerLoop() {
                 bool fiApplied = false;
                 if (fiWant && fruc.IsReady()) {
                     std::vector<uint8_t> mid; bool hasMid = false;
-                    if (fruc.Submit(cur.data(), curW, curH, mid, hasMid)) {
-                        if (hasMid) {
-                            publish(mid, curW, curH);                  // midpoint first
-                            std::this_thread::sleep_for(std::chrono::milliseconds(8)); // pace toward 60Hz
-                            fiApplied = true;
-                        }
-                    } else {
+                    const bool submitOk = fruc.Submit(cur.data(), curW, curH, mid, hasMid);
+                    {
                         std::lock_guard<std::mutex> e(g_state.fiErrMtx);
-                        if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError();
+                        if (!submitOk) {
+                            if (g_state.fiError != fruc.LastError()) g_state.fiError = fruc.LastError();
+                        } else if (!g_state.fiError.empty()) {
+                            g_state.fiError.clear();
+                        }
+                    }
+                    if (submitOk && hasMid) {
+                        publish(mid, curW, curH);                  // midpoint first
+                        std::this_thread::sleep_for(std::chrono::milliseconds(8)); // pace toward 60Hz
+                        fiApplied = true;
                     }
                 }
                 g_state.frameInterpActive.store(fiApplied, std::memory_order_release);
