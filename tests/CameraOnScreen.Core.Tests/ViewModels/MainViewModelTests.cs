@@ -609,6 +609,31 @@ public class MainViewModelTests
         Assert.Equal(2, shim.StartCount);
     }
 
+    [Fact]
+    public void Effect_toggle_while_running_gets_the_no_first_frame_grace_not_the_disconnect_window()
+    {
+        // FINDING 1 (post-review fix): flipping a discrete effect (e.g. green screen) while
+        // running brings the worker's Maxine engine up inline (NvAR_Load / NvVFX_Load), which
+        // can take seconds and publishes no frames meanwhile. Without re-arming the watchdog,
+        // the stale _lastFrameMs from before the toggle would apply the short 2s DisconnectMs
+        // window and auto-stop a healthy capture mid-engine-load.
+        var vm = BuildRunningWithWatchdog(out _, anchorMs: 1000);
+        vm.OnFrameReceived(1280, 720, nowMs: 1000);
+
+        vm.GreenScreenEnabled = false;   // discrete toggle -> re-arms the watchdog
+
+        vm.CheckLiveness(3001);          // anchors here; 2001 ms past the OLD stale frame stamp —
+        Assert.True(vm.IsRunning);       // would have tripped "Camera disconnected" without the fix
+        Assert.Null(vm.CameraError);
+
+        vm.CheckLiveness(7999);
+        Assert.True(vm.IsRunning);       // 4998 ms into the new 5000 ms no-first-frame window — not yet
+
+        vm.CheckLiveness(8001);
+        Assert.False(vm.IsRunning);      // 5000 ms — grace expired, no frame arrived since the toggle
+        Assert.Equal("No frames from camera", vm.CameraError);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

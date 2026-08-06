@@ -97,7 +97,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// overlay visibly closing.</summary>
     public void CheckLiveness(long nowMs)
     {
-        if (!IsRunning || !FrameReportingActive) { _livenessAnchorMs = null; return; }
+        // Disarmed: clear _lastFrameMs too, not just the anchor. Otherwise a stale stamp from
+        // before the pump went away (e.g. Alt+F4 on the overlay) sits armed indefinitely, and
+        // the next FrameReportingActive false->true (reopening the overlay) would see a stale
+        // _lastFrameMs, apply the short DisconnectMs window instead of the no-first-frame grace,
+        // and fire "Camera disconnected" on the very first tick. A freshly-armed pump has
+        // reported no frame, so the 5s window is the correct one for it.
+        if (!IsRunning || !FrameReportingActive) { _lastFrameMs = null; _livenessAnchorMs = null; return; }
         _livenessAnchorMs ??= nowMs;
 
         long since = nowMs - (_lastFrameMs ?? _livenessAnchorMs.Value);
@@ -248,16 +254,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // green screen did nothing until the next Stop→Start. Gated on IsRunning so config load (LoadFrom)
     // and pre-start changes don't drive a not-yet-started shim — Start sends the initial params.
     // The MVVM-toolkit source generator calls these On…Changed partials after each property setter.
-    partial void OnGreenScreenEnabledChanged(bool value) => ApplyLiveParams();
+    //
+    // The six discrete-selection partials below also call ResetLivenessIfRunning(): flipping one of
+    // these brings the capture worker's engine up inline on the worker thread (NvAR_Load /
+    // NvVFX_Load — eyecontact.cpp/aigs.cpp), which publishes no frames for the load duration. With
+    // _lastFrameMs already set from before the toggle, CheckLiveness would otherwise apply the short
+    // 2s DisconnectMs window and auto-stop a healthy capture mid-engine-load. Re-arming gives that
+    // load the same 5s no-first-frame grace Start gets. NOT applied to the continuous sliders or
+    // ExposureLock: none of them can trigger an engine load, and re-arming on every slider tick would
+    // let a real disconnect hide behind idle UI fiddling for 5s at a time.
+    partial void OnGreenScreenEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnGreenScreenExpandChanged(double value) => ApplyLiveParams();
     partial void OnGreenScreenFeatherChanged(double value) => ApplyLiveParams();
-    partial void OnGreenScreenBackendIndexChanged(int value) => ApplyLiveParams();
-    partial void OnEyeContactEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnGreenScreenBackendIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnEyeContactEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnEyeContactSensitivityChanged(double value) => ApplyLiveParams();
     partial void OnEyeContactLookAwayRangeChanged(double value) => ApplyLiveParams();
-    partial void OnSuperResModeIndexChanged(int value) => ApplyLiveParams();
-    partial void OnSuperResQualityIndexChanged(int value) => ApplyLiveParams();
-    partial void OnFrameInterpEnabledChanged(bool value) => ApplyLiveParams();
+    partial void OnSuperResModeIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnSuperResQualityIndexChanged(int value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
+    partial void OnFrameInterpEnabledChanged(bool value) { ApplyLiveParams(); ResetLivenessIfRunning(); }
     partial void OnExposureLockChanged(bool value) => ApplyLiveParams();
     partial void OnExposureValueChanged(double value) => ApplyLiveParams();
 
@@ -276,6 +291,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void ApplyLiveParams()
     {
         if (IsRunning) _orchestrator.ApplyParams(BuildParams());
+    }
+
+    // Gated on IsRunning the same way ApplyLiveParams is, so a config load (LoadFrom) or a
+    // pre-Start change doesn't touch watchdog state.
+    private void ResetLivenessIfRunning()
+    {
+        if (IsRunning) ResetLiveness();
     }
 
     public ShimParams BuildParams() => new(
