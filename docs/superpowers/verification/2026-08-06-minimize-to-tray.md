@@ -24,5 +24,6 @@ Build and run: `dotnet run --project src/CameraOnScreen.App.Avalonia`
 | 15 | No-tray-host rehearsal: on a session with no StatusNotifierItem host, hide the panel, then walk the README recovery end to end (`pkill -f CameraOnScreen.App.Avalonia`, edit `"MinimizeToTray": false` in config.json, relaunch) | Panel reappears and X now exits normally, matching the README steps exactly |
 | 16 | Session logout or reboot with the panel open | The app does not block the logout/reboot and does not strand the capture worker (no hung process, no dialog blocking session end) |
 | 17 | Hide the panel, then `kill -9` the process, then relaunch | Config file is valid JSON on relaunch and the overlay reopens at its last-known geometry |
+| 18 | #61 scroll gate (instrumented, not an organic repro): temporarily change the `StatusErrorText` binding to a literal `Text="TEST ERROR"`, rebuild, launch, scroll the panel to the top, then let the panel finish its capability probe | The panel scrolls the red error line into view without the user scrolling. Revert the literal binding afterwards and rebuild |
 
 Result: ____ (date / tester / notes)

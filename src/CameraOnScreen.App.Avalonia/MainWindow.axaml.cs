@@ -70,6 +70,19 @@ public partial class MainWindow : Window
                 _overlay?.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
         };
 
+        // #61: the panel is 440x720 and its ScrollViewer content overflows, so this error line —
+        // the last child of the effects card — can appear below the fold. Scroll it in when it
+        // shows. Posted at Loaded priority, not called inline: the IsVisible change fires before
+        // layout has measured the newly-visible element, so an inline BringIntoView() would
+        // scroll to a stale rect. Deliberately NOT applied to CapabilityDetail/EyeContactDetail:
+        // those go visible when the startup capability probe lands, so scrolling them would open
+        // the panel pre-scrolled to the bottom on every launch on non-RTX hardware.
+        StatusErrorText.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty && StatusErrorText.IsVisible)
+                Dispatcher.UIThread.Post(() => StatusErrorText.BringIntoView(), DispatcherPriority.Loaded);
+        };
+
         Closing += (_, e) =>
         {
             CaptureOverlayBounds();
