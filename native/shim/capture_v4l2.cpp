@@ -96,6 +96,15 @@ int Xioctl(int fd, unsigned long req, void* arg) {
 
 uint8_t ClampU8(int v) { return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v)); }
 
+// BT.601 integer approximation, one pixel. u/v are already biased by -128.
+void YuvToBgra(int y, int u, int v, uint8_t* out) {
+    const int rc = (91881 * v) >> 16;
+    const int gc = (22554 * u + 46802 * v) >> 16;
+    const int bc = (116130 * u) >> 16;
+    out[0] = ClampU8(y + bc); out[1] = ClampU8(y - gc);
+    out[2] = ClampU8(y + rc); out[3] = 0xFF;
+}
+
 void YuyvToBgra(const uint8_t* src, int stride, int w, int h, uint8_t* dst) {
     // BT.601 integer approximation, 2 pixels per YUYV macropixel.
     for (int y = 0; y < h; ++y) {
@@ -148,10 +157,53 @@ void Bgrx32ToBgra(const uint8_t* src, int stride, int w, int h, uint8_t* dst) {
     }
 }
 
-// Formats we can convert, in preference order (cheapest conversion first).
+// Planar YUV 4:2:0 (YU12/I420): full-res Y plane, then half-res U, then half-res V.
+// What scrcpy's --v4l2-sink and most v4l2loopback writers emit. V4L2 reports the Y-plane
+// stride in bytesperline; the chroma planes are half that, with ceil(h/2) rows each.
+void I420ToBgra(const uint8_t* src, int stride, int w, int h, uint8_t* dst) {
+    const int cstride = stride / 2;
+    const int crows = (h + 1) / 2;
+    const uint8_t* up = src + static_cast<size_t>(stride) * h;
+    const uint8_t* vp = up + static_cast<size_t>(cstride) * crows;
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* yrow = src + static_cast<size_t>(stride) * y;
+        const uint8_t* urow = up + static_cast<size_t>(cstride) * (y / 2);
+        const uint8_t* vrow = vp + static_cast<size_t>(cstride) * (y / 2);
+        uint8_t* out = dst + static_cast<size_t>(w) * 4 * y;
+        for (int x = 0; x < w; ++x, out += 4)
+            YuvToBgra(yrow[x], urow[x / 2] - 128, vrow[x / 2] - 128, out);
+    }
+}
+
+// Semi-planar YUV 4:2:0 (NV12): full-res Y plane, then one interleaved UV plane at the
+// same stride. What several other virtual-camera sinks emit.
+void Nv12ToBgra(const uint8_t* src, int stride, int w, int h, uint8_t* dst) {
+    const uint8_t* uvp = src + static_cast<size_t>(stride) * h;
+    for (int y = 0; y < h; ++y) {
+        const uint8_t* yrow = src + static_cast<size_t>(stride) * y;
+        const uint8_t* uvrow = uvp + static_cast<size_t>(stride) * (y / 2);
+        uint8_t* out = dst + static_cast<size_t>(w) * 4 * y;
+        for (int x = 0; x < w; ++x, out += 4) {
+            const int c = x & ~1;
+            YuvToBgra(yrow[x], uvrow[c] - 128, uvrow[c + 1] - 128, out);
+        }
+    }
+}
+
+// Formats we can convert, in preference order (cheapest conversion first). Order only
+// breaks scoring ties — NegotiateFormat picks on fps then resolution.
 const uint32_t kSupportedFormats[] = {
     V4L2_PIX_FMT_XBGR32, V4L2_PIX_FMT_BGR24, V4L2_PIX_FMT_RGB24, V4L2_PIX_FMT_YUYV,
+    V4L2_PIX_FMT_YUV420, V4L2_PIX_FMT_NV12,
 };
+
+// Preferred cap: real cameras stay <=1080p (fps-first scoring below). Virtual cameras
+// (v4l2loopback / scrcpy) often expose a single oversized mode and nothing else, so an
+// oversize mode is taken as a fallback rather than failing to open — smallest one wins.
+// The hard cap is the 4K frame buffer the apps allocate; above it cos_get_frame would
+// reject every frame on capacity.
+constexpr int kPreferredMaxW = 1920, kPreferredMaxH = 1080;
+constexpr int kHardMaxW = 3840, kHardMaxH = 2160;
 
 bool IsSupported(uint32_t fmt) {
     for (uint32_t f : kSupportedFormats) if (f == fmt) return true;
@@ -165,6 +217,8 @@ bool NegotiateFormat(int fd, v4l2_format& outFmt, v4l2_fract& outInterval) {
     uint32_t bestFmt = 0; int bestW = 0, bestH = 0;
     v4l2_fract bestIv{0, 1};
     double bestScore = -1.0;
+    uint32_t fbFmt = 0; int fbW = 0, fbH = 0;   // smallest oversize mode, used only if nothing fits
+    double fbArea = -1.0;
 
     v4l2_fmtdesc fmtDesc{};
     fmtDesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -180,7 +234,13 @@ bool NegotiateFormat(int fd, v4l2_format& outFmt, v4l2_fract& outInterval) {
             } else { // stepwise/continuous: take a safe common size within bounds
                 w = 1280; h = 720;
             }
-            if (w <= 0 || h <= 0 || w > 1920 || h > 1080) {
+            if (w <= 0 || h <= 0 || w > kPreferredMaxW || h > kPreferredMaxH) {
+                if (w > 0 && h > 0 && w <= kHardMaxW && h <= kHardMaxH) {
+                    const double area = static_cast<double>(w) * h;
+                    if (fbArea < 0.0 || area < fbArea) {
+                        fbArea = area; fbFmt = fmtDesc.pixelformat; fbW = w; fbH = h;
+                    }
+                }
                 if (fs.type != V4L2_FRMSIZE_TYPE_DISCRETE) break;
                 continue;
             }
@@ -209,7 +269,13 @@ bool NegotiateFormat(int fd, v4l2_format& outFmt, v4l2_fract& outInterval) {
             if (fs.type != V4L2_FRMSIZE_TYPE_DISCRETE) break;
         }
     }
-    if (bestScore < 0.0) return false;
+    if (bestScore < 0.0) {
+        if (fbArea < 0.0) return false;
+        // Oversize fallback. No interval is applied: v4l2loopback advertises a garbage
+        // discrete interval (numerator 0xFFFFFFFF), and pushing that through S_PARM would
+        // ask the driver for one frame per 136 years. It free-runs at the writer's rate.
+        bestFmt = fbFmt; bestW = fbW; bestH = fbH; bestIv = v4l2_fract{0, 1};
+    }
 
     v4l2_format fmt{};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -386,6 +452,8 @@ void Capture::WorkerLoop() {
                 case V4L2_PIX_FMT_BGR24:  Bgr24ToBgra(src, stride, width, height, bgra.data()); break;
                 case V4L2_PIX_FMT_RGB24:  Rgb24ToBgra(src, stride, width, height, bgra.data()); break;
                 case V4L2_PIX_FMT_YUYV:   YuyvToBgra(src, stride, width, height, bgra.data()); break;
+                case V4L2_PIX_FMT_YUV420: I420ToBgra(src, stride, width, height, bgra.data()); break;
+                case V4L2_PIX_FMT_NV12:   Nv12ToBgra(src, stride, width, height, bgra.data()); break;
                 default: break;
             }
 
