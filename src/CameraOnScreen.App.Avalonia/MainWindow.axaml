@@ -21,6 +21,7 @@
         <SolidColorBrush x:Key="CardBg" Color="#0A808080" />
         <SolidColorBrush x:Key="CardStroke" Color="#33808080" />
         <SolidColorBrush x:Key="Caution" Color="#E0A000" />
+        <SolidColorBrush x:Key="Danger" Color="#E06C75" />
     </Window.Resources>
 
     <Grid RowDefinitions="*,Auto">
@@ -68,7 +69,7 @@
                                 </TextBlock>
                             </StackPanel>
                             <TextBlock Text="{Binding CameraError}" TextWrapping="Wrap"
-                                       Foreground="#E06C75"
+                                       Foreground="{StaticResource Danger}"
                                        IsVisible="{Binding CameraError, Converter={x:Static ObjectConverters.IsNotNull}}" />
                             <ToggleSwitch Content="Mirror (selfie view)" IsChecked="{Binding Mirror, Mode=TwoWay}" />
                             <ToggleSwitch Content="Lock exposure (steady FPS)"
@@ -154,6 +155,15 @@
                                           IsChecked="{Binding FrameInterpEnabled, Mode=TwoWay}" />
                             <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !EffectsAvailable}"
                                        TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
+                            <!-- #59: native effect errors (green screen / eye contact / sharpness /
+                                 FRUC), polled every 250 ms. Bound raw and unlatched — cos_get_status
+                                 supplies the effect label and the capture backends clear the string
+                                 themselves, so there is nothing to format or reset here. Lives in
+                                 this card, not next to CameraError, because CosStatus.error only
+                                 ever carries effect failures. -->
+                            <TextBlock Text="{Binding StatusError}" TextWrapping="Wrap"
+                                       Foreground="{StaticResource Danger}"
+                                       IsVisible="{Binding StatusError, Converter={x:Static ObjectConverters.IsNotNull}}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
