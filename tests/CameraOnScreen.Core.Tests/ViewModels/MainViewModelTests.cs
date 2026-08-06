@@ -684,6 +684,20 @@ public class MainViewModelTests
         Assert.Null(vm.CameraError);
     }
 
+    [Fact]
+    public void MinimizeToTray_round_trips_through_the_view_model()
+    {
+        var vm = Build(GpuTier.Rtx, out _);
+        Assert.True(vm.MinimizeToTray);   // default on, before any config load
+
+        vm.LoadFrom(new AppConfig { MinimizeToTray = false });
+        Assert.False(vm.MinimizeToTray);
+        Assert.False(vm.ToAppConfig(0, 0, 320, 240).MinimizeToTray);
+
+        vm.LoadFrom(new AppConfig { MinimizeToTray = true });
+        Assert.True(vm.ToAppConfig(0, 0, 320, 240).MinimizeToTray);
+    }
+
     private sealed class ControllableFpsShim : INativeShim
     {
         public double FpsValue { get; set; }

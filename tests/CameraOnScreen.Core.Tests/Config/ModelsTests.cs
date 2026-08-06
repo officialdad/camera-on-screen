@@ -56,4 +56,30 @@ public class ModelsTests
         Assert.Equal(c.Effects, back.Effects);
         Assert.True(back.Hotkeys.SequenceEqual(c.Hotkeys));
     }
+
+    [Fact]
+    public void MinimizeToTray_defaults_on_and_round_trips_when_disabled()
+    {
+        Assert.True(new AppConfig().MinimizeToTray);
+
+        var json = ConfigSerializer.Serialize(new AppConfig { MinimizeToTray = false });
+        Assert.False(ConfigSerializer.Deserialize(json).MinimizeToTray);
+    }
+
+    [Fact]
+    public void MinimizeToTray_absent_from_json_stays_enabled()
+    {
+        // A config.json written before the feature existed has no key at all: System.Text.Json
+        // leaves the property at its initializer, so upgrading users get the tray by default.
+        var back = ConfigSerializer.Deserialize("{ \"CameraId\": \"cam\" }");
+        Assert.True(back.MinimizeToTray);
+    }
+
+    [Fact]
+    public void MinimizeToTray_participates_in_equality()
+    {
+        // AppConfig.Equals is hand-written — a field left out of it silently makes the
+        // "did anything change?" comparison lie.
+        Assert.NotEqual(new AppConfig(), new AppConfig { MinimizeToTray = false });
+    }
 }

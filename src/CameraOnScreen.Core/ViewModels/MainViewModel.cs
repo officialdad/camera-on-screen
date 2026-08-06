@@ -197,6 +197,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool exposureSupported;        // camera exposes manual exposure (status poll, while running)
     [ObservableProperty] private bool isRunning;
     [ObservableProperty] private bool mirror;
+    // Panel-window behavior only — deliberately has no On…Changed partial: it drives no native
+    // params, so it must not call ApplyLiveParams or ResetLivenessIfRunning.
+    [ObservableProperty] private bool minimizeToTray = true;
     [ObservableProperty] private double fps;
     [ObservableProperty] private string? statusError;
     [ObservableProperty] private GazeState gaze;
@@ -227,6 +230,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         ExposureValue = Math.Clamp(config.Effects.ExposureValue, 0.0, 1.0);
         FrameInterpEnabled = config.Effects.FrameInterpEnabled;
         Mirror = config.Overlay.Mirror;
+        MinimizeToTray = config.MinimizeToTray;
         _teleportModifiers = config.Overlay.TeleportModifiers;
         _hotkeys = config.Hotkeys;
         if (config.CameraId is not null)
@@ -238,6 +242,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public AppConfig ToAppConfig(double x, double y, double w, double h) => new()
     {
         CameraId = SelectedCamera?.Id,
+        MinimizeToTray = MinimizeToTray,
         Overlay = new OverlaySettings
         {
             X = x, Y = y, Width = w, Height = h,
