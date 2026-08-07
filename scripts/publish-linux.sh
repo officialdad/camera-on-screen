@@ -61,6 +61,9 @@ cp "$CACHE/saved_model_tflite_tfjs_tftrt_onnx_coreml/model_float32.onnx" "$OUT/o
 # selfie-segmentation ONNX conversion per THIRD-PARTY-NOTICES.md).
 cp native/shim/bundle/APACHE-2.0.txt "$OUT/onnx/MODEL-LICENSE"
 cp THIRD-PARTY-NOTICES.md "$OUT/"
+# Desktop-entry icon: cos.png is an AvaloniaResource (embedded in the assembly), so the tree
+# would otherwise carry no image file for scripts/install.sh's .desktop Icon= to point at.
+cp cos.png "$OUT/"
 
 if strings "$OUT/libCameraOnScreen.Shim.so" | grep -q "not built in"; then
   echo "ERROR: stub shim deployed (deploy-the-right-shim)" >&2; exit 1

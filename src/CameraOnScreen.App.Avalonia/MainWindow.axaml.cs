@@ -19,11 +19,20 @@ public partial class MainWindow : Window
     // Last-known overlay geometry: seeded from config, refreshed every time the overlay
     // closes, written back to config on panel exit.
     private (double X, double Y, double W, double H) _overlayBounds;
-    // Latched true by the Opened event, never reset. Guards the minimize-to-tray handler
-    // below: without it, a transient WindowState == Minimized during X11 map (or a WM
-    // restoring a previously iconified state) fires Hide() before the window has ever been
-    // shown to the user — the unattributed "tray icon but no panel window" launch.
-    private bool _opened;
+    // Gates the minimize-to-tray handler below. NOT latched on Opened (#62): Window.ShowCore
+    // raises Opened synchronously right after PlatformImpl.Show, and X11Window.Show is only
+    // XMapWindow + XFlush, so every WindowState transition arrives later from a PropertyNotify
+    // on _NET_WM_STATE — an Opened latch is already true before any state change can be seen and
+    // blocks nothing. Set instead by whichever comes first: a transition to a non-Minimized
+    // state (the WM clearing its transient _NET_WM_STATE_HIDDEN, i.e. the window is genuinely
+    // up), or a 1 s grace timer from Opened for the quiet launch that emits no transition at all.
+    private bool _armed;
+
+    // #61 scroll debounce: see the StatusErrorText handler below. Seeded 10 s *before*
+    // construction time, not 0 — Environment.TickCount64 counts from system boot, not app
+    // start, so a 0 seed would suppress a genuine first error inside the first 10 s of uptime.
+    private long _lastErrorScrollMs = Environment.TickCount64 - ErrorScrollDebounceMs;
+    private const long ErrorScrollDebounceMs = 10_000;
 
     public MainWindow()
     {
@@ -36,25 +45,21 @@ public partial class MainWindow : Window
 
         _tray = new Tray.TrayController(_services.Vm, ShowPanel, Quit);
 
-        Opened += (_, _) => _opened = true;
+        Opened += (_, _) => DispatcherTimer.RunOnce(() => _armed = true, TimeSpan.FromSeconds(1));
 
         // Minimize means "get out of the way", same as close: hide to the tray instead. Do NOT
-        // also write WindowState = Normal here — that write races the WM's own async iconify
-        // and wins, so the window never actually unmaps (measured on KDE/XWayland: the window
-        // never left the mapped state, because the WindowState = Normal write beat the WM's
-        // async deiconify). ShowPanel() already resets WindowState to Normal on restore, so a
-        // later restore still comes back as a normal window, not a minimized one. Gated on
-        // _opened: without that latch, a transient WindowState == Minimized during X11 map (or
-        // a WM restoring a previously iconified state) hides the window before it was ever shown.
+        // also write WindowState = Normal here — that write races the WM's own async deiconify
+        // and wins, so the window bounces back visible and cannot be minimized at all (measured
+        // on KDE/XWayland). ShowPanel() sets WindowState = Normal on the restore side, which is
+        // where it belongs. Gated on _armed so a transient _NET_WM_STATE_HIDDEN during X11 map
+        // cannot hide the panel before the user has ever seen it (#62).
         PropertyChanged += (_, e) =>
         {
-            if (e.Property == WindowStateProperty
-                && WindowState == WindowState.Minimized
-                && _opened
-                && _services.Vm.MinimizeToTray)
-            {
-                Hide();
-            }
+            if (e.Property != WindowStateProperty) return;
+            // Any non-minimized state means the window is genuinely up — arm immediately rather
+            // than waiting out the grace timer.
+            if (WindowState != WindowState.Minimized) { _armed = true; return; }
+            if (_armed && _services.Vm.MinimizeToTray) Hide();
         };
 
         // Status is polled, never pushed (repo contract). The overlay runs its own 33 ms
@@ -69,6 +74,34 @@ public partial class MainWindow : Window
             else if (e.PropertyName == nameof(MainViewModel.Mirror)) _overlay?.SetMirror(_services.Vm.Mirror);
             else if (e.PropertyName is nameof(MainViewModel.FrameInterpEnabled) or nameof(MainViewModel.FrameInterpAvailable))
                 _overlay?.SetFrameInterp(_services.Vm.FrameInterpEnabled && _services.Vm.FrameInterpAvailable);
+        };
+
+        // #61: the panel is 440x720 and its ScrollViewer content overflows, so this error line —
+        // the last child of the effects card — can appear below the fold. Scroll it in when it
+        // shows. Posted at Loaded priority, not called inline: the IsVisible change fires before
+        // layout has measured the newly-visible element, so an inline BringIntoView() would
+        // scroll to a stale rect. Deliberately NOT applied to CapabilityDetail/EyeContactDetail:
+        // those go visible when the startup capability probe lands, so scrolling them would open
+        // the panel pre-scrolled to the bottom on every launch on non-RTX hardware.
+        //
+        // Debounced to at most once per 10 s: the native error string is cleared on effect-off,
+        // on the next good frame, and in Capture::Stop, and OnStatus writes StatusError verbatim
+        // on every 250 ms poll, so an intermittent effect failure (fails, recovers, fails again)
+        // produces a repeating false->true edge — without the debounce, each edge force-scrolls
+        // the panel away from wherever the user is reading.
+        StatusErrorText.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != IsVisibleProperty || !StatusErrorText.IsVisible) return;
+            var now = Environment.TickCount64;
+            if (now - _lastErrorScrollMs < ErrorScrollDebounceMs) return;
+            _lastErrorScrollMs = now;
+            Dispatcher.UIThread.Post(() =>
+            {
+                // Re-check IsVisible: an element that went hidden again before this callback
+                // ran keeps a zero-size layout slot, and BringIntoView on it can still scroll
+                // the viewer.
+                if (StatusErrorText.IsVisible) StatusErrorText.BringIntoView();
+            }, DispatcherPriority.Loaded);
         };
 
         Closing += (_, e) =>
