@@ -26,9 +26,14 @@
     </Window.Resources>
 
     <Grid RowDefinitions="*,Auto">
-        <!-- Controls scroll; the license-required footer (row 1) stays pinned outside. -->
-        <ScrollViewer Grid.Row="0" Padding="16">
-            <StackPanel Spacing="16">
+        <!-- Controls scroll; the license-required footer (row 1) stays pinned outside.
+             The 16 px inset is the CONTENT'S Margin, never the ScrollViewer's Padding (#66):
+             ScrollContentPresenter arranges with Padding but leaves it out of the extent, so
+             `Padding="16"` made the bottom 32 px unreachable at any window height — measured
+             extent 1200 vs content 1232 — clipping the last control ("Smooth 60 fps (AI)")
+             whenever the panel was small enough to need scrolling at all. Margin is counted. -->
+        <ScrollViewer Grid.Row="0">
+            <StackPanel Spacing="16" Margin="16">
 
                 <Border Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardStroke}"
                         BorderThickness="1" CornerRadius="8" Padding="12">

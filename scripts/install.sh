@@ -78,13 +78,23 @@ tar -C "$DEST" --zstd -xf "$TARBALL"
 chmod +x "$DEST/$EXE"
 
 mkdir -p "$APPS"
+# An Icon= pointing at a path that does not exist renders as a blank/generic icon with no error
+# anywhere. This script is fetched from main but installs the latest RELEASE, and tarballs up to
+# v0.11.1 predate `cp cos.png` in publish-linux.sh — so only emit the line when the file is
+# really there, and say so when it is not (#65). A blank line inside [Desktop Entry] is ignored
+# per the desktop-entry spec.
+ICON_LINE="Icon=$DEST/cos.png"
+if [ ! -f "$DEST/cos.png" ]; then
+  ICON_LINE=""
+  echo "WARNING: this release ships no cos.png; the menu entry will use a default icon." >&2
+fi
 cat > "$APPS/camera-on-screen.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Camera-on-Screen
 Comment=Always-on-top webcam overlay for recording and screen sharing
 Exec=$DEST/$EXE
-Icon=$DEST/cos.png
+$ICON_LINE
 Terminal=false
 Categories=AudioVideo;Video;
 EOF

@@ -74,5 +74,19 @@ if [ "$TAR" = 1 ]; then
   VER=$(git describe --tags --always 2>/dev/null || echo dev)
   PKG="$(dirname "$OUT")/CameraOnScreen-$VER-linux-x64.tar.zst"
   tar -C "$OUT" --use-compress-program='zstd -T0 -12' -cf "$PKG" .
+  # scripts/install.sh depends on three properties of this asset that nothing else checks:
+  # packed FLAT (no top-level directory), cos.png at the root, and the linux-x64.tar.zst suffix
+  # its GitHub-API match greps for. Breaking any one of them breaks end-user installs silently
+  # (#65 — cos.png was absent for a whole release and the install still reported success), so
+  # assert them here, against the produced artifact, rather than trusting the lines above.
+  case "$PKG" in
+    *-linux-x64.tar.zst) ;;
+    *) echo "ERROR: asset name must end in -linux-x64.tar.zst (got $(basename "$PKG"))" >&2; exit 1 ;;
+  esac
+  LIST="$(tar --zstd -tf "$PKG")"
+  for want in "./CameraOnScreen.App.Avalonia" "./cos.png" "./THIRD-PARTY-NOTICES.md"; do
+    printf '%s\n' "$LIST" | grep -qxF "$want" \
+      || { echo "ERROR: $want missing from the root of $PKG (not packed flat?)" >&2; exit 1; }
+  done
   echo "OK: $PKG ($(stat -c %s "$PKG" | awk '{printf "%.2f GiB", $1/1073741824}'))"
 fi
