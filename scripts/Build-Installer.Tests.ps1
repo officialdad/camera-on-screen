@@ -30,7 +30,7 @@ Describe 'installer-iss' {
         $script:text | Should -Match 'mbInformation'
         $script:text | Should -Match 'MB_OK'
     }
-    It 'presents a combined end-user license, not MIT-only (NVIDIA Maxine flow-down, §1.2(v))' {
+    It 'presents a combined end-user license, not MIT-only (NVIDIA Maxine flow-down, sec. 1.2(v))' {
         # The license page the user accepts must cover the bundled NVIDIA Maxine components,
         # whose redistribution terms require end-user terms consistent with NVIDIA's license.
         $script:text | Should -Match 'LicenseFile=COMBINED-LICENSE\.txt'
