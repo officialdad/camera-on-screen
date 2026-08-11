@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   READ-ONLY probe of the NGC nvidia/maxine model registry. Lists every Maxine model, each
-  version, and which GPU arches (smNN) it ships Windows engines for — to answer issue #2
+  version, and which GPU arches (smNN) it ships Windows engines for - to answer issue #2
   (multi-GPU): does NGC host non-Ampere (sm75/89/100/120) engine packages CO-VERSIONED with
   our shipped runtimes (VFX 0.7.x green screen + AR 0.8.x gaze, TensorRT 10.4)?
 
@@ -60,7 +60,7 @@ foreach ($col in @('maxine_vfx_sdk', 'vfx_sdk', 'maxine_ar_sdk', 'ar_sdk', 'maxi
     } catch { Write-Host "  collection '$col': n/a" -ForegroundColor DarkGray }
 }
 
-# (b) curated candidates — VFX (known) + AR gaze/face guesses (NGC naming unknown, probe many)
+# (b) curated candidates - VFX (known) + AR gaze/face guesses (NGC naming unknown, probe many)
 $candidates = @(
     'nvvfxgreenscreen','nvvfxvideosuperres','nvvfxdenoising','nvvfxupscale',
     'nvvfxbackgroundblur','nvvfxrelighting','nvvfxaigsrelighting','nvvfxartifactreduction',

@@ -60,7 +60,7 @@ $licenses = @(
 )
 
 if ($DryRun) {
-    Write-Host "DRY RUN — assemble stage at $OutStage"
+    Write-Host "DRY RUN - assemble stage at $OutStage"
     Write-Host "  VFX bin DLLs (shared + NVVideoEffects dispatcher) <- $VfxSdk\bin"
     Write-Host "  nvVFXGreenScreen.dll <- $VfxSdk\features\nvvfxgreenscreen\bin"
     Write-Host "  nvVFXVideoSuperRes.dll + nvngx_vsr.dll <- $VfxSdk\features\nvvfxvideosuperres\bin"

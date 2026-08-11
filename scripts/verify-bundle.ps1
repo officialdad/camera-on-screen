@@ -23,7 +23,7 @@ $maxine   = Join-Path $StagingDir 'maxine'
 $probeExe = Join-Path $StagingDir 'bundle_probe.exe'
 
 if ($DryRun) {
-    Write-Host "DRY RUN — bundle verify plan:"
+    Write-Host "DRY RUN - bundle verify plan:"
     Write-Host "  1. compile $ProbeBat -> $probeExe   (VfxSdkDir=$VfxSdkDir ArSdkDir=$ArSdkDir)"
     Write-Host "  2. run $probeExe from $StagingDir with COS_*_RUNTIME_DIR unset (app-relative maxine\ tier)"
     Write-Host "  3. require exit 0 = both Maxine effects load from the bundled maxine\ ($maxine)"
@@ -31,7 +31,7 @@ if ($DryRun) {
 }
 
 if (-not (Test-Path -LiteralPath $maxine)) {
-    throw "no maxine\ in staging '$StagingDir' — run the bundler/installer first; nothing to verify"
+    throw "no maxine\ in staging '$StagingDir' - run the bundler/installer first; nothing to verify"
 }
 
 # 1. Build the probe INTO the staging dir so ShimModuleDir() (the probe exe's own dir) resolves
@@ -50,4 +50,4 @@ try { & $probeExe; $rc = $LASTEXITCODE } finally { Pop-Location }
 if ($rc -ne 0) {
     throw "bundle verify FAILED ($rc): effects did not load from the bundled maxine\ with COS_* unset"
 }
-Write-Host "bundle verify OK — both Maxine effects load from $maxine"
+Write-Host "bundle verify OK - both Maxine effects load from $maxine"

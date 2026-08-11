@@ -28,6 +28,13 @@ API returned 403 for the current account — repo-level is the fallback).
 ## Required prerequisites on the runner machine
 
 - .NET 8 SDK
+- **PowerShell 7** (`pwsh`), installed **machine-wide**
+  (`winget install Microsoft.PowerShell --scope machine`). Every `release-windows` step in
+  `release.yml` declares `shell: pwsh`. GitHub-*hosted* runners ship it; self-hosted Windows
+  boxes do **not**, and without it the job fails at its first step. (The repo's `.ps1` files are
+  additionally kept ASCII-only so they still parse under Windows PowerShell 5.1 — 5.1 reads
+  BOM-less files in the ANSI codepage, so a stray `—` used to break `build-installer.ps1`,
+  `verify-bundle.ps1` and `assemble-maxine-stage.ps1` at parse time.)
 - Visual Studio 2022 Build Tools + MSVC v143 (provides MSBuild + `dumpbin`)
 - A clone/install of the NVIDIA Maxine VFX SDK and AR SDK (build sources)
 

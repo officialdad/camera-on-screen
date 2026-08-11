@@ -59,13 +59,13 @@ function Assert-ShimHasEffects {
     $hasGaze = $exports -match 'GazeRedirection' -or $strings -match 'GazeRedirection'
     $isStub  = $strings -match 'not built in'
     Write-Host "shim check: GreenScreen=$hasGS GazeRedirection=$hasGaze stub=$isStub"
-    if (-not $hasGS)   { throw "deployed shim lacks GreenScreen — green-screen effect not built in (built the stub last?)" }
-    if (-not $hasGaze) { throw "deployed shim lacks GazeRedirection — eye-contact effect not built in" }
+    if (-not $hasGS)   { throw "deployed shim lacks GreenScreen - green-screen effect not built in (built the stub last?)" }
+    if (-not $hasGaze) { throw "deployed shim lacks GazeRedirection - eye-contact effect not built in" }
     if ($isStub)       { throw "deployed shim is the passthrough STUB ('not built in' present)" }
 }
 
 # One-time timing split so the next release run shows where the ~7 min goes (shim vs dotnet vs
-# ISCC). Stopwatch, NOT Measure-Command — the latter swallows the child build stdout we need in CI.
+# ISCC). Stopwatch, NOT Measure-Command - the latter swallows the child build stdout we need in CI.
 $script:Timings = [ordered]@{}
 function Invoke-Timed {
     param([string]$Label, [scriptblock]$Block)
@@ -79,7 +79,7 @@ function Invoke-Timed {
 $isccExe = Resolve-Iscc -Explicit $IsccPath
 
 if ($DryRun) {
-    Write-Host "DRY RUN — installer build plan (version $Version):"
+    Write-Host "DRY RUN - installer build plan (version $Version):"
     Write-Host "  1. MSBuild $shimProj /p:Configuration=$Configuration /p:Platform=x64   (SkipShimBuild=$SkipShimBuild)"
     Write-Host "  2. dotnet build $appProj -c $Configuration -r win-x64 -p:SelfContained=true -p:Platform=x64 -t:Rebuild -o $StagingDir"
     Write-Host "  3. export-verify $StagingDir\CameraOnScreen.Shim.dll (GreenScreen + GazeRedirection, not stub)"
@@ -102,7 +102,7 @@ if (-not $SkipShimBuild) {
 #    Use `dotnet build` (NOT `dotnet publish`): for this unpackaged WinUI 3 app, publish drops
 #    the app PRI + compiled XAML (CameraOnScreen.App.pri / App.xbf / MainWindow.xbf), so the
 #    published exe dies at startup with XamlParseException 0x802B000A. `build -p:SelfContained=true`
-#    bundles the .NET runtime AND keeps the XAML resources — the repo's proven run path.
+#    bundles the .NET runtime AND keeps the XAML resources - the repo's proven run path.
 if (Test-Path -LiteralPath $StagingDir) {
     $existing = @(Get-ChildItem -LiteralPath $StagingDir -Force)
     if ($existing.Count -gt 0 -and -not (Test-Path -LiteralPath (Join-Path $StagingDir 'CameraOnScreen.App.exe'))) {
@@ -120,13 +120,13 @@ Invoke-Timed 'dotnet-build' {
 Assert-ShimHasEffects -Dll (Join-Path $StagingDir 'CameraOnScreen.Shim.dll')
 
 # 4. Bundle the Maxine runtime into <staging>\maxine\ by pruning the pre-assembled stage.
-if (-not $MaxineStage) { throw "no -MaxineStage (or `$env:COS_MAXINE_STAGE) — assemble one first with scripts/assemble-maxine-stage.ps1" }
+if (-not $MaxineStage) { throw "no -MaxineStage (or `$env:COS_MAXINE_STAGE) - assemble one first with scripts/assemble-maxine-stage.ps1" }
 Invoke-Timed 'bundle-maxine' { & $bundler -OutDir $StagingDir -MaxineStage $MaxineStage }
 if (-not (Test-Path -LiteralPath (Join-Path $StagingDir 'maxine'))) { throw "bundler did not produce maxine\ in $StagingDir" }
 
 # 5. Compile the installer.
 $stagedExe = Join-Path $StagingDir 'CameraOnScreen.App.exe'
-if (-not (Test-Path -LiteralPath $stagedExe)) { throw "staging is missing CameraOnScreen.App.exe — publish incomplete; refusing to package" }
+if (-not (Test-Path -LiteralPath $stagedExe)) { throw "staging is missing CameraOnScreen.App.exe - publish incomplete; refusing to package" }
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'dist') | Out-Null
 Invoke-Timed 'iscc-compile' {
     & $isccExe $iss "/DSourceDir=$StagingDir" "/DAppVersion=$Version"
