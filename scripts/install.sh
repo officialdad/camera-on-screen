@@ -18,6 +18,7 @@ REPO="officialdad/camera-on-screen"
 EXE="CameraOnScreen.App.Avalonia"
 DEST="${COS_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/camera-on-screen}"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICONS="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps"
 
 # DEST gets rm -rf'd below — refuse anything that isn't a safe, absolute, non-home path.
 case "$DEST" in
@@ -78,16 +79,25 @@ tar -C "$DEST" --zstd -xf "$TARBALL"
 chmod +x "$DEST/$EXE"
 
 mkdir -p "$APPS"
-# An Icon= pointing at a path that does not exist renders as a blank/generic icon with no error
-# anywhere. This script is fetched from main but installs the latest RELEASE, and tarballs up to
-# v0.11.1 predate `cp cos.png` in publish-linux.sh — so only emit the line when the file is
-# really there, and say so when it is not (#65). A blank line inside [Desktop Entry] is ignored
-# per the desktop-entry spec.
-ICON_LINE="Icon=$DEST/cos.png"
-if [ ! -f "$DEST/cos.png" ]; then
+# Icon= must be an icon-theme NAME, not a path: KDE's Kickoff menu resolves it through
+# QIcon::fromTheme(), which only does theme lookups — an absolute path resolves to nothing and
+# the entry renders blank even though the file is right there and readable. So install the PNG
+# into the hicolor theme and reference it by name. No index.theme needed: icon themes merge
+# across XDG_DATA_DIRS, so the system hicolor's index covers this directory.
+# Still conditional on the file existing: this script is fetched from main but installs the
+# latest RELEASE, and tarballs up to v0.11.1 predate `cp cos.png` in publish-linux.sh (#65).
+# A blank line inside [Desktop Entry] is ignored per the desktop-entry spec.
+ICON_LINE="Icon=camera-on-screen"
+if [ -f "$DEST/cos.png" ]; then
+  mkdir -p "$ICONS"
+  cp "$DEST/cos.png" "$ICONS/camera-on-screen.png"
+else
   ICON_LINE=""
   echo "WARNING: this release ships no cos.png; the menu entry will use a default icon." >&2
 fi
+# StartupWMClass matches the window's WM_CLASS (Avalonia derives it from the assembly name), so
+# the task manager links the running window back to this entry instead of falling back to
+# whatever _NET_WM_ICON carries.
 cat > "$APPS/camera-on-screen.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -95,6 +105,7 @@ Name=Camera-on-Screen
 Comment=Always-on-top webcam overlay for recording and screen sharing
 Exec=$DEST/$EXE
 $ICON_LINE
+StartupWMClass=CameraOnScreen.App.Avalonia
 Terminal=false
 Categories=AudioVideo;Video;
 EOF
@@ -105,5 +116,5 @@ Done. Launch "Camera-on-Screen" from your application menu, or run:
   $DEST/$EXE
 
 To uninstall:
-  rm -rf "$DEST" "$APPS/camera-on-screen.desktop"
+  rm -rf "$DEST" "$APPS/camera-on-screen.desktop" "$ICONS/camera-on-screen.png"
 EOF
