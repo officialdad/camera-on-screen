@@ -247,6 +247,18 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task ProbeCapabilitiesAsync_publishes_frame_interp_detail_to_vm()
+    {
+        var shim = new FakeShim { FrameInterpAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        var vm = new MainViewModel(orch, shim);
+        Assert.Equal("Checking effect availability…", vm.FrameInterpDetail);
+        await vm.ProbeCapabilitiesAsync();
+        Assert.False(vm.FrameInterpAvailable);
+        Assert.Equal("fake: fi unavailable", vm.FrameInterpDetail);
+    }
+
+    [Fact]
     public void Toggling_eye_contact_while_running_pushes_params()
     {
         var shim = new FakeShim { GreenScreenAvailable = true, EyeContactAvailable = true };

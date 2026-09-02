@@ -39,7 +39,8 @@ public sealed class FakeShim : INativeShim
             SuperResAvailable,
             FrameInterpAvailable,
             GreenScreenOnnxAvailable,
-            GreenScreenOnnxAvailable ? "fake: onnx available" : "fake: onnx unavailable");
+            GreenScreenOnnxAvailable ? "fake: onnx available" : "fake: onnx unavailable",
+            FrameInterpAvailable ? "fake: fi available" : "fake: fi unavailable");
 
     public bool Disposed { get; private set; }
     public void Dispose() => Disposed = true;

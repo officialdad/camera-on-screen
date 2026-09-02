@@ -1,4 +1,5 @@
 #include "aigs.h"
+#include "gpu_mem.h"
 
 #ifdef COS_HAS_MAXINE
 #ifdef _WIN32
@@ -31,6 +32,7 @@ struct AigsImpl {
     NvCVImage stage{};    // BGRA u8 chunky, GPU  (transfer staging; matches the CPU src)
     int  w = 0, h = 0;
     bool loaded = false;
+    std::string  gateErr;           // free-VRAM gate reason from EnsureImages (NVCV_ERR_MEMORY)
     std::vector<uint8_t> matteWork; // packed w*h, post-processed matte (pitch == w)
     std::vector<uint8_t> matteTmp;  // packed w*h, separable-pass scratch
 };
@@ -69,6 +71,9 @@ bool Aigs::Probe(std::string& detail) {
 
 bool Aigs::Start() {
     Stop();
+    // Free-VRAM gate (gpu_mem.h) — NvVFX_Load crashes rather than fails when the card is full.
+    // In Auto backend a false here is what hands green screen to the ONNX CPU engine.
+    if (std::string why; !gpumem::CanLoad(why)) { lastError_ = why + " and retry."; ready_ = false; return false; }
     AigsImpl* impl = new (std::nothrow) AigsImpl();
     if (!impl) { lastError_ = "out of memory"; return false; }
 
@@ -131,6 +136,9 @@ NvCV_Status EnsureImages(AigsImpl* impl, int w, int h) {
     // Set max input dimensions before Load (required by some SDK versions).
     s = NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_WIDTH,  static_cast<unsigned>(w)); if (s != NVCV_SUCCESS) return s;
     s = NvVFX_SetU32(impl->effect, NVVFX_MAX_INPUT_HEIGHT, static_cast<unsigned>(h)); if (s != NVCV_SUCCESS) return s;
+    // Re-check right before the load: memory may have moved since Start (this runs on the
+    // first frame, and again on a resolution change).
+    if (!gpumem::CanLoad(impl->gateErr)) { impl->gateErr += " and retry."; return NVCV_ERR_MEMORY; }
     s = NvVFX_Load(impl->effect); // builds/loads the engine for this input size
     if (s != NVCV_SUCCESS) return s;
 
@@ -167,7 +175,12 @@ bool Aigs::ProcessFrame(uint8_t* bgra, int w, int h, double expand, double feath
     auto* impl = static_cast<AigsImpl*>(impl_);
     if (!impl || !impl->effect || !bgra || w <= 0 || h <= 0) return false;
 
-    if (NvCV_Status es = EnsureImages(impl, w, h); es != NVCV_SUCCESS) { lastError_ = std::string("EnsureImages/Load failed: ") + NvCV_GetErrorStringFromCode(es); ready_ = false; return false; }
+    if (NvCV_Status es = EnsureImages(impl, w, h); es != NVCV_SUCCESS) {
+        lastError_ = (es == NVCV_ERR_MEMORY && !impl->gateErr.empty())
+            ? impl->gateErr
+            : std::string("EnsureImages/Load failed: ") + NvCV_GetErrorStringFromCode(es);
+        ready_ = false; return false;
+    }
     if (Upload(impl, bgra, w, h) != NVCV_SUCCESS) { lastError_ = "Upload (Transfer) failed"; return false; }
     if (NvVFX_Run(impl->effect, 0) != NVCV_SUCCESS) { lastError_ = "NvVFX_Run failed"; return false; }
     if (Download(impl) != NVCV_SUCCESS) { lastError_ = "Download (Transfer) failed"; return false; }

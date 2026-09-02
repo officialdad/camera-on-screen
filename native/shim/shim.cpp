@@ -6,6 +6,7 @@
 #include "eyecontact.h"
 #include "superres.h"
 #include "fruc.h"
+#include "gpu_mem.h"
 
 #include <atomic>
 #include <cstring>
@@ -123,25 +124,33 @@ COS_API int cos_query_capabilities(CosCaps* out) {
     if (!out) return 0;
     std::memset(out, 0, sizeof(*out));
 
+    // Free-VRAM gate (gpu_mem.h): NVIDIA's loaders SIGSEGV instead of failing when the card is
+    // nearly full, so with too little free memory none of the GPU probes run and each gate
+    // carries the reason. One check for all three keeps the ordering invariant (the process's
+    // first NvVFX_Load must precede any NvAR_Load — see CLAUDE.md) — either all run or none.
+    std::string gpuReason;
+    const bool gpuOk = gpumem::CanLoad(gpuReason);
+    if (!gpuOk) gpuReason += " and restart the app.";
+
     std::string gsDetail;
-    bool gsOk = Aigs::Probe(gsDetail);
+    bool gsOk = gpuOk ? Aigs::Probe(gsDetail) : (gsDetail = gpuReason, false);
     out->green_screen_available = gsOk ? 1 : 0;
     size_t gn = gsDetail.size() < 255 ? gsDetail.size() : 255;
     std::memcpy(out->detail, gsDetail.data(), gn);
     out->detail[gn] = '\0';
 
     std::string ecDetail;
-    bool ecOk = EyeContact::Probe(ecDetail);
+    bool ecOk = gpuOk ? EyeContact::Probe(ecDetail) : (ecDetail = gpuReason, false);
     out->eye_contact_available = ecOk ? 1 : 0;
     size_t en = ecDetail.size() < 255 ? ecDetail.size() : 255;
     std::memcpy(out->ec_detail, ecDetail.data(), en);
     out->ec_detail[en] = '\0';
 
     std::string srDetail;
-    out->super_res_available = SuperRes::Probe(srDetail) ? 1 : 0;
+    out->super_res_available = (gpuOk && SuperRes::Probe(srDetail)) ? 1 : 0;
 
     std::string fiDetail;
-    out->frame_interp_available = Fruc::Probe(fiDetail) ? 1 : 0;
+    out->frame_interp_available = (gpuOk ? Fruc::Probe(fiDetail) : (fiDetail = gpuReason, false)) ? 1 : 0;
     size_t fn = fiDetail.size() < 255 ? fiDetail.size() : 255;
     std::memcpy(out->fi_detail, fiDetail.data(), fn);
     out->fi_detail[fn] = '\0';

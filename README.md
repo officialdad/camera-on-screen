@@ -29,6 +29,10 @@ AI features:
 > **What you need:** AI Eye Contact and Smooth 60 fps need an **NVIDIA RTX
 > graphics card**. **AI Green Screen works on any computer.** Without an RTX
 > card everything else still runs — the unavailable options simply grey out.
+> The NVIDIA effects also need about 1.5 GB of free graphics memory: if other
+> programs (a local LLM, an image generator) are using most of it, those
+> options grey out with a note saying so, green screen keeps working on the
+> CPU engine, and closing the other program and restarting brings them back.
 
 ## Install
 
