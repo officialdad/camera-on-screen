@@ -133,7 +133,8 @@ public sealed class PInvokeShim : INativeShim
             caps.EyeContactAvailable != 0, ReadUtf8(caps.EcDetail, 0, 256),
             caps.SuperResAvailable != 0,
             caps.FrameInterpAvailable != 0,
-            caps.GsOnnxAvailable != 0, ReadUtf8(caps.GsOnnxDetail, 0, 256));
+            caps.GsOnnxAvailable != 0, ReadUtf8(caps.GsOnnxDetail, 0, 256),
+            ReadUtf8(caps.FiDetail, 0, 256));
     }
 
     public void Dispose() => cos_shutdown();

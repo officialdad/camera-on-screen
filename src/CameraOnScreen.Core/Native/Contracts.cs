@@ -9,7 +9,8 @@ public sealed record ShimCapabilities(
     bool EyeContactAvailable = false, string EyeContactDetail = "",
     bool SuperResAvailable = false,
     bool FrameInterpAvailable = false,
-    bool GreenScreenOnnxAvailable = false, string GreenScreenOnnxDetail = "");
+    bool GreenScreenOnnxAvailable = false, string GreenScreenOnnxDetail = "",
+    string FrameInterpDetail = "");
 
 public enum GazeState { Unknown, OnCamera, Redirected, RealEyes }
 

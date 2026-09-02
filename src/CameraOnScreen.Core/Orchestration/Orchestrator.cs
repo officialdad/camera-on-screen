@@ -48,6 +48,9 @@ public sealed class Orchestrator
     /// <summary>True when the shim reports Frame Interpolation (FRUC) can run. False until <see cref="ProbeCapabilities"/>.</summary>
     public bool FrameInterpAvailable { get; private set; }
 
+    /// <summary>Human-readable reason from the FRUC probe. "Checking…" until probed.</summary>
+    public string FrameInterpDetail { get; private set; } = "Checking effect availability…";
+
     /// <summary>Runs the (blocking) native capability probe and records the result. Run this OFF the
     /// UI thread — the real probe does a ~1s TensorRT model load. The tier (RTX heuristic) is kept
     /// only for display; this probe is the authoritative effect gate.</summary>
@@ -56,16 +59,18 @@ public sealed class Orchestrator
         var caps = _shim.QueryCapabilities();
         GreenScreenMaxineAvailable = caps.GreenScreenAvailable;
         GreenScreenOnnxAvailable = caps.GreenScreenOnnxAvailable;
-        // Green screen is usable when EITHER engine can run (#24); the detail note
-        // (shown only while unavailable) then carries both reasons.
+        // Green screen is usable when EITHER engine can run (#24). The detail note is shown
+        // whenever the Maxine (GPU) engine is off, so it must say WHY the GPU engine is out
+        // (e.g. the free-VRAM gate) even while the ONNX CPU engine keeps green screen usable.
         EffectsAvailable = caps.GreenScreenAvailable || caps.GreenScreenOnnxAvailable;
-        CapabilityDetail = EffectsAvailable
-            ? (caps.GreenScreenAvailable ? caps.Detail : caps.GreenScreenOnnxDetail)
+        CapabilityDetail = caps.GreenScreenAvailable
+            ? caps.Detail
             : $"{caps.Detail} · {caps.GreenScreenOnnxDetail}";
         EyeContactAvailable = caps.EyeContactAvailable;
         EyeContactDetail = caps.EyeContactDetail;
         SuperResAvailable = caps.SuperResAvailable;
         FrameInterpAvailable = caps.FrameInterpAvailable;
+        FrameInterpDetail = caps.FrameInterpDetail;
     }
 
     /// <summary>The detected GPU tier — used for display only, not for effect gating.</summary>

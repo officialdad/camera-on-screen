@@ -1,4 +1,5 @@
 #include "fruc.h"
+#include "gpu_mem.h"
 #include <cstring>
 
 #ifdef COS_HAS_FRUC
@@ -152,6 +153,8 @@ bool Fruc::Probe(std::string& detail) {
 }
 
 bool Fruc::Start(int width, int height) {
+    // Free-VRAM gate (gpu_mem.h): same defence as the Maxine loads; Probe routes through here.
+    if (std::string why; !gpumem::CanLoad(why)) { lastError_ = why + " and retry."; return false; }
     auto* impl = new FrucImpl();
     impl->dll = LoadFruc(lastError_);
     if (!impl->dll) { delete impl; return false; }

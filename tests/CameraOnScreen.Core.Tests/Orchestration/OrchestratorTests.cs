@@ -190,6 +190,37 @@ public class OrchestratorTests
     }
 
     [Fact]
+    public void ProbeCapabilities_records_frame_interp_detail()
+    {
+        var shim = new FakeShim { FrameInterpAvailable = false };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        Assert.Equal("Checking effect availability…", orch.FrameInterpDetail);
+        orch.ProbeCapabilities();
+        Assert.Equal("fake: fi unavailable", orch.FrameInterpDetail);
+    }
+
+    // The green-screen note is shown whenever the Maxine (GPU) engine is off, so it must carry
+    // the GPU reason even when the ONNX CPU engine keeps green screen usable (free-VRAM gate).
+    [Fact]
+    public void CapabilityDetail_keeps_maxine_reason_when_only_onnx_is_available()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = false, GreenScreenOnnxAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.True(orch.EffectsAvailable);
+        Assert.Equal("fake: unavailable · fake: onnx available", orch.CapabilityDetail);
+    }
+
+    [Fact]
+    public void CapabilityDetail_is_maxine_detail_when_maxine_is_available()
+    {
+        var shim = new FakeShim { GreenScreenAvailable = true, GreenScreenOnnxAvailable = true };
+        var orch = new Orchestrator(shim, GpuTier.Rtx);
+        orch.ProbeCapabilities();
+        Assert.Equal("fake: available", orch.CapabilityDetail);
+    }
+
+    [Fact]
     public void ApplyParams_forces_effects_off_when_unavailable()
     {
         var shim = new FakeShim { GreenScreenAvailable = false, SuperResAvailable = false };

@@ -63,6 +63,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactDetail = orchestrator.EyeContactDetail;
         SuperResAvailable = orchestrator.SuperResAvailable;
         FrameInterpAvailable = orchestrator.FrameInterpAvailable;
+        FrameInterpDetail = orchestrator.FrameInterpDetail;
         _statusHandler = (_, s) => OnStatus(s);
         _orchestrator.StatusChanged += _statusHandler;
     }
@@ -150,6 +151,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EyeContactDetail = _orchestrator.EyeContactDetail;
         SuperResAvailable = _orchestrator.SuperResAvailable;
         FrameInterpAvailable = _orchestrator.FrameInterpAvailable;
+        FrameInterpDetail = _orchestrator.FrameInterpDetail;
     }
 
     public ObservableCollection<CameraInfo> Cameras { get; } = new();
@@ -190,6 +192,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string eyeContactDetail = "Checking effect availability…";
     [ObservableProperty] private bool superResAvailable;
     [ObservableProperty] private bool frameInterpAvailable;
+    [ObservableProperty] private string frameInterpDetail = "Checking effect availability…";
     [ObservableProperty] private int frameWidth;    // negotiated capture size; 0 until the first frame
     [ObservableProperty] private int frameHeight;
     [ObservableProperty] private bool exposureLock;             // #16: lock exposure to hold fps

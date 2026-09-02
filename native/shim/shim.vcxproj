@@ -117,6 +117,7 @@
     <ClCompile Include="fruc.cpp" />
     <ClCompile Include="paths.cpp" />
     <ClCompile Include="vfx_paths.cpp" />
+    <ClCompile Include="gpu_mem.cpp" />
   </ItemGroup>
 
   <!-- Proxy stubs provide the Maxine API by LoadLibrary'ing the runtime DLLs (no import .lib). -->

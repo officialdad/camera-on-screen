@@ -161,7 +161,12 @@
                             </StackPanel>
                             <ToggleSwitch Content="Smooth 60 fps (AI)" IsEnabled="{Binding FrameInterpAvailable}"
                                           IsChecked="{Binding FrameInterpEnabled, Mode=TwoWay}" />
-                            <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !EffectsAvailable}"
+                            <TextBlock Text="{Binding FrameInterpDetail}" IsVisible="{Binding !FrameInterpAvailable}"
+                                       TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
+                            <!-- Shown whenever the Maxine (GPU) green-screen engine is off — not only when
+                                 green screen is unusable — so the reason (SDK missing, free-VRAM gate, …)
+                                 is visible even while the ONNX CPU engine keeps the toggle live. -->
+                            <TextBlock Text="{Binding CapabilityDetail}" IsVisible="{Binding !GreenScreenMaxineAvailable}"
                                        TextWrapping="Wrap" Foreground="{StaticResource Caution}" />
                             <!-- #59: labelled native effect error (green screen / eye contact /
                                  sharpness / FRUC), polled every 250 ms. Lifetime contract lives in

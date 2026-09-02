@@ -1,4 +1,5 @@
 #include "eyecontact.h"
+#include "gpu_mem.h"
 
 #ifdef COS_HAS_MAXINE_AR
 #ifdef _WIN32
@@ -174,6 +175,8 @@ bool EyeContact::Probe(std::string& detail) {
 
 bool EyeContact::Start() {
     Stop();
+    // Free-VRAM gate (gpu_mem.h) — NvAR_Load crashes rather than fails when the card is full.
+    if (std::string why; !gpumem::CanLoad(why)) { lastError_ = why + " and retry."; ready_ = false; return false; }
     EyeContactImpl* impl = new (std::nothrow) EyeContactImpl();
     if (!impl) { lastError_ = "out of memory"; return false; }
 
