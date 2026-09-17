@@ -13,7 +13,7 @@ cl /nologo /EHsc /std:c++17 /DCOS_HAS_MAXINE /DCOS_HAS_MAXINE_AR ^
   /I "%VFX%\nvvfx\include" /I "%VFX%\features\nvvfxgreenscreen\include" /I "%VFX%\features\nvvfxvideosuperres\include" ^
   /I "%AR%\nvar\include" /I "%OF%\NvOFFRUC\Interface" /I "%CUDA%\include" ^
   native\shim\smoke\of_fruc_smoke.cpp ^
-  native\shim\aigs.cpp native\shim\matte_ops.cpp native\shim\eyecontact.cpp native\shim\superres.cpp ^
+  native\shim\aigs.cpp native\shim\matte_ops.cpp native\shim\gpu_mem.cpp native\shim\eyecontact.cpp native\shim\superres.cpp ^
   native\shim\paths.cpp native\shim\vfx_paths.cpp ^
   "%VFX%\nvvfx\src\nvVideoEffectsProxy.cpp" "%VFX%\nvvfx\src\nvCVImageProxy.cpp" "%AR%\nvar\src\nvARProxy.cpp" ^
   Psapi.lib "%CUDA%\lib\x64\cuda.lib" ^
