@@ -69,10 +69,11 @@ rm -rf ~/.local/share/camera-on-screen ~/.local/share/applications/camera-on-scr
 
 ### Windows
 
-Windows installers are paused for now — the latest one is
-[**v0.6.0**](https://github.com/officialdad/camera-on-screen/releases/tag/v0.6.0)
-(`CameraOnScreen-Setup-0.6.0-x64.exe`). It installs **per-user** (no admin) and
-bundles everything it needs. Windows SmartScreen will warn that it is unsigned:
+Download `CameraOnScreen-Setup-<version>-x64.exe` from the
+[latest release](https://github.com/officialdad/camera-on-screen/releases/latest)
+that carries one — the Windows installer is built on a contributor's machine after
+each release and may lag the Linux tarball by a bit. It installs **per-user** (no
+admin) and bundles everything it needs. Windows SmartScreen will warn that it is unsigned:
 click **More info → Run anyway**. Uninstall from **Settings → Apps**.
 
 ## Using it
