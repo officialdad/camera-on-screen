@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
   READ-ONLY probe of the NGC nvidia/maxine model registry. Lists every Maxine model, each
-  version, and which GPU arches (smNN) it ships Windows engines for — to answer issue #2
+  version, and which GPU arches (smNN) it ships Windows engines for -- to answer issue #2
   (multi-GPU): does NGC host non-Ampere (sm75/89/100/120) engine packages CO-VERSIONED with
-  our shipped runtimes (VFX 0.7.x green screen + AR 0.8.x gaze, TensorRT 10.4)?
+  our shipped runtimes (VFX 1.2.0.0 green screen + AR 1.1.1.0 gaze, TensorRT 10.9)?
 
   Downloads NOTHING. Only GETs version metadata. Mirrors install_feature.ps1's auth +
   endpoints so the same NGC_CLI_API_KEY works. Run from anywhere; PS 5.1 compatible.
@@ -60,7 +60,7 @@ foreach ($col in @('maxine_vfx_sdk', 'vfx_sdk', 'maxine_ar_sdk', 'ar_sdk', 'maxi
     } catch { Write-Host "  collection '$col': n/a" -ForegroundColor DarkGray }
 }
 
-# (b) curated candidates — VFX (known) + AR gaze/face guesses (NGC naming unknown, probe many)
+# (b) curated candidates -- VFX (known) + AR gaze/face guesses (NGC naming unknown, probe many)
 $candidates = @(
     'nvvfxgreenscreen','nvvfxvideosuperres','nvvfxdenoising','nvvfxupscale',
     'nvvfxbackgroundblur','nvvfxrelighting','nvvfxaigsrelighting','nvvfxartifactreduction',
@@ -116,9 +116,9 @@ foreach ($m in ($focused | Sort-Object name)) {
     $byVer = $winModels | Group-Object v | Sort-Object { [version]$_.Name }
     foreach ($g in $byVer) {
         $arches = ($g.Group | Select-Object -Expand arch -Unique | Where-Object { $_ } | Sort-Object) -join ', '
-        $flag = if ($g.Name -like '0.7.*' -or $g.Name -like '0.8.*') { '  <-- co-version candidate' } else { '' }
+        $flag = if ($g.Name -like '1.2.*' -or $g.Name -like '1.1.*') { '  <-- co-version candidate' } else { '' }
         Write-Host ("  {0,-12} arches: {1}{2}" -f $g.Name, $arches, $flag)
     }
 }
 
-Write-Host "`nDone. Co-version target: green screen 0.7.x + gaze/AR 0.8.x must offer sm75/89/100 to unblock option A." -ForegroundColor Cyan
+Write-Host "`nDone. Co-version target: green screen (VFX) 1.2.0.0 + gaze/AR 1.1.1.0 must offer sm75/89/100 to unblock option A." -ForegroundColor Cyan

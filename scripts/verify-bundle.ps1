@@ -23,7 +23,7 @@ $maxine   = Join-Path $StagingDir 'maxine'
 $probeExe = Join-Path $StagingDir 'bundle_probe.exe'
 
 if ($DryRun) {
-    Write-Host "DRY RUN — bundle verify plan:"
+    Write-Host "DRY RUN -- bundle verify plan:"
     Write-Host "  1. compile $ProbeBat -> $probeExe   (VfxSdkDir=$VfxSdkDir ArSdkDir=$ArSdkDir)"
     Write-Host "  2. run $probeExe from $StagingDir with COS_*_RUNTIME_DIR unset (app-relative maxine\ tier)"
     Write-Host "  3. require exit 0 = both Maxine effects load from the bundled maxine\ ($maxine)"
@@ -31,7 +31,7 @@ if ($DryRun) {
 }
 
 if (-not (Test-Path -LiteralPath $maxine)) {
-    throw "no maxine\ in staging '$StagingDir' — run the bundler/installer first; nothing to verify"
+    throw "no maxine\ in staging '$StagingDir' -- run the bundler/installer first; nothing to verify"
 }
 
 # 1. Build the probe INTO the staging dir so ShimModuleDir() (the probe exe's own dir) resolves
@@ -42,12 +42,19 @@ if ($ArSdkDir)  { $env:COS_AR_SDK_DIR  = $ArSdkDir }
 if ($LASTEXITCODE -ne 0) { throw "bundle_probe build failed ($LASTEXITCODE)" }
 if (-not (Test-Path -LiteralPath $probeExe)) { throw "probe exe not produced: $probeExe" }
 
-# 2. Run with the dev runtime overrides cleared, exercising the bundled app-relative tier.
+# 2. Run with every dev override cleared, exercising the bundled app-relative tier.
+#    COS_*_SDK_DIR must go too, not just COS_*_RUNTIME_DIR: vfx_paths.cpp resolves
+#    COS_VFX_SDK_DIR (-> <sdk>\bin\models, which holds NO engines -- those ship only
+#    from NGC) ABOVE the app-relative maxine\ tier, so leaving it set diverts the probe
+#    off the very tier this gate exists to verify. AR has no SDK_DIR tier, so it passed
+#    while VFX failed -- an asymmetry that made this look like a bad bundle.
 $env:COS_VFX_RUNTIME_DIR = $null
 $env:COS_AR_RUNTIME_DIR  = $null
+$env:COS_VFX_SDK_DIR     = $null
+$env:COS_AR_SDK_DIR      = $null
 Push-Location $StagingDir
 try { & $probeExe; $rc = $LASTEXITCODE } finally { Pop-Location }
 if ($rc -ne 0) {
     throw "bundle verify FAILED ($rc): effects did not load from the bundled maxine\ with COS_* unset"
 }
-Write-Host "bundle verify OK — both Maxine effects load from $maxine"
+Write-Host "bundle verify OK -- both Maxine effects load from $maxine"

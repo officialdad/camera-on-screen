@@ -29,7 +29,39 @@ API returned 403 for the current account — repo-level is the fallback).
 
 - .NET 8 SDK
 - Visual Studio 2022 Build Tools + MSVC v143 (provides MSBuild + `dumpbin`)
+- **PowerShell 7** (`pwsh`), installed **machine-wide** and on the **machine** `PATH`.
 - A clone/install of the NVIDIA Maxine VFX SDK and AR SDK (build sources)
+
+#### Installing PowerShell 7 on the runner (two traps)
+
+Every step of `release.yml`'s `release-windows` job declares `shell: pwsh`, so without it
+the job cannot run a single step. Do **not** install it with
+`winget install Microsoft.PowerShell --scope machine` — winget resolves that package to the
+**MSIX bundle**, and on Windows 10 the install dies at 92% with
+`Device wide install for msix type is not supported in packaged context on this OS version`
+(`0x8a150113`, after `ProvisionPackage` fails `0x80070005`). It is not an elevation problem.
+MSIX would be the wrong artifact regardless: it lands per-user under `WindowsApps`, which
+`NETWORK SERVICE` cannot use — the same trap as the Inno Setup note below.
+
+Use the MSI from the PowerShell GitHub release, and pass **`ADD_PATH=1`**:
+
+```powershell
+# elevated
+msiexec.exe /i "<path>\PowerShell-7.6.4-win-x64.msi" /qn /norestart ADD_PATH=1 DISABLE_TELEMETRY=1 `
+  /l*v "$env:TEMP\ps7-install.log"
+```
+
+`ADD_PATH=1` is load-bearing: in the MSI, component `SetPath` is conditioned on `ADD_PATH=1`
+and the property has **no default value**. The interactive UI ticks that box for you; a `/qn`
+install does not — so a plain silent install leaves `pwsh` off `PATH` and `shell: pwsh` still
+fails, while everything *looks* installed. `ALLUSERS=1` is baked into the MSI, so it is
+inherently per-machine and needs no scope switch.
+
+`msiexec.exe` returns to the prompt immediately, so `$LASTEXITCODE` tells you nothing —
+check the `/l*v` log for `INSTALL. Return value 1`. Verify with
+`[Environment]::GetEnvironmentVariable('Path','Machine')`, not with `Get-Command pwsh`:
+the service inherits the **machine** `PATH`, and your own shell's `PATH` is not evidence
+about it.
 
 ### `release.yml` only (tag `v*`) — not needed for build+test CI
 

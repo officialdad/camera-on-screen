@@ -11,7 +11,7 @@ if "%OUT%"=="" set OUT=native\shim\smoke\fruc_interp_smoke.exe
 cl /nologo /EHsc /std:c++17 /W4 /WX /DCOS_HAS_FRUC ^
   /I "%OF%\NvOFFRUC\Interface" /I "%CUDA%\include" ^
   native\shim\smoke\fruc_interp_smoke.cpp ^
-  native\shim\fruc.cpp ^
+  native\shim\fruc.cpp native\shim\gpu_mem.cpp ^
   native\shim\paths.cpp ^
   Psapi.lib "%CUDA%\lib\x64\cuda.lib" ^
   /Fo"native\shim\smoke\\" /Fe"%OUT%"
