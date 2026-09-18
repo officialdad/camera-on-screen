@@ -15,15 +15,50 @@ automatically).
 Repo-level registration (sufficient — repo admin only; use this if you lack org
 admin):
 
-1. GitHub → repo **Settings → Actions → Runners → New self-hosted runner**
-   (Windows x64).
-2. Run the shown `config.cmd` on the RTX machine; when prompted for additional
-   labels, enter `rtx`.
-3. Install it as a service (`svc install` / `svc start`) so CI works without an
-   interactive session.
+Registration, service install and service start are ONE command (runner 2.336.0+,
+`--runasservice`), run from an **elevated** PowerShell in the extracted runner dir.
+The token comes from the repo API and expires in ~1 h — mint it only when you are
+ready to run this immediately (repo **admin** required; `maintain` gets 403 on
+this endpoint and on the runners list):
+
+```powershell
+$token = gh api -X POST repos/officialdad/camera-on-screen/actions/runners/registration-token --jq .token
+cd C:\actions-runner
+.\config.cmd --unattended --url https://github.com/officialdad/camera-on-screen `
+  --token $token --name <runner-name> --labels rtx --runasservice
+```
+
+That yields service `actions.runner.officialdad-camera-on-screen.<runner-name>`,
+delayed auto-start, running as `NT AUTHORITY\NETWORK SERVICE` (what every path and
+ACL note in this runbook assumes — keep the default account). Verify from the API:
+`gh api repos/officialdad/camera-on-screen/actions/runners` should list it `online`
+with labels `self-hosted, Windows, X64, rtx`.
+
+The Windows runner is a contributor laptop and is **best-effort**: a dispatched job
+waits up to 24 h for it to come online, and GitHub deletes any runner that has not
+connected for 14 days — re-run the command above to bring it back (the runner dir,
+`.env` and SDK trees survive).
 
 Org-level registration is equivalent but needs org-admin rights (the org runner
 API returned 403 for the current account — repo-level is the fallback).
+
+## Dispatching the Windows release
+
+`release-windows` never runs on a tag push; dispatch it on the tag ref once the tag
+exists on GitHub:
+
+```powershell
+gh workflow run release.yml --ref v0.12.1
+```
+
+It creates the GitHub release if the Linux job has not already, else attaches the
+installer to it (both jobs use the same create-or-upload shape, so order does not
+matter). **Trap:** the workflow's concurrency group is per ref, and the tag push
+itself starts a run (`release-linux`) that holds the group. If the Linux runner is
+offline that run sits `queued` for 24 h and the Windows dispatch waits behind it
+with **no jobs at all**. Cancel the push run (`gh run cancel <id>`) to let the
+dispatch start; a cancelled run keeps its *Re-run all jobs* button for when the
+Linux runner is back.
 
 ## Required prerequisites on the runner machine
 

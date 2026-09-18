@@ -1,11 +1,13 @@
 name: release
 
-# Release focus is LINUX BINARIES for now (#38): a v* tag builds + verifies + publishes the
-# Linux tarball on the self-hosted Linux RTX runner. The Windows installer job remains
-# manual-only (workflow_dispatch) — its Windows RTX runner died with the old dev box; #38
-# tracks re-homing it (drop its `if:` guard then). Heavy lifting lives in checked-in
-# scripts (publish-linux.sh / build-installer.ps1 + verify-bundle.ps1) so this workflow
-# stays a thin orchestrator.
+# A v* tag builds + verifies + publishes the Linux tarball on the self-hosted Linux RTX
+# runner. The Windows installer job is manual-only (workflow_dispatch on the tag ref) BY
+# DESIGN: its runner is a contributor's laptop (#48), online best-effort, so an automatic
+# job would leave every tag-push run hanging for 24 h whenever the laptop is off. Both jobs
+# share the concurrency group below, so a queued tag-push run (Linux runner offline) blocks
+# the Windows dispatch until it is cancelled -- see docs/ci/self-hosted-runner.md. Heavy
+# lifting lives in checked-in scripts (publish-linux.sh / build-installer.ps1 +
+# verify-bundle.ps1) so this workflow stays a thin orchestrator.
 on:
   push:
     tags:
@@ -57,14 +59,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PKG=$(ls dist/CameraOnScreen-*-linux-x64.tar.zst)
-          HEADER=$'Linux x64 tarball (Avalonia panel + overlay + bundled NVIDIA Maxine runtime — extract and run, no env vars). AI effects require an NVIDIA RTX GPU; without one the app runs as a plain webcam overlay. X11/XWayland. Windows installer releases are paused (#38) — latest installer is v0.7.0.\n\nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
+          HEADER=$'Linux x64 tarball (Avalonia panel + overlay + bundled NVIDIA Maxine runtime — extract and run, no env vars). AI effects require an NVIDIA RTX GPU; without one the app runs as a plain webcam overlay. X11/XWayland. The Windows installer is built separately on a contributor runner (manual dispatch, #48) and lands on the release as CameraOnScreen-Setup-<ver>-x64.exe when it has run; otherwise use the latest release that carries one.\n\nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
           gh release create "$GITHUB_REF_NAME" "$PKG" \
             --title "Camera on Screen ${GITHUB_REF_NAME#v}" \
             --verify-tag --generate-notes --notes "$HEADER" \
           || gh release upload "$GITHUB_REF_NAME" "$PKG"
 
   release-windows:
-    name: Build installer + publish release (manual — #38)
+    name: Build installer + publish release (manual dispatch — #48)
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, windows, rtx]
     steps:
