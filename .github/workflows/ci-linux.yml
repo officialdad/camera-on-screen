@@ -56,6 +56,9 @@ jobs:
         run: dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj -c Release /p:TreatWarningsAsErrors=true --nologo
 
   maxine-rtx:
+    # Public repo: a fork PR would run its own workflow code on the self-hosted box.
+    # Only same-repo PRs reach it. Fork PRs still get the hosted `linux` job above.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, rtx]
     timeout-minutes: 20
     steps:
