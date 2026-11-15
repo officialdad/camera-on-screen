@@ -56,6 +56,12 @@ jobs:
         run: dotnet test tests/CameraOnScreen.Core.Tests/CameraOnScreen.Core.Tests.csproj -c Release /p:TreatWarningsAsErrors=true --nologo
 
   maxine-rtx:
+    # One rtx job per pull request: a superseded push cancels the queued one instead of
+    # leaving it in the self-hosted queue for the 24 h limit (and, when the box is up, the
+    # box running an obsolete commit before the current head). Never cancels a non-PR run.
+    concurrency:
+      group: ci-linux-maxine-rtx-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Public repo: a fork PR would run its own workflow code on the self-hosted box.
     # Only same-repo PRs reach it. Fork PRs still get the hosted `linux` job above.
     if: github.event.pull_request.head.repo.full_name == github.repository
