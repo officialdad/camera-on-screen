@@ -28,7 +28,7 @@ jobs:
     runs-on: [self-hosted, linux, rtx]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0   # publish-linux.sh names the tarball from `git describe --tags`
 
@@ -71,7 +71,7 @@ jobs:
     runs-on: [self-hosted, windows, rtx]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The runner host has an x86 .NET (no SDK) at "C:\Program Files (x86)\dotnet"
       # that can shadow the x64 SDK on PATH -> `dotnet build` (inside build-installer.ps1)
