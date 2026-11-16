@@ -1,0 +1,49 @@
+# release-please: conventional commits on main -> a release PR; merging it bumps the
+# version, writes CHANGELOG.md, and creates the vX.Y.Z tag + a DRAFT GitHub release.
+#
+# The tag is what starts release.yml (`on: push: tags: v*`), which builds the Linux
+# tarball and attaches it. That only happens because the release-please step uses a
+# GitHub App token instead of the default GITHUB_TOKEN -- events raised by GITHUB_TOKEN
+# never start other workflows, so a tag pushed with it would build nothing.
+#
+# `force-tag-creation` in release-please-config.json is load-bearing, not cosmetic:
+# GitHub does not create a tag for a draft release until it is published, so a draft
+# without it would raise no tag, start no release.yml, and wait forever on assets that
+# never get built. The draft is published by release.yml once BOTH the Linux tarball
+# and the Windows installer are attached (see the publish gate there).
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+# The self-hosted runner uses no hosted minutes. Set the CI_RUNNER repository variable to
+# "ubuntu-24.04" to move it back onto a GitHub-hosted runner.
+concurrency:
+  group: release-please-${{ github.ref }}
+  # Never cancel mid-run: a partially applied run can leave a release PR or tag half-written.
+  cancel-in-progress: false
+
+# Least privilege: the only credential this workflow needs is the App token below, so the
+# ambient GITHUB_TOKEN is granted nothing at all.
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '["self-hosted","Linux","X64"]') }}
+    steps:
+      - name: Mint GitHub App token (so tags/PRs it creates start other workflows)
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write        # release PR branch, tag, draft release
+          permission-pull-requests: write   # release PR
+
+      - name: Release please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

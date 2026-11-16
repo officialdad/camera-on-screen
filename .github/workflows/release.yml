@@ -1,6 +1,6 @@
 name: release
 
-# A v* tag builds + verifies + publishes the Linux tarball on the self-hosted Linux RTX
+# A v* tag builds + verifies + attaches the Linux tarball on the self-hosted Linux RTX
 # runner. The Windows installer job is manual-only (workflow_dispatch on the tag ref) BY
 # DESIGN: its runner is a contributor's laptop (#48), online best-effort, so an automatic
 # job would leave every tag-push run hanging for 24 h whenever the laptop is off. Both jobs
@@ -8,6 +8,13 @@ name: release
 # the Windows dispatch until it is cancelled -- see docs/ci/self-hosted-runner.md. Heavy
 # lifting lives in checked-in scripts (publish-linux.sh / build-installer.ps1 +
 # verify-bundle.ps1) so this workflow stays a thin orchestrator.
+#
+# The tags are cut by .github/workflows/release-please.yml, which also creates the GitHub
+# release as a DRAFT with a conventional-commit changelog. Neither job below creates a
+# release any more -- they attach their OS asset to that draft and the last one to arrive
+# publishes it, so a release goes live only once the Linux tarball AND the Windows
+# installer are on it. Both jobs therefore share one body-header rule (the NVIDIA Maxine
+# licence attribution) and one publish gate.
 on:
   push:
     tags:
@@ -53,17 +60,56 @@ jobs:
           env -u COS_VFX_RUNTIME_DIR -u COS_AR_RUNTIME_DIR -u COS_FRUC_RUNTIME_DIR \
               -u COS_VFX_SDK_DIR -u COS_AR_SDK_DIR -u COS_FRUC_SDK_DIR dist/probe_gate
 
-      - name: Create GitHub release + upload tarball
+      - name: Attach tarball to the draft release, publish once both OS files are present
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="$GITHUB_REF_NAME"
           PKG=$(ls dist/CameraOnScreen-*-linux-x64.tar.zst)
-          HEADER=$'Linux x64 tarball (Avalonia panel + overlay + bundled NVIDIA Maxine runtime — extract and run, no env vars). AI effects require an NVIDIA RTX GPU; without one the app runs as a plain webcam overlay. X11/XWayland. The Windows installer is built separately on a contributor runner (manual dispatch, #48) and lands on the release as CameraOnScreen-Setup-<ver>-x64.exe when it has run; otherwise use the latest release that carries one.\n\nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md.'
-          gh release create "$GITHUB_REF_NAME" "$PKG" \
-            --title "Camera on Screen ${GITHUB_REF_NAME#v}" \
-            --verify-tag --generate-notes --notes "$HEADER" \
-          || gh release upload "$GITHUB_REF_NAME" "$PKG"
+
+          # release-please creates the tag ref just before its draft release, and by the time
+          # this step runs (after a full tarball build) the draft is normally already there.
+          # The wait only covers that tiny gap, so keep it short.
+          for _ in $(seq 1 12); do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            sleep 10
+          done
+
+          # A hand-pushed tag has no release-please run behind it; create the draft the same
+          # way release-please would (generated conventional-commit notes) so both paths
+          # converge below. release-please creates the tag ref BEFORE its release, so losing
+          # this race to it is normal -- a release that now exists is success either way.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Camera on Screen ${TAG#v}" \
+              --verify-tag --generate-notes --draft \
+              || gh release view "$TAG" >/dev/null
+          fi
+
+          gh release upload "$TAG" "$PKG" --clobber
+
+          # Keep the NVIDIA Maxine attribution at the top of the notes; release-please's
+          # changelog body stays underneath. Idempotent, so the Windows job applies the same
+          # header in whichever order the two runners happen to finish.
+          BODY=$(gh release view "$TAG" --json body --jq .body)
+          if ! printf '%s' "$BODY" | grep -qF 'NVIDIA Maxine runtime'; then
+            { cat .github/release-notes-header.md; printf '\n%s\n' "$BODY"; } > "$RUNNER_TEMP/notes.md"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+
+          # Publish only when BOTH OS files are attached. install.sh resolves
+          # /releases/latest (drafts excluded), so publishing a half-populated release is
+          # exactly how Linux users end up pointed at a release carrying no tarball.
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          if printf '%s\n' "$ASSETS" | grep -qE 'linux-x64\.tar\.zst$' \
+             && printf '%s\n' "$ASSETS" | grep -qE 'Setup-.*-x64\.exe$'; then
+            gh release edit "$TAG" --draft=false
+            echo "published $TAG (both OS files attached)"
+          else
+            echo "$TAG stays a draft; waiting for the OS file that is not attached yet"
+            printf '%s\n' "$ASSETS"
+          fi
 
   release-windows:
     name: Build installer + publish release (manual dispatch — #48)
@@ -135,26 +181,56 @@ jobs:
           "path=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host ("installer: {0} ({1:N0} bytes)" -f $exe, (Get-Item $exe).Length)
 
-      - name: Create GitHub release + upload installer
+      - name: Attach installer to the draft release, publish once both OS files are present
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # --generate-notes auto-builds a "What's Changed" changelog from the PRs/commits since
-          # the previous tag (GitHub Release Notes API). --notes is PREPENDED above it as a fixed
-          # header carrying the RTX requirement + Maxine license attribution the changelog can't
-          # know. `n = newline (kept on one logical line so the YAML `run: |` indent can't break a
-          # here-string terminator). Optional grouping/exclusions can live in .github/release.yml.
-          # Same create-or-upload shape as release-linux: whichever OS job lands first creates the
-          # release, the other just attaches its asset (gh release create fails on an existing tag).
-          $header = "AI effects require an NVIDIA RTX GPU; non-RTX installs run as a plain webcam overlay. Multi-GPU build (Turing/Ampere/Ada/Blackwell engines bundled) — verified on Ampere (sm86); other RTX arches are best-effort and grey out gracefully if an engine fails to load.`n`nBundled NVIDIA Maxine runtime (VFX 1.2.0.0 + AR 1.1.1.0) is governed by the 2025 NVIDIA Software License Agreement + Open/Community Model Licenses — see THIRD-PARTY-NOTICES.md."
-          gh release create '${{ github.ref_name }}' '${{ steps.art.outputs.path }}' `
-            --title 'Camera on Screen ${{ steps.ver.outputs.version }}' `
-            --verify-tag `
-            --generate-notes `
-            --notes $header
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "gh release create failed ($LASTEXITCODE); release probably exists -- uploading asset only"
-            gh release upload '${{ github.ref_name }}' '${{ steps.art.outputs.path }}'
-            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed ($LASTEXITCODE)" }
+          # Same shape as release-linux: attach to the draft release-please created for this
+          # tag, keep the Maxine licence header on the notes, and publish only once BOTH OS
+          # files are attached -- whichever job finishes second is the one that publishes.
+          $tag = '${{ github.ref_name }}'
+          $exe = '${{ steps.art.outputs.path }}'
+
+          # Wait briefly for the draft release-please created for this tag, then attach.
+          foreach ($i in 1..30) {
+            gh release view $tag 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 10
+          }
+          # A hand-pushed tag has no release-please run behind it; create the draft the same
+          # way release-please would so both paths converge on the gate below. A create that
+          # loses the race is fine as long as a release now exists.
+          if (-not (gh release view $tag 2>$null | Out-Null; $LASTEXITCODE -eq 0)) {
+            gh release create $tag --title "Camera on Screen ${{ steps.ver.outputs.version }}" --verify-tag --generate-notes --draft
+            if ($LASTEXITCODE -ne 0) {
+              gh release view $tag 2>$null | Out-Null
+              if ($LASTEXITCODE -ne 0) { throw "gh release create failed and no release exists" }
+            }
+          }
+
+          gh release upload $tag $exe --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed ($LASTEXITCODE)" }
+
+          # -join is load-bearing: a multi-line body comes back as string[], and "+" would
+          # collapse it onto one line (PowerShell joins arrays with $OFS).
+          $body = (gh release view $tag --json body --jq .body) -join "`n"
+          if ($body -notmatch 'NVIDIA Maxine runtime') {
+            $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
+            $header = Get-Content -Raw -Path '.github/release-notes-header.md'
+            Set-Content -Path $notes -Value (($header.TrimEnd() + "`n`n" + $body + "`n")) -NoNewline
+            gh release edit $tag --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit (notes) failed ($LASTEXITCODE)" }
+          }
+
+          $assets = gh release view $tag --json assets --jq '.assets[].name'
+          $hasLinux = $assets | Where-Object { $_ -match 'linux-x64\.tar\.zst$' }
+          $hasWindows = $assets | Where-Object { $_ -match 'Setup-.*-x64\.exe$' }
+          if ($hasLinux -and $hasWindows) {
+            gh release edit $tag --draft=false
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit (publish) failed ($LASTEXITCODE)" }
+            Write-Host "published $tag (both OS files attached)"
+          } else {
+            Write-Host "$tag stays a draft; waiting for the OS file that is not attached yet"
+            $assets | ForEach-Object { Write-Host "  $_" }
           }
